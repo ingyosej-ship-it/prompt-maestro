@@ -428,12 +428,21 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     ]
   });
   const [fViga, setFV] = useState({
-    B:'0.25', H:'0.40', L:'5.00',
-    t010:'0', t015:'0', t020:'0',
-    barras:[ // {diam, cant, lon}
-      {diam:'1/2',cant:'2',lon:'5.00'},{diam:'1/2',cant:'0',lon:'0'},
-      {diam:'3/8',cant:'0',lon:'0'},{diam:'3/4',cant:'0',lon:'0'}
-    ]
+    B:'0.20', H:'0.50', L:'14.37',
+    t010:'2.00', t015:'10.37', t020:'2.00',
+    // Grupos de barras — orden y etiquetas exactos del Excel
+    barras:[
+      {label:'Acero Adicional 1/2"',      diam:'1/2', cant:'2', lon:'1.91', act:false},
+      {label:'Acero Adicional 1/2"',      diam:'1/2', cant:'1', lon:'6.04', act:false},
+      {label:'Acero Adicional 3/4"',      diam:'3/4', cant:'2', lon:'2.00', act:false},
+      {label:'Barras Longitudinales 1"',  diam:'1',   cant:'2', lon:'2.00', act:false},
+      {label:'Barras Longitudinales 3/4"',diam:'3/4', cant:'2', lon:'2.00', act:false},
+      {label:'Barras Longitudinales 3/4"',diam:'3/4', cant:'2', lon:'14.37',act:false},
+      {label:'Barras Longitudinales 3/4"',diam:'3/4', cant:'2', lon:'2.00', act:false},
+      {label:'Barras Longitudinales 1/2"',diam:'1/2', cant:'2', lon:'14.37',act:true},
+      {label:'Barras Longitudinales 3/8"',diam:'3/8', cant:'2', lon:'14.37',act:false},
+    ],
+    tipoHorm:'manual', resHorm:'210', hormInd:'210 Kg/cm²',
   });
   const [fLosa, setFL] = useState({ X:'5.00', Y:'4.00', H:'0.12', rec:'0.020', diam:'3/8', sep:'0.15', solape:'SI', prop:'1:3:5' });
   const [fMuros, setFM] = useState({ largo:'10.00', alto:'3.00', tipo:'6', vDiam:'3/8', vSep:'0.80', hDiam:'3/8', hSep:'0.60', hCant:'2', mortero:'1:4', horm:'1:3:5' });
@@ -540,38 +549,74 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
 
   // 4. VIGA
   const calcViga = () => {
-    const B=parseFloat(fViga.B), H=parseFloat(fViga.H), L=parseFloat(fViga.L);
-    const vol=B*H*L; if(!vol) return;
-    let totalQQ=0, bItems=[];
-    fViga.barras.forEach(b=>{
-      const c=parseFloat(b.cant)||0, l=parseFloat(b.lon)||0;
-      if(c<=0||l<=0) return;
-      const s=STEEL_DATA[b.diam];
-      const qqD=(c*(l*1.05+0.8))/s.divisor/s.factor*1.1;
-      totalQQ+=qqD;
-      bItems.push({label:`Barras ${b.diam}" (${c} uds)`, val:n(qqD,3), unit:'QQ'});
+    const B=parseFloat(fViga.B)||0, H=parseFloat(fViga.H)||0, L=parseFloat(fViga.L)||0;
+    if(!B||!H||!L){ alert('Completa las dimensiones.'); return; }
+    const vol = B*H*L;
+    const PRECIOS = PRECIOS_REF.current;
+    const fn2=(v,d=2)=>Number(v).toFixed(d);
+    const fRD=v=>v>0?'RD$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'-';
+    const VQQS = {'1':1.87,'3/4':3.3,'1/2':7.4,'3/8':13};
+    const PACES = {'1':PRECIOS.acero1,'3/4':PRECIOS.acero34,'1/2':PRECIOS.acero12,'3/8':PRECIOS.acero38};
+    // 1. Acero: acumular qq/m3 por diámetro
+    // fórmula: (cant×(lon×1.05+0.8))/6/varillas_qq/vol×1.1
+    const totDiam = {'1':0,'3/4':0,'1/2':0,'3/8':0};
+    fViga.barras.filter(b=>b.act).forEach(b=>{
+      const cant=parseFloat(b.cant)||0, lon=parseFloat(b.lon)||0;
+      if(!cant||!lon) return;
+      totDiam[b.diam] += (cant*(lon*1.05+0.8))/6/VQQS[b.diam]/vol*1.1;
     });
-    const longE=((B-0.06)*2)+((H-0.06)*2)+0.28;
-    const tramos=[{m:parseFloat(fViga.t010)||0,sep:0.10},{m:parseFloat(fViga.t015)||0,sep:0.15},{m:parseFloat(fViga.t020)||0,sep:0.20}];
-    let qqE=0;
-    tramos.forEach(t=>{ if(t.m>0){ const c=Math.ceil(t.m/t.sep)+1; qqE+=(longE*c)/6.09/13.3*1.1; } });
-    totalQQ+=qqE;
-    const prop=CONCRETE_DATA['1:3:5'];
-    setResultado({
-      tipo:'Viga', modulo:'viga',
-      desc:`${B}×${H}m, L=${L}m`,
-      items:[
-        {label:'Volumen Hormigón', val:n(vol,3), unit:'m³'},
-        ...bItems,
-        {label:'Estribos 3/8"', val:n(qqE,3), unit:'QQ'},
-        {label:'Total Acero', val:n(totalQQ,3), unit:'QQ'},
-        {label:'Alambre', val:n(totalQQ*1.43,3), unit:'lb'},
-        {label:'Encofrado', val:n((B+2*H)*L,2), unit:'m²'},
-        {label:'Cemento (1:3:5)', val:n(vol*prop.cemento,2), unit:'fds'},
-        {label:'Arena', val:n(vol*prop.arena,3), unit:'m³'},
-        {label:'Grava', val:n(vol*prop.grava,3), unit:'m³'},
-      ]
-    });
+    // 2. Estribos 3/8"
+    const perim = (B-0.06)*2 + (H-0.06)*2 + 0.28;
+    const tramos = [{sep:0.10,lon:parseFloat(fViga.t010)||0},{sep:0.15,lon:parseFloat(fViga.t015)||0},{sep:0.20,lon:parseFloat(fViga.t020)||0}];
+    let qqEstM3=0;
+    tramos.forEach(t=>{ if(t.lon>0) qqEstM3 += (perim*(Math.floor(t.lon/t.sep)+1))/6/13/vol*1.1; });
+    totDiam['3/8'] += qqEstM3;
+    // 3. MO Varillero
+    const moVarM3 = Object.values(totDiam).reduce((s,v)=>s+v,0);
+    // 4. Carpintería
+    const carpM2m3 = ((L*B)+(2*L*H))/vol;
+    // 5. Alambre
+    const totalEstribos = tramos.reduce((s,t)=>t.lon>0?s+Math.floor(t.lon/t.sep)+1:s,0);
+    const totalBarras = fViga.barras.filter(b=>b.act).reduce((s,b)=>s+parseFloat(b.cant||0),0);
+    const alambM3 = (totalEstribos * totalBarras) / 100 / vol * 1.15;
+    // Totales
+    const to1=totDiam['1']*vol, to34=totDiam['3/4']*vol, to12=totDiam['1/2']*vol, to38=totDiam['3/8']*vol;
+    const alambTotal=alambM3*vol, moVarTotal=moVarM3*vol;
+    const tAce1=to1*PACES['1'], tAce34=to34*PACES['3/4'], tAce12=to12*PACES['1/2'], tAce38=to38*PACES['3/8'];
+    const tAlam=alambTotal*PRECIOS.alambre, tMOVar=moVarTotal*PRECIOS.moAcero;
+    // Hormigón
+    let tHorm=0, hormItems=[];
+    if(fViga.tipoHorm==='manual'){
+      const hD=HORMIGON_DATA[fViga.resHorm];
+      if(hD){
+        const cC=hD.cemento*vol*PRECIOS.cemento,cA=hD.arena*vol*(PRECIOS.arenaHorm||PRECIOS.arena),cG=hD.grava*vol*PRECIOS.grava,cW=hD.agua*vol*PRECIOS.agua;
+        tHorm=cC+cA+cG+cW;
+        hormItems=[
+          {label:`Hormigón ${fViga.resHorm}Kg/cm² (${HORMIGON_DATA[fViga.resHorm].prop})`,cant:fn2(vol,3),uni:'m³',pu:'-',total:'-'},
+          {label:'  └ Cemento gris',    cant:fn2(hD.cemento*vol,2),uni:'fds',pu:fRD(PRECIOS.cemento),                   total:fRD(cC),sub:true},
+          {label:'  └ Arena triturada', cant:fn2(hD.arena*vol,3),  uni:'m³', pu:fRD(PRECIOS.arenaHorm||PRECIOS.arena),  total:fRD(cA),sub:true},
+          {label:'  └ Grava combinada', cant:fn2(hD.grava*vol,3),  uni:'m³', pu:fRD(PRECIOS.grava),                    total:fRD(cG),sub:true},
+          {label:'  └ Agua',            cant:fn2(hD.agua*vol,3),   uni:'Lts',pu:fRD(PRECIOS.agua),                     total:fRD(cW),sub:true},
+        ];
+      }
+    } else {
+      const pH=PRECIOS.hormigones[fViga.hormInd]||0;
+      tHorm=vol*pH;
+      hormItems=[{label:`Hormigón Industrial ${fViga.hormInd}`,cant:fn2(vol,3),uni:'m³',pu:fRD(pH),total:fRD(tHorm)}];
+    }
+    const grandTotal = tAce1+tAce34+tAce12+tAce38+tAlam+tMOVar+tHorm;
+    const items=[
+      {label:'Volumen',cant:fn2(vol,3),uni:'m³',pu:'-',total:'-'},
+      ...(to1 >0?[{label:'Total Acero 1"',   cant:fn2(totDiam['1'],4),   uni:'qq/m³',pu:fRD(PACES['1']),   total:fRD(tAce1)}] :[]),
+      ...(to34>0?[{label:'Total Acero 3/4"', cant:fn2(totDiam['3/4'],4), uni:'qq/m³',pu:fRD(PACES['3/4']), total:fRD(tAce34)}]:[]),
+      ...(to12>0?[{label:'Total Acero 1/2"', cant:fn2(totDiam['1/2'],4), uni:'qq/m³',pu:fRD(PACES['1/2']), total:fRD(tAce12)}]:[]),
+      ...(to38>0?[{label:'Total Acero 3/8"', cant:fn2(totDiam['3/8'],4), uni:'qq/m³',pu:fRD(PACES['3/8']), total:fRD(tAce38)}]:[]),
+      {label:'Total Alambre',          cant:fn2(alambM3,4),  uni:'lb/m³', pu:fRD(PRECIOS.alambre), total:fRD(tAlam)},
+      {label:'Mano de Obra Varillero', cant:fn2(moVarM3,4),  uni:'qq/m³', pu:fRD(PRECIOS.moAcero), total:fRD(tMOVar)},
+      {label:'Carpintería',            cant:fn2(carpM2m3,4), uni:'m²/m³', pu:'-',                  total:'-'},
+      ...hormItems,
+    ];
+    setResultado({tipo:'Viga Rectangular',modulo:'viga',desc:`${B}x${H}m — L=${L}m — V=${fn2(vol,3)}m³`,grandTotal,items});
   };
 
   // 5. LOSA MACIZA
@@ -988,6 +1033,20 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
             <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'500',marginTop:'3px',lineHeight:'1.4'}}>Hormigón ciclópeo con losa HA</div>
           </div>
           <span style={{fontSize:'18px',color:'#b91c1c',fontWeight:'700',alignSelf:'flex-end',marginTop:'auto'}}>›</span>
+        </button>
+        {/* VIGA */}
+        <button onClick={() => { setScreen('viga'); setResultado(null); }}
+          style={{padding:'16px', background:'white', border:'1px solid #e2e8f0', borderTop:'3px solid #c2410c', borderRadius:'12px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'8px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', transition:'all 0.15s', textAlign:'left'}}
+          onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 18px rgba(194,65,12,0.15)';}}
+          onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';}}>
+          <div style={{width:'44px',height:'44px',background:'#ffedd5',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c2410c" strokeWidth="2" strokeLinecap="round"><rect x="2" y="9" width="20" height="6" rx="1"/><line x1="6" y1="9" x2="6" y2="15"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="18" y1="9" x2="18" y2="15"/></svg>
+          </div>
+          <div>
+            <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>Viga</div>
+            <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'500',marginTop:'3px',lineHeight:'1.4'}}>Acero longitudinal, estribos y hormigón</div>
+          </div>
+          <span style={{fontSize:'18px',color:'#c2410c',fontWeight:'700',alignSelf:'flex-end',marginTop:'auto'}}>›</span>
         </button>
       </div>
     </div>
@@ -1655,47 +1714,94 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
   );
 
   // ── VIGA ────────────────────────────────────────────────────────────────────
-  if (screen === 'viga') return (
-    <div style={{padding:'16px', overflowY:'auto', height:'100%'}}>
-      <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
-      <h3 style={{fontWeight:'800', color:'#7c2d12', marginBottom:'14px'}}>📐 Viga</h3>
-      <div className={card}>
-        {sectionHdr('#f97316','Sección')}
-        {grid2(<>
-          {fld('Ancho B (m)', <input type="number" step="0.01" value={fViga.B} onChange={e=>setFV({...fViga,B:e.target.value})} className={inp}/>)}
-          {fld('Peralte H (m)', <input type="number" step="0.01" value={fViga.H} onChange={e=>setFV({...fViga,H:e.target.value})} className={inp}/>)}
-        </>)}
-        {fld('Longitud L (m)', <input type="number" step="0.01" value={fViga.L} onChange={e=>setFV({...fViga,L:e.target.value})} className={inp}/>)}
-      </div>
-      <div className={card}>
-        {sectionHdr('#f97316','Barras Longitudinales')}
-        <div style={{display:'grid', gridTemplateColumns:'60px 1fr 1fr', gap:'6px', marginBottom:'6px'}}>
-          <span style={{fontSize:'10px',color:'#94a3b8',fontWeight:'700',textAlign:'center'}}>DIAM</span>
-          <span style={{fontSize:'10px',color:'#94a3b8',fontWeight:'700',textAlign:'center'}}>CANT.</span>
-          <span style={{fontSize:'10px',color:'#94a3b8',fontWeight:'700',textAlign:'center'}}>LONG. (m)</span>
+  // VIGA
+  if (screen === "viga") {
+    const COLOR_V = "#c2410c";
+    const B=parseFloat(fViga.B)||0, H=parseFloat(fViga.H)||0, L=parseFloat(fViga.L)||0;
+    const vol=B*H*L;
+    const s={background:"white",border:"1px solid #e2e8f0",borderRadius:"12px",padding:"14px",marginBottom:"10px"};
+    const inpS={width:"100%",padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:"8px",fontSize:"13px",fontWeight:"700",outline:"none",background:"#f8fafc",boxSizing:"border-box"};
+    const lblS={fontSize:"10px",fontWeight:"700",color:"#64748b",textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:"4px"};
+    const hdrS=(col)=>({borderLeft:"3px solid "+col,paddingLeft:"10px",marginBottom:"12px",fontSize:"11px",fontWeight:"800",color:col,textTransform:"uppercase",letterSpacing:"0.06em"});
+    const updBarra=(i,campo,val)=>{const nb=[...fViga.barras];nb[i]={...nb[i],[campo]:val};setFV({...fViga,barras:nb});};
+
+    return (
+      <div style={{padding:"16px",overflowY:"auto",height:"100%",background:"#f8fafc"}}>
+        <button onClick={()=>setScreen("menu")} style={{background:"#f1f5f9",border:"none",padding:"6px 12px",borderRadius:"8px",fontSize:"12px",fontWeight:"700",color:"#475569",cursor:"pointer",marginBottom:"12px"}}>← Atrás</button>
+        <h3 style={{fontWeight:"800",color:COLOR_V,marginBottom:"4px",fontSize:"16px"}}>Viga Rectangular</h3>
+        <p style={{fontSize:"11px",color:"#94a3b8",marginBottom:"14px",fontWeight:"600",textTransform:"uppercase",letterSpacing:"0.05em"}}>Cuantías de acero, encofrado y hormigón</p>
+
+        <div style={s}>
+          <div style={hdrS(COLOR_V)}>Sección y Longitud</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px",marginBottom:"10px"}}>
+            <div><label style={lblS}>Base B (m)</label><input type="number" step="0.01" value={fViga.B} onChange={e=>setFV({...fViga,B:e.target.value})} style={inpS}/></div>
+            <div><label style={lblS}>Peralte H (m)</label><input type="number" step="0.01" value={fViga.H} onChange={e=>setFV({...fViga,H:e.target.value})} style={inpS}/></div>
+            <div><label style={lblS}>Longitud L (m)</label><input type="number" step="0.01" value={fViga.L} onChange={e=>setFV({...fViga,L:e.target.value})} style={inpS}/></div>
+          </div>
+          {vol>0&&(<div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:"8px",padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:"11px",color:COLOR_V,fontWeight:"700"}}>Volumen = {vol.toFixed(3)} m³</span>
+            <span style={{fontSize:"11px",color:COLOR_V,fontWeight:"700"}}>Sección = {(B*H).toFixed(4)} m²</span>
+          </div>)}
         </div>
-        {fViga.barras.map((b,i)=>(
-          <div key={i} style={{display:'grid', gridTemplateColumns:'60px 1fr 1fr', gap:'6px', marginBottom:'6px'}}>
-            <select value={b.diam} onChange={e=>{const nb=[...fViga.barras];nb[i]={...b,diam:e.target.value};setFV({...fViga,barras:nb});}} className={sel} style={{padding:'6px'}}>
-              <option value="3/8">3/8"</option><option value="1/2">1/2"</option><option value="3/4">3/4"</option><option value="1">1"</option>
-            </select>
-            <input type="number" value={b.cant} onChange={e=>{const nb=[...fViga.barras];nb[i]={...b,cant:e.target.value};setFV({...fViga,barras:nb});}} className={inp} placeholder="0"/>
-            <input type="number" step="0.01" value={b.lon} onChange={e=>{const nb=[...fViga.barras];nb[i]={...b,lon:e.target.value};setFV({...fViga,barras:nb});}} className={inp} placeholder="0.00"/>
+
+        <div style={s}>
+          <div style={hdrS(COLOR_V)}>Tramos con Estribos 3/8"</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}>
+            {[{k:"t010",label:"@ 0.10m (m)"},{k:"t015",label:"@ 0.15m (m)"},{k:"t020",label:"@ 0.20m (m)"}].map(t=>(
+              <div key={t.k}><label style={lblS}>{t.label}</label>
+                <input type="number" step="0.01" value={fViga[t.k]} onChange={e=>setFV({...fViga,[t.k]:e.target.value})} style={inpS} placeholder="0.00"/></div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className={card}>
-        {sectionHdr('#f97316','Tramos de Estribos 3/8"')}
-        {[{k:'t010',label:'@ 0.10m'},{k:'t015',label:'@ 0.15m'},{k:'t020',label:'@ 0.20m'}].map(t=>(
-          <div key={t.k} style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'8px'}}>
-            <span style={{fontSize:'11px',fontWeight:'700',color:'#f97316',minWidth:'60px'}}>{t.label}</span>
-            <input type="number" step="0.01" value={fViga[t.k]} onChange={e=>setFV({...fViga,[t.k]:e.target.value})} className={inp} placeholder="metros"/>
+          {B&&H&&(<div style={{marginTop:"8px",fontSize:"11px",color:COLOR_V,fontWeight:"600"}}>
+            Perímetro estribo: {((B-0.06)*2+(H-0.06)*2+0.28).toFixed(3)} m
+          </div>)}
+        </div>
+
+        <div style={s}>
+          <div style={hdrS(COLOR_V)}>Barras de Acero</div>
+          {fViga.barras.map((b,i)=>(
+            <div key={i} style={{background:b.act?"#fff7ed":"#f8fafc",border:"1px solid "+(b.act?"#fed7aa":"#e2e8f0"),borderRadius:"10px",padding:"10px",marginBottom:"8px"}}>
+              <label style={{display:"flex",alignItems:"center",gap:"10px",cursor:"pointer",marginBottom:b.act?"10px":"0"}}>
+                <input type="checkbox" checked={b.act} onChange={e=>updBarra(i,"act",e.target.checked)} style={{width:"16px",height:"16px",accentColor:COLOR_V,cursor:"pointer"}}/>
+                <span style={{fontWeight:"800",fontSize:"12px",color:b.act?COLOR_V:"#94a3b8"}}>{b.label}</span>
+              </label>
+              {b.act&&(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+                <div><label style={lblS}>Cantidad</label>
+                  <input type="number" step="1" min="1" value={b.cant} onChange={e=>updBarra(i,"cant",e.target.value)} style={inpS}/></div>
+                <div><label style={lblS}>Longitud (m)</label>
+                  <input type="number" step="0.01" value={b.lon} onChange={e=>updBarra(i,"lon",e.target.value)} style={inpS}/></div>
+              </div>)}
+            </div>
+          ))}
+        </div>
+
+        <div style={s}>
+          <div style={hdrS(COLOR_V)}>Hormigón</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginBottom:"10px"}}>
+            {["manual","industrial"].map(t=>(
+              <button key={t} onClick={()=>setFV({...fViga,tipoHorm:t})}
+                style={{padding:"9px",border:"none",borderRadius:"8px",fontWeight:"800",fontSize:"12px",cursor:"pointer",textTransform:"uppercase",
+                  background:fViga.tipoHorm===t?COLOR_V:"#f1f5f9",color:fViga.tipoHorm===t?"white":"#64748b"}}>
+                {t==="manual"?"Manual":"Industrial"}
+              </button>
+            ))}
           </div>
-        ))}
+          {fViga.tipoHorm==="manual"&&(<div><label style={lblS}>Resistencia (Kg/cm²)</label>
+            <select value={fViga.resHorm} onChange={e=>setFV({...fViga,resHorm:e.target.value})} style={inpS}>
+              {Object.entries(HORMIGON_DATA).map(([k,v])=>(<option key={k} value={k}>{k} Kg/cm² — {v.prop}</option>))}
+            </select></div>)}
+          {fViga.tipoHorm==="industrial"&&(<div><label style={lblS}>Resistencia y Precio</label>
+            <select value={fViga.hormInd} onChange={e=>setFV({...fViga,hormInd:e.target.value})} style={inpS}>
+              {Object.entries(PRECIOS_REF.current.hormigones).map(([k,v])=>(<option key={k} value={k}>{k} — RD$ {v.toLocaleString("en-US",{minimumFractionDigits:2})}/m³</option>))}
+            </select></div>)}
+        </div>
+
+        <button onClick={calcViga} style={{width:"100%",padding:"14px",background:COLOR_V,color:"white",border:"none",borderRadius:"12px",fontWeight:"800",fontSize:"13px",cursor:"pointer",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"20px"}}>
+          ⚡ CALCULAR VIGA
+        </button>
       </div>
-      {calcBtn('#f97316','Calcular Viga', calcViga)}
-    </div>
-  );
+    );
+  }
 
   // ── LOSA ────────────────────────────────────────────────────────────────────
   if (screen === 'losa') return (
