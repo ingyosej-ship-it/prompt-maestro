@@ -1,0 +1,3732 @@
+'use client';
+import React, { useState, useEffect, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://hbolprmitnjqxvmfddhl.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || 'sb_publishable_ATBpGkcNJ_DWWKKkt-ZKPg_5p7ZPQjQ';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+import {
+  Calculator, FileText, Settings, Search, Menu, ChevronRight, ChevronLeft,
+  Download, Users, BrickWall, TrendingUp, AlertCircle, LogOut, Lock, Mail,
+  CheckCircle2, User, Building2, LayoutTemplate, Database, Filter, Grid,
+  Plus, ArrowUpRight, Clock, Briefcase, Printer, X, Save, Percent, Home,
+  Calendar, Folder, ArrowLeft, Hammer, MoreVertical, Bell, Ruler, HardHat,
+  Zap, Box, Droplet, Layers, Maximize, ArrowRight, Link as LinkIcon, PanelLeft, Share2
+} from 'lucide-react';
+
+// ==================== CONFIGURACIÓN GLOBAL ====================
+const today = new Date();
+const dateOptions = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+const currentDateString = today.toLocaleDateString('es-DO', dateOptions);
+
+const PROJECT_INFO_DEFAULT = {
+  name: "Residencial Las Praderas - Etapa 1",
+  client: "Constructora del Norte",
+  code: "PRJ-2024-05",
+  location: "Santiago, RD",
+  lastUpdate: "Sesión Actual"
+};
+
+const BACKGROUNDS = {
+  login: "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=2070&auto=format&fit=crop",
+  dashboard: "https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=2070&auto=format&fit=crop",
+  budget: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?q=80&w=2070&auto=format&fit=crop",
+  database: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=2068&auto=format&fit=crop",
+  templates: "https://images.unsplash.com/photo-1600596542815-2a429feb1431?q=80&w=2070&auto=format&fit=crop",
+  calculators: "https://images.unsplash.com/photo-1581094794329-c8112a89af12?q=80&w=2070&auto=format&fit=crop"
+};
+
+const INITIAL_BUDGET_ITEMS = [
+  { id: '1.01', description: 'Limpieza y Desbroce de Terreno', unit: 'm2', quantity: 0.00, unitPrice: 125.00, category: 'PRELIMINARES' },
+  { id: '1.02', description: 'Replanteo de Edificación', unit: 'm2', quantity: 0.00, unitPrice: 85.00, category: 'PRELIMINARES' },
+  { id: '2.01', description: 'Hormigón Industrial 210kg/cm2 en Zapatas', unit: 'm3', quantity: 0.00, unitPrice: 8200.00, category: 'ESTRUCTURA' },
+  { id: '3.01', description: 'Muro de Bloques de 6" (Violinados)', unit: 'm2', quantity: 0.00, unitPrice: 1450.00, category: 'ALBAÑILERÍA' },
+];
+
+const TEMPLATES = [
+  { id: 1, name: 'Vivienda Económica (80m2)', items: 45, category: 'Residencial', cost: 1850000 },
+  { id: 2, name: 'Torre de Apartamentos (12 Niveles)', items: 320, category: 'Multifamiliar', cost: 45000000 },
+  { id: 3, name: 'Nave Industrial Ligera', items: 85, category: 'Industrial', cost: 8500000 },
+  { id: 4, name: 'Remodelación de Baño', items: 25, category: 'Interiores', cost: 125000 },
+];
+
+const APU_DETAILS = {
+  '3.01': {
+    materials: [
+      { name: 'Bloques de Hormigón 6"', unit: 'ud', quantity: 12.5, price: 34.00 },
+      { name: 'Cemento Gris Titán', unit: 'fda', quantity: 0.18, price: 385.00 },
+      { name: 'Arena de Pañete', unit: 'm3', quantity: 0.04, price: 1100.00 },
+      { name: 'Agua', unit: 'gl', quantity: 5.00, price: 0.50 }
+    ],
+    labor: [
+      { name: 'Albañil de Primera (Colocación)', unit: 'm2', quantity: 1.00, price: 350.00 },
+      { name: 'Ayudante', unit: 'jornal', quantity: 0.15, price: 433.00 }
+    ],
+    equipment: [
+      { name: 'Andamios (Alquiler)', unit: 'dia', quantity: 0.05, price: 150.00 },
+      { name: 'Herramientas Menores (5% MO)', unit: '%', quantity: 1, price: 26.50 }
+    ]
+  }
+};
+
+// ==================== COMPONENTES AUXILIARES ====================
+const FormatCurrency = ({ value, className = "" }) => {
+  if (value === null || value === undefined) return <span className={className}>-</span>;
+  return (
+    <span className={`font-mono tracking-tight ${className}`}>
+      RD$ {Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    </span>
+  );
+};
+
+const NavItem = ({ icon, label, active = false, isOpen, onClick }) => (
+  <div
+    onClick={onClick}
+    style={{
+      display:'flex', alignItems:'center', padding: isOpen ? '10px 12px' : '10px 0',
+      justifyContent: isOpen ? 'flex-start' : 'center',
+      cursor:'pointer', borderRadius:'8px', marginBottom:'4px',
+      background: active ? '#1d4ed8' : 'transparent',
+      color: active ? 'white' : '#94a3b8',
+      transition:'all 0.15s',
+    }}
+    onMouseEnter={e=>{ if(!active){ e.currentTarget.style.background='#1e293b'; e.currentTarget.style.color='#e2e8f0'; }}}
+    onMouseLeave={e=>{ if(!active){ e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#94a3b8'; }}}
+  >
+    <div style={{flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:'22px', height:'22px'}}>
+      {icon}
+    </div>
+    {isOpen && <span style={{marginLeft:'12px', fontWeight:'600', fontSize:'13px', whiteSpace:'nowrap'}}>{label}</span>}
+  </div>
+);
+
+// ==================== MODAL DE EXPORTACIÓN ====================
+const ExportModal = ({ isOpen, onClose, projectInfo, totalDirectCost }) => {
+  const [companyInfo, setCompanyInfo] = useState({
+    name: 'Tu Empresa S.R.L.', rnc: '000-00000-0', address: 'Calle Principal #1', phone: '(809) 000-0000'
+  });
+  const [clientInfoLocal, setClientInfoLocal] = useState({ ...projectInfo });
+  const [indirects, setIndirects] = useState({ direction: 10, admin: 2.5, transport: 1, profit: 10, itbis: 18 });
+
+  if (!isOpen) return null;
+
+  const costDirection = totalDirectCost * (indirects.direction / 100);
+  const costAdmin = totalDirectCost * (indirects.admin / 100);
+  const costTransport = totalDirectCost * (indirects.transport / 100);
+  const costProfit = totalDirectCost * (indirects.profit / 100);
+  const subTotal = totalDirectCost + costDirection + costAdmin + costTransport + costProfit;
+  const itbisAmount = subTotal * (indirects.itbis / 100);
+  const finalTotal = subTotal + itbisAmount;
+
+  const InputGroup = ({ label, value, onChange }) => (
+    <div>
+      <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">{label}</label>
+      <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
+        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium text-gray-700 transition-all shadow-sm" />
+    </div>
+  );
+
+  const IndirectInput = ({ label, value, amount, onChange, isProfit }) => (
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex-1">
+        <label className="text-xs text-gray-500 block mb-1.5">{label}</label>
+        <div className="relative w-24">
+          <input type="number" step="0.5" value={value} onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+            className={`w-full pl-3 pr-7 py-1.5 border rounded-md text-right text-sm font-medium outline-none focus:ring-2 transition-all
+              ${isProfit ? 'border-green-200 bg-green-50 text-green-700 focus:ring-green-500' : 'border-gray-200 bg-gray-50 text-gray-700 focus:ring-blue-500'}`} />
+          <Percent className={`w-3 h-3 absolute right-2 top-2.5 ${isProfit ? 'text-green-500' : 'text-gray-400'}`} />
+        </div>
+      </div>
+      <div className="text-right pt-5">
+        <span className={`text-sm font-medium ${isProfit ? 'text-green-600' : 'text-gray-600'}`}>
+          <FormatCurrency value={amount} />
+        </span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
+        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Printer className="text-blue-600" size={24} /> Configuración de Cotización</h2>
+            <p className="text-sm text-gray-500 mt-1">Ajusta los parámetros finales antes de exportar.</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2"><Building2 size={14} /> Datos del Oferente</h3>
+                <div className="space-y-4">
+                  <InputGroup label="Nombre Empresa" value={companyInfo.name} onChange={(v) => setCompanyInfo({ ...companyInfo, name: v })} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputGroup label="RNC / Cédula" value={companyInfo.rnc} onChange={(v) => setCompanyInfo({ ...companyInfo, rnc: v })} />
+                    <InputGroup label="Teléfono" value={companyInfo.phone} onChange={(v) => setCompanyInfo({ ...companyInfo, phone: v })} />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2"><User size={14} /> Datos del Cliente</h3>
+                <div className="space-y-4">
+                  <InputGroup label="Cliente" value={clientInfoLocal.client} onChange={(v) => setClientInfoLocal({ ...clientInfoLocal, client: v })} />
+                  <InputGroup label="Proyecto" value={clientInfoLocal.name} onChange={(v) => setClientInfoLocal({ ...clientInfoLocal, name: v })} />
+                </div>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-lg">
+              <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-6 flex items-center gap-2"><Calculator size={18} className="text-blue-600" /> Resumen Económico</h3>
+              <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-100">
+                <span className="text-gray-600 font-medium">Costo Directo</span>
+                <span className="font-bold text-gray-900 text-lg"><FormatCurrency value={totalDirectCost} /></span>
+              </div>
+              <div className="space-y-4 mb-6">
+                <IndirectInput label="Dirección Técnica" value={indirects.direction} amount={costDirection} onChange={(v) => setIndirects({ ...indirects, direction: v })} />
+                <IndirectInput label="Gastos Administrativos" value={indirects.admin} amount={costAdmin} onChange={(v) => setIndirects({ ...indirects, admin: v })} />
+                <IndirectInput label="Transporte" value={indirects.transport} amount={costTransport} onChange={(v) => setIndirects({ ...indirects, transport: v })} />
+                <IndirectInput label="Beneficio Industrial" value={indirects.profit} amount={costProfit} onChange={(v) => setIndirects({ ...indirects, profit: v })} isProfit />
+              </div>
+              <div className="pt-4 border-t border-gray-100">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-gray-500 text-sm">Sub-Total</span>
+                  <span className="font-semibold text-gray-700"><FormatCurrency value={subTotal} /></span>
+                </div>
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-gray-500 text-sm">ITBIS (18%)</span>
+                  <span className="font-semibold text-gray-700"><FormatCurrency value={itbisAmount} /></span>
+                </div>
+                <div className="bg-blue-900 text-white p-4 rounded-lg shadow-md flex justify-between items-center">
+                  <span className="font-bold text-sm uppercase tracking-wider text-blue-200">Total General</span>
+                  <span className="font-bold text-2xl tracking-tight"><FormatCurrency value={finalTotal} /></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="px-8 py-5 bg-white border-t border-gray-200 flex justify-end gap-4">
+          <button onClick={onClose} className="px-6 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors text-sm">Cancelar</button>
+          <button onClick={() => { alert(`Total: RD$ ${finalTotal.toLocaleString()}`); onClose(); }}
+            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-md flex items-center gap-2 transition-all text-sm">
+            <Download size={18} /> Exportar Excel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==================== PANTALLA DE LOGIN ====================
+
+// ==================== VISTA: CALCULADORA ====================
+const CalculatorsView = ({ onAddToPresupuesto }) => {
+  // ── Datos técnicos RD ──────────────────────────────────────────────────────
+  const MORTAR_DATA = {
+    "1:2": { cemento:14.35, arena:0.97 }, "1:3": { cemento:10.66, arena:1.10 },
+    "1:4": { cemento:8.54,  arena:1.16 }, "1:5": { cemento:7.09,  arena:1.18 },
+    "1:6": { cemento:6.10,  arena:1.20 }, "1:7": { cemento:5.35,  arena:1.25 }
+  };
+  const CONCRETE_DATA = {
+    "1:2:2":   { cemento:9.86,  arena:0.67, grava:0.67 },
+    "1:2:3":   { cemento:8.22,  arena:0.55, grava:0.84 },
+    "1:2:4":   { cemento:7.04,  arena:0.48, grava:0.95 },
+    "1:3:3":   { cemento:7.04,  arena:0.72, grava:0.72 },
+    "1:3:4":   { cemento:6.10,  arena:0.63, grava:0.83 },
+    "1:3:5":   { cemento:5.40,  arena:0.55, grava:0.92 },
+    "1:3:6":   { cemento:4.58,  arena:0.52, grava:0.96 },
+    "1:4:7":   { cemento:4.11,  arena:0.55, grava:0.98 },
+    "1:4:8":   { cemento:3.76,  arena:0.55, grava:0.99 }
+  };
+  const STEEL_DATA = {
+    "1":   { factor:1.87,  divisor:6,    solape:1.00, g90:0.35, g180:0.45 },
+    "3/4": { factor:3.3,   divisor:6,    solape:0.80, g90:0.30, g180:0.40 },
+    "5/8": { factor:4.8,   divisor:6.09, solape:0.60, g90:0.25, g180:0.35 },
+    "1/2": { factor:7.4,   divisor:6.09, solape:0.50, g90:0.20, g180:0.25 },
+    "3/8": { factor:13.3,  divisor:6.09, solape:0.40, g90:0.12, g180:0.15 },
+    "1/4": { factor:29.8,  divisor:6.09, solape:0.30, g90:0.10, g180:0.10 }
+  };
+  const WASTE = 1.10;
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  const [screen, setScreen] = useState('menu');
+
+  // ── Precios desde Supabase (se actualizan solos) ───────────────────────────
+  const [preciosCargados, setPreciosCargados] = useState(false);
+
+  useEffect(() => {
+    const cargarPrecios = async () => {
+      try {
+        // Buscar precios en analisis_costo y mo_cuadrillas
+        const busquedas = [
+          { key:'acero38',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Acero 3/8"',                          tipo_fila:'item' },
+          { key:'acero12',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Acero ½"',                            tipo_fila:'item' },
+          { key:'acero34',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Acero ¾"',                            tipo_fila:'item' },
+          { key:'acero1',   tabla:'analisis_costo',  campo:'precio_unitario', desc:'Acero 1"',                            tipo_fila:'item' },
+          { key:'alambre',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Alambre #18',                         tipo_fila:'item' },
+          { key:'cemento',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Cemento gris',                        tipo_fila:'item' },
+          { key:'arena',    tabla:'analisis_costo',  campo:'precio_unitario', desc:'Arena gruesa lavada',                 tipo_fila:'item' },
+          { key:'grava',    tabla:'analisis_costo',  campo:'precio_unitario', desc:'Grava combinada',                     tipo_fila:'item' },
+          { key:'agua',     tabla:'analisis_costo',  campo:'precio_unitario', desc:'Agua',                                tipo_fila:'item' },
+          { key:'carp',     tabla:'analisis_costo',  campo:'precio_unitario', desc:'Confección e instalación de madera',  tipo_fila:'item' },
+          { key:'moAcero',  tabla:'mo_cuadrillas',   campo:'precio_unitario', desc:'Coloc. acero col. 3/8" ó ½"',        tipo_fila:null   },
+          { key:'bloque',   tabla:'analisis_costo',  campo:'precio_unitario', desc:'Bloque',                              tipo_fila:'item' },
+          { key:'moBloque', tabla:'mo_cuadrillas',   campo:'precio_unitario', desc:'bloque',                              tipo_fila:null   },
+        ];
+
+        const nuevosPrecios = {};
+        for (const b of busquedas) {
+          let q = supabase.from(b.tabla).select(b.campo).ilike('descripcion', `%${b.desc}%`).limit(1);
+          if (b.tipo_fila) q = q.eq('tipo_fila', b.tipo_fila);
+          const { data } = await q;
+          if (data && data[0] && data[0][b.campo]) {
+            nuevosPrecios[b.key] = parseFloat(data[0][b.campo]);
+          }
+        }
+
+        // Hormigones industriales — buscar precio_total de cada partida
+        const hormKeys = [
+          { label:'140 Kg/cm²', desc:'HORM. 140 Kg/Cm' },
+          { label:'160 Kg/cm²', desc:'HORM. 160 Kg/Cm' },
+          { label:'180 Kg/cm²', desc:'HORM. 180 Kg/Cm' },
+          { label:'210 Kg/cm²', desc:'HORM. 210 Kg/Cm' },
+          { label:'240 Kg/cm²', desc:'HORM. 240 Kg/Cm' },
+          { label:'250 Kg/cm²', desc:'HORM. 250 Kg/Cm' },
+          { label:'260 Kg/cm²', desc:'HORM. 260 Kg/Cm' },
+          { label:'280 Kg/cm²', desc:'HORM. 280 Kg/Cm' },
+          { label:'300 Kg/cm²', desc:'HORM. 300 Kg/Cm' },
+          { label:'350 Kg/cm²', desc:'HORM. 350 Kg/Cm' },
+          { label:'400 Kg/cm²', desc:'HORM. 400 Kg/Cm' },
+        ];
+
+        for (const h of hormKeys) {
+          // Buscar la partida y luego su fila total
+          const { data: partida } = await supabase
+            .from('analisis_costo')
+            .select('codigo')
+            .eq('tipo_fila', 'partida')
+            .ilike('descripcion', `%${h.desc}%`)
+            .limit(1);
+
+          if (partida && partida[0]) {
+            const { data: totalRow } = await supabase
+              .from('analisis_costo')
+              .select('precio_con_itbis')
+              .eq('tipo_fila', 'total')
+              .eq('partida_codigo', partida[0].codigo)
+              .limit(1);
+
+            if (totalRow && totalRow[0] && totalRow[0].precio_con_itbis) {
+              nuevosPrecios[`horm_${h.label}`] = parseFloat(totalRow[0].precio_con_itbis);
+            }
+          }
+        }
+
+        // Actualizar hormigones en PRECIOS_REF
+        if (Object.keys(nuevosPrecios).length > 0) {
+          const hormigones = { ...PRECIOS_REF.current.hormigones };
+          hormKeys.forEach(h => {
+            if (nuevosPrecios[`horm_${h.label}`]) {
+              hormigones[h.label] = nuevosPrecios[`horm_${h.label}`];
+              delete nuevosPrecios[`horm_${h.label}`];
+            }
+          });
+          Object.assign(PRECIOS_REF.current, nuevosPrecios, { hormigones });
+          setPreciosCargados(true);
+        }
+      } catch(e) {
+        console.error('Error cargando precios:', e);
+      }
+    };
+    cargarPrecios();
+  }, []);
+
+  // ── Estado Cuantía Columna ─────────────────────────────────────────────────
+  const [fCuantia, setFCuantia] = useState({
+    nombre: 'COLUMNA C1',
+    largoX: '0.40', anchoY: '0.20',
+    altura: '4.90',
+    recub: '0.030',
+    estribos: [
+      { id:'E1', act:true,  lon:'1.24', sep:'0.20' },
+      { id:'E2', act:true,  lon:'0.66', sep:'0.20' },
+      { id:'E3', act:false, lon:'',     sep:'0.20' },
+      { id:'E4', act:false, lon:'',     sep:'0.20' },
+      { id:'E5', act:false, lon:'',     sep:'0.20' },
+      { id:'E6', act:false, lon:'',     sep:'0.20' },
+      { id:'E7', act:false, lon:'',     sep:'0.20' },
+    ],
+    long1: { act:false, cant:'0', diam:'1'   },
+    long34:{ act:false, cant:'0', diam:'3/4' },
+    long12:{ act:false, cant:'2', diam:'1/2' },
+    long38:{ act:true,  cant:'3', diam:'3/8' },
+    hormigon: '210 Kg/cm²',
+    resistencia: '210',
+    tipoHorm: 'industrial',
+  });
+  const [resultado, setResultado] = useState(null);
+
+  // ── Forms ───────────────────────────────────────────────────────────────────
+  const [fZapata, setFZ] = useState({ B:'1.20', L:'1.20', H:'0.30', diam:'3/8', sep:'0.20', supActiva:false });
+  // Estados Zapata Aislada nueva
+  const [zLargo, setZLargo] = useState('1.00');
+  const [zAncho, setZAncho] = useState('1.00');
+  const [zAltura, setZAltura] = useState('0.30');
+  const [sepInfXX, setSepInfXX] = useState(['0.20','0.20','0.20','0.20']);
+  const [sepInfYY, setSepInfYY] = useState(['0.20','0.20','0.20','0.20']);
+  const [sepSupXX, setSepSupXX] = useState(['0.20','0.20','0.20','0.20']);
+  const [sepSupYY, setSepSupYY] = useState(['0.20','0.20','0.20','0.20']);
+  const [zTipoHorm, setZTipoHorm] = useState('manual');
+  const [zResistencia, setZResistencia] = useState('210');
+  const [zHormInd, setZHormInd] = useState('210 Kg/cm²');
+  // Acero zapata simplificado
+  const [zInfActivo, setZInfActivo] = useState(true);
+  const [zSupActivo, setZSupActivo] = useState(false);
+  const DIAMS_Z = ['1"','3/4"','1/2"','3/8"'];
+  const DIAMS_K = ['1','3/4','1/2','3/8'];
+  const mkAceroZ = () => ({
+    'xx': { '1':{act:false,sep:'0.20'}, '3/4':{act:false,sep:'0.20'}, '1/2':{act:false,sep:'0.20'}, '3/8':{act:true,sep:'0.20'} },
+    'yy': { '1':{act:false,sep:'0.20'}, '3/4':{act:false,sep:'0.20'}, '1/2':{act:false,sep:'0.20'}, '3/8':{act:true,sep:'0.20'} },
+  });
+  const [zInf, setZInf] = useState(mkAceroZ());
+  const [zSup, setZSup] = useState(mkAceroZ());
+  // ── Estado Badén ──────────────────────────────────────────────────────────────
+  // ── Estado Muros de Bloques ──────────────────────────────────────────────────
+  const [mBloques, setMBloques] = useState({
+    largo: '10.00',
+    alto: '3.00',
+    espesor: '20',
+    propMortero: '1:4',
+    propHorm: '210',
+    tipoHorm: 'manual',
+    hormInd: '210 Kg/cm²',
+    bastones: { act: true,  diam: '3/8', sep: '0.20' },
+    aceroH:   { act: false, diam: '3/8', sep: '0.60', cant: '2' },
+    relleno: { act: false },
+  });
+  const [fZMuro, setFZM] = useState({ metros:'6.00', ancho:'0.45', espesor:'0.20', tipoDiam:'3/8', cantLong:'3', sepCangr:'0.25', diamCangr:'3/8', prop:'1:3:5', desperdicio:'7' });
+  // Estado Baden
+  const [fBaden, setFBaden] = useState({
+    tipo:'3/8', sep:'0.15',
+    Y:'1.75', Z:'10.00',
+    espHA:'0.15', espCic:'0.30',
+    pendiente:'20', desp:'5',
+    // Hormigón H.A.
+    tipoHorm:'manual', resHorm:'210', hormInd:'210 Kg/cm²',
+    // Hormigón ciclópeo base
+    tipoCic:'manual', resCic:'140', cicInd:'140 Kg/cm²',
+    // Mortero pulido
+    propMort:'1:2',
+  });
+  const [fColumna, setFC] = useState({
+    B:'0.25', H:'0.25',
+    longit:{ '1':{act:false,pcs:'0'}, '3/4':{act:false,pcs:'0'}, '1/2':{act:false,pcs:'0'}, '3/8':{act:true,pcs:'4'} },
+    estribos:[
+      {id:'E1',act:true,len:'1.20',sep:'0.20'},{id:'E2',act:false,len:'0.80',sep:'0.20'},
+      {id:'E3',act:false,len:'0.60',sep:'0.20'},{id:'E4',act:false,len:'0.40',sep:'0.20'}
+    ]
+  });
+  const [fViga, setFV] = useState({
+    B:'0.25', H:'0.40', L:'5.00',
+    t010:'0', t015:'0', t020:'0',
+    barras:[ // {diam, cant, lon}
+      {diam:'1/2',cant:'2',lon:'5.00'},{diam:'1/2',cant:'0',lon:'0'},
+      {diam:'3/8',cant:'0',lon:'0'},{diam:'3/4',cant:'0',lon:'0'}
+    ]
+  });
+  const [fLosa, setFL] = useState({ X:'5.00', Y:'4.00', H:'0.12', rec:'0.020', diam:'3/8', sep:'0.15', solape:'SI', prop:'1:3:5' });
+  const [fMuros, setFM] = useState({ largo:'10.00', alto:'3.00', tipo:'6', vDiam:'3/8', vSep:'0.80', hDiam:'3/8', hSep:'0.60', hCant:'2', mortero:'1:4', horm:'1:3:5' });
+  const [fPiso, setFP] = useState({ L:'5.00', A:'4.00', E:'0.10', prop:'1:3:5', desp:'5', malla:true, aceroX:false, dX:'3/8', sX:'0.25', aceroY:false, dY:'3/8', sY:'0.25' });
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  const n = (v, d=2) => Number(v||0).toFixed(d);
+  const fmtRD = v => 'RD$ ' + Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const qq = (longTotal, diam) => { const s = STEEL_DATA[diam]; return longTotal / s.divisor / s.factor * WASTE; };
+
+  // ── Motores de cálculo ──────────────────────────────────────────────────────
+
+  // 1. ZAPATA AISLADA
+  const calcZapata = () => {
+    const B=parseFloat(fZapata.B), L=parseFloat(fZapata.L), H=parseFloat(fZapata.H);
+    const vol = B*L*H; if(!vol) return;
+    const sep = parseFloat(fZapata.sep)||0.20;
+    const d = fZapata.diam;
+    const pzX = Math.ceil(L/sep)+1, pzY = Math.ceil(B/sep)+1;
+    const lenX = (B+0.30)*pzX, lenY = (L+0.30)*pzY;
+    const qqTotal = qq(lenX+lenY, d)*1.0;
+    if(fZapata.supActiva) { /* doble malla */ }
+    const alambre = ((pzX*pzY)*2 / 80) * 1.15;
+    const prop = CONCRETE_DATA['1:3:5'];
+    setResultado({
+      tipo:'Zapata Aislada',
+      modulo:'zapata',
+      desc:`${B}×${L}×${H}m`,
+      items:[
+        {label:'Volumen Hormigón', val:n(vol,3), unit:'m³'},
+        {label:`Acero (${d})`, val:n(qqTotal,3), unit:'QQ'},
+        {label:'Alambre Dulce', val:n(alambre,3), unit:'lb'},
+        {label:'Cemento (1:3:5)', val:n(vol*prop.cemento,2), unit:'fds'},
+        {label:'Arena', val:n(vol*prop.arena,3), unit:'m³'},
+        {label:'Grava', val:n(vol*prop.grava,3), unit:'m³'},
+      ]
+    });
+  };
+
+  // 2. ZAPATA MURO
+  const calcZapataMuro = () => {
+    const L=parseFloat(fZMuro.metros)||0, B=parseFloat(fZMuro.ancho)||0, H=parseFloat(fZMuro.espesor)||0;
+    const vol=L*B*H; if(!vol) return;
+    const waste=(parseFloat(fZMuro.desperdicio)||7)/100;
+    const cant=parseFloat(fZMuro.cantLong)||3, d=fZMuro.tipoDiam;
+    const qqLong = qq(L*cant, d)*(1+waste);
+    const sepC=parseFloat(fZMuro.sepCangr)||0.25, dC=fZMuro.diamCangr;
+    const cantC=Math.ceil(L/sepC)+1;
+    const qqCangr = qq((B+0.15-0.10)*cantC, dC)*1.07;
+    const totalAcero=qqLong+qqCangr;
+    const prop=CONCRETE_DATA[fZMuro.prop]||CONCRETE_DATA['1:3:5'];
+    setResultado({
+      tipo:'Zapata Muro', modulo:'zapataMuro',
+      desc:`${L}ml × ${B}m × ${H}m`,
+      items:[
+        {label:'Volumen Hormigón', val:n(vol,3), unit:'m³'},
+        {label:`Acero Long. (${d})`, val:n(qqLong,3), unit:'QQ'},
+        {label:`Cangrejos (${dC})`, val:n(qqCangr,3), unit:'QQ'},
+        {label:'Total Acero', val:n(totalAcero,3), unit:'QQ'},
+        {label:'Alambre', val:n(totalAcero*1.43,3), unit:'lb'},
+        {label:`Cemento (${fZMuro.prop})`, val:n(vol*prop.cemento,2), unit:'fds'},
+        {label:'Arena', val:n(vol*prop.arena,3), unit:'m³'},
+        {label:'Grava', val:n(vol*prop.grava,3), unit:'m³'},
+      ]
+    });
+  };
+
+  // 3. COLUMNA
+  const calcColumna = () => {
+    const B=parseFloat(fColumna.B), H=parseFloat(fColumna.H), L=1.0;
+    const vol=B*H*L; if(!vol) return;
+    let totalQQ=0, items=[];
+    Object.entries(fColumna.longit).forEach(([d,v])=>{
+      if(!v.act) return;
+      const pcs=parseInt(v.pcs)||0;
+      const s=STEEL_DATA[d];
+      const qqD=(pcs*1.15)/s.divisor/s.factor*1.1;
+      totalQQ+=qqD;
+      items.push({label:`Acero Long. ${d}"`, val:n(qqD,3), unit:'QQ'});
+    });
+    const actE=fColumna.estribos.filter(e=>e.act);
+    if(actE.length>0){
+      const sep=parseFloat(fColumna.estribos[0].sep)||0.20;
+      const cant=L/sep;
+      const sumLen=actE.reduce((a,e)=>a+(parseFloat(e.len)||0),0);
+      const qqE=(sumLen*cant)/6.09/13.3*1.1;
+      totalQQ+=qqE;
+      items.push({label:'Estribos 3/8"', val:n(qqE,3), unit:'QQ'});
+    }
+    const prop=CONCRETE_DATA['1:3:5'];
+    setResultado({
+      tipo:'Columna (1ml)', modulo:'columna',
+      desc:`${fColumna.B}×${fColumna.H}m`,
+      items:[
+        {label:'Volumen Hormigón', val:n(vol,4), unit:'m³/ml'},
+        ...items,
+        {label:'Total Acero', val:n(totalQQ,3), unit:'QQ/ml'},
+        {label:'Alambre', val:n(totalQQ*1.43,3), unit:'lb'},
+        {label:'Encofrado', val:n((2*(parseFloat(fColumna.B)+parseFloat(fColumna.H))*L),2), unit:'m²'},
+        {label:'Cemento (1:3:5)', val:n(vol*prop.cemento,3), unit:'fds/ml'},
+      ]
+    });
+  };
+
+  // 4. VIGA
+  const calcViga = () => {
+    const B=parseFloat(fViga.B), H=parseFloat(fViga.H), L=parseFloat(fViga.L);
+    const vol=B*H*L; if(!vol) return;
+    let totalQQ=0, bItems=[];
+    fViga.barras.forEach(b=>{
+      const c=parseFloat(b.cant)||0, l=parseFloat(b.lon)||0;
+      if(c<=0||l<=0) return;
+      const s=STEEL_DATA[b.diam];
+      const qqD=(c*(l*1.05+0.8))/s.divisor/s.factor*1.1;
+      totalQQ+=qqD;
+      bItems.push({label:`Barras ${b.diam}" (${c} uds)`, val:n(qqD,3), unit:'QQ'});
+    });
+    const longE=((B-0.06)*2)+((H-0.06)*2)+0.28;
+    const tramos=[{m:parseFloat(fViga.t010)||0,sep:0.10},{m:parseFloat(fViga.t015)||0,sep:0.15},{m:parseFloat(fViga.t020)||0,sep:0.20}];
+    let qqE=0;
+    tramos.forEach(t=>{ if(t.m>0){ const c=Math.ceil(t.m/t.sep)+1; qqE+=(longE*c)/6.09/13.3*1.1; } });
+    totalQQ+=qqE;
+    const prop=CONCRETE_DATA['1:3:5'];
+    setResultado({
+      tipo:'Viga', modulo:'viga',
+      desc:`${B}×${H}m, L=${L}m`,
+      items:[
+        {label:'Volumen Hormigón', val:n(vol,3), unit:'m³'},
+        ...bItems,
+        {label:'Estribos 3/8"', val:n(qqE,3), unit:'QQ'},
+        {label:'Total Acero', val:n(totalQQ,3), unit:'QQ'},
+        {label:'Alambre', val:n(totalQQ*1.43,3), unit:'lb'},
+        {label:'Encofrado', val:n((B+2*H)*L,2), unit:'m²'},
+        {label:'Cemento (1:3:5)', val:n(vol*prop.cemento,2), unit:'fds'},
+        {label:'Arena', val:n(vol*prop.arena,3), unit:'m³'},
+        {label:'Grava', val:n(vol*prop.grava,3), unit:'m³'},
+      ]
+    });
+  };
+
+  // 5. LOSA MACIZA
+  const calcLosa = () => {
+    const X=parseFloat(fLosa.X), Y=parseFloat(fLosa.Y), H=parseFloat(fLosa.H);
+    const rec=parseFloat(fLosa.rec)||0.02;
+    const vol=X*Y*H; if(!vol) return;
+    const sep=parseFloat(fLosa.sep)||0.15, d=fLosa.diam;
+    const pzX=Math.ceil(Y/sep)+1, pzY=Math.ceil(X/sep)+1;
+    const s=STEEL_DATA[d];
+    let longSolape=0;
+    if(fLosa.solape==='SI') longSolape=s.solape*Math.max(0,Math.ceil(X/6.09)-1);
+    const lenXbarra=(X-rec*2)+s.g90*2+longSolape;
+    const lenYbarra=(Y-rec*2)+s.g90*2+longSolape;
+    const qqX=qq(lenXbarra*pzX,d), qqY=qq(lenYbarra*pzY,d);
+    const totalAcero=qqX+qqY;
+    const prop=CONCRETE_DATA[fLosa.prop]||CONCRETE_DATA['1:3:5'];
+    setResultado({
+      tipo:'Losa Maciza', modulo:'losa',
+      desc:`${X}×${Y}m, e=${H}m`,
+      items:[
+        {label:'Volumen Hormigón', val:n(vol,3), unit:'m³'},
+        {label:`Acero X (${d})`, val:n(qqX,3), unit:'QQ'},
+        {label:`Acero Y (${d})`, val:n(qqY,3), unit:'QQ'},
+        {label:'Total Acero', val:n(totalAcero,3), unit:'QQ'},
+        {label:'Alambre', val:n(totalAcero*1.43,3), unit:'lb'},
+        {label:'Encofrado (fondo)', val:n(X*Y,2), unit:'m²'},
+        {label:`Cemento (${fLosa.prop})`, val:n(vol*prop.cemento,2), unit:'fds'},
+        {label:'Arena', val:n(vol*prop.arena,3), unit:'m³'},
+        {label:'Grava', val:n(vol*prop.grava,3), unit:'m³'},
+      ]
+    });
+  };
+
+  // 6. MUROS DE BLOQUES
+  const calcMuros = () => {
+    const L=parseFloat(fMuros.largo)||0, H=parseFloat(fMuros.alto)||0;
+    const area=L*H; if(!area) return;
+    const bloques=Math.ceil(area*13*1.05);
+    const sepV=parseFloat(fMuros.vSep)||0.80, dV=fMuros.vDiam;
+    const cantV=Math.ceil(L/sepV)+1, lenV=(H+0.40)*cantV;
+    const qqV=qq(lenV,dV)*1.05;
+    const sepH=parseFloat(fMuros.hSep)||0.60, dH=fMuros.hDiam;
+    const cantHrow=Math.ceil(H/sepH), cantHbars=parseFloat(fMuros.hCant)||2;
+    const qqH=qq(cantHrow*L*cantHbars,dH)*1.05;
+    const totalAcero=qqV+qqH;
+    const ef=fMuros.tipo==='6'?0.015:fMuros.tipo==='8'?0.020:0.010;
+    const efH=fMuros.tipo==='6'?0.018:fMuros.tipo==='8'?0.025:0.012;
+    const pM=MORTAR_DATA[fMuros.mortero]||MORTAR_DATA['1:4'];
+    const pHorm=CONCRETE_DATA[fMuros.horm]||CONCRETE_DATA['1:3:5'];
+    const volM=area*ef, volH=area*efH;
+    setResultado({
+      tipo:'Muros de Bloques', modulo:'muros',
+      desc:`${L}×${H}m (${fMuros.tipo}")`,
+      items:[
+        {label:`Bloques de ${fMuros.tipo}"`, val:String(bloques), unit:'uds'},
+        {label:`Acero Vert. (${dV})`, val:n(qqV,3), unit:'QQ'},
+        {label:`Acero Horiz. (${dH})`, val:n(qqH,3), unit:'QQ'},
+        {label:'Total Acero', val:n(totalAcero,3), unit:'QQ'},
+        {label:'Alambre', val:n(totalAcero*1.43,3), unit:'lb'},
+        {label:`Cemento Mortero (${fMuros.mortero})`, val:n(volM*pM.cemento,2), unit:'fds'},
+        {label:'Arena Mortero', val:n(volM*pM.arena,3), unit:'m³'},
+        {label:`Cemento Horm. (${fMuros.horm})`, val:n(volH*pHorm.cemento,2), unit:'fds'},
+        {label:'Arena Hormigón', val:n(volH*pHorm.arena,3), unit:'m³'},
+        {label:'Grava', val:n(volH*pHorm.grava,3), unit:'m³'},
+      ]
+    });
+  };
+
+  // 7. PISO / TORTA
+  const calcPiso = () => {
+    const L=parseFloat(fPiso.L)||0, A=parseFloat(fPiso.A)||0, E=parseFloat(fPiso.E)||0;
+    const waste=(parseFloat(fPiso.desp)||0)/100;
+    const area=L*A, vol=area*E*(1+waste); if(!vol) return;
+    const prop=CONCRETE_DATA[fPiso.prop]||CONCRETE_DATA['1:3:5'];
+    let items=[
+      {label:'Área', val:n(area,2), unit:'m²'},
+      {label:'Volumen Hormigón', val:n(vol,3), unit:'m³'},
+    ];
+    if(fPiso.malla) {
+      const mallaQQ=area*0.014;
+      items.push({label:'Malla Electrosoldada', val:n(mallaQQ,3), unit:'QQ'});
+      items.push({label:'Alambre (malla)', val:n(mallaQQ*1.8,3), unit:'lb'});
+    }
+    let totalAcero=0;
+    if(fPiso.aceroX){ const qqX=qq(L*(Math.ceil(A/parseFloat(fPiso.sX||0.25))+1),fPiso.dX); totalAcero+=qqX; items.push({label:`Acero X (${fPiso.dX})`, val:n(qqX,3), unit:'QQ'}); }
+    if(fPiso.aceroY){ const qqY=qq(A*(Math.ceil(L/parseFloat(fPiso.sY||0.25))+1),fPiso.dY); totalAcero+=qqY; items.push({label:`Acero Y (${fPiso.dY})`, val:n(qqY,3), unit:'QQ'}); }
+    if(totalAcero>0) items.push({label:'Total Acero', val:n(totalAcero,3), unit:'QQ'});
+    items.push(
+      {label:`Cemento (${fPiso.prop})`, val:n(vol*prop.cemento,2), unit:'fds'},
+      {label:'Arena', val:n(vol*prop.arena,3), unit:'m³'},
+      {label:'Grava', val:n(vol*prop.grava,3), unit:'m³'},
+    );
+    setResultado({ tipo:'Piso / Torta', modulo:'piso', desc:`${L}×${A}m, e=${E}m`, items });
+  };
+
+  // ── CUANTÍA COLUMNA ─────────────────────────────────────────────────────────
+  // Tabla de hormigon manual (tu tabla)
+  const HORMIGON_DATA = {
+    '280': { prop:'1:2:2',   cemento:9.88, arena:0.67, grava:0.67, agua:190 },
+    '240': { prop:'1:2:2.5', cemento:8.94, arena:0.60, grava:0.76, agua:180 },
+    '226': { prop:'1:2:3',   cemento:8.24, arena:0.55, grava:0.84, agua:170 },
+    '210': { prop:'1:2:3.5', cemento:7.53, arena:0.52, grava:0.90, agua:170 },
+    '200': { prop:'1:2:4.3', cemento:7.06, arena:0.48, grava:0.95, agua:158 },
+    '189': { prop:'1:2.5:4', cemento:6.59, arena:0.55, grava:0.89, agua:158 },
+    '168': { prop:'1:3:3',   cemento:7.06, arena:0.72, grava:0.72, agua:158 },
+    '159': { prop:'1:3:4',   cemento:6.12, arena:0.63, grava:0.83, agua:163 },
+    '140': { prop:'1:3:5',   cemento:5.41, arena:0.55, grava:0.92, agua:148 },
+    '119': { prop:'1:3:6',   cemento:2.59, arena:0.50, grava:0.90, agua:143 },
+    '109': { prop:'1:4:7',   cemento:4.12, arena:0.55, grava:0.98, agua:133 },
+    '99':  { prop:'1:4:8',   cemento:3.76, arena:0.55, grava:1.03, agua:125 },
+  };
+
+  // Precios base — 14va. Edición MOPC 2014
+  const PRECIOS_REF = useRef({
+    acero38:  2651.04,   // Acero grado 60, ⅜" x 20' (Ins 50014)
+    acero12:  2662.15,   // Acero grado 60, ½" x 20'  (Ins 50019)
+    acero34:  2655.01,   // Acero grado 60, ¾" x 20'  (Ins 50024)
+    acero1:   2626.92,   // Acero grado 60, 1" x 20'  (Ins 50029)
+    alambre:    37.77,   // Alambre galv. Cal.18 (Ins 50046)
+    moAcero:   246.86,   // Coloc. acero normal qq (MOC 6800009)
+    carp:      167.56,   // Carpintería referencia
+    cemento:   276.91,   // Cemento Gris 94 lb. Portland (Ins 150005)
+    arena:    1012.15,   // Arena gruesa lavada (Ins 60002) — para mortero/hormigón
+    arenaHorm:1356.89,   // Arena triturada lavada (Ins 60004) — para hormigón industrial
+    grava:     924.98,   // Grava ¾"–½" triturada (Ins 60011)
+    agua:        0.61,   // Agua, camión 2,000 gls. (Ins 270006)
+    moBadenCic:  998.40, // Badén ciclópeo frotado+pulido (MOC 6000401)
+    moColocPied: 316.00, // Cimiento de piedra / colocar piedras (MOC 6200002)
+    moPulidoPiso: 59.05, // Piso cemento pulido fino (MOC 6001602)
+    mortPulido: 7087.21, // Mortero 1:2 para pulido por m³ (Ana 308)
+    hormigones: {
+      '140 Kg/cm²': 8307.20,
+      '160 Kg/cm²': 8307.20,
+      '180 Kg/cm²': 8566.80,
+      '210 Kg/cm²': 8826.40,
+      '240 Kg/cm²': 9345.60,
+      '250 Kg/cm²': 9540.30,
+      '260 Kg/cm²': 9735.00,
+      '280 Kg/cm²':10059.50,
+      '300 Kg/cm²':10254.20,
+      '350 Kg/cm²':11097.90,
+      '400 Kg/cm²':11811.80,
+    }
+  });
+
+  // Alias para usar en el código (siempre apunta al ref actualizado)
+  const PRECIOS = PRECIOS_REF.current;
+
+  const calcCuantiaColumna = () => {
+    const PRECIOS = PRECIOS_REF.current; // usar precios actualizados
+    const C4  = parseFloat(fCuantia.largoX) || 0;
+    const D4  = parseFloat(fCuantia.anchoY) || 0;
+    const F3  = C4 * D4;
+    if (!F3) return;
+
+    const C15 = fCuantia.long1.act  ? (parseFloat(fCuantia.long1.cant)  || 0) : 0;
+    const C16 = fCuantia.long34.act ? (parseFloat(fCuantia.long34.cant) || 0) : 0;
+    const C17 = fCuantia.long12.act ? (parseFloat(fCuantia.long12.cant) || 0) : 0;
+    const C18 = fCuantia.long38.act ? (parseFloat(fCuantia.long38.cant) || 0) : 0;
+
+    // Estribos con separacion individual
+    let C23 = 0;
+    fCuantia.estribos.forEach(e => {
+      if (!e.act || !parseFloat(e.lon)) return;
+      const lon = parseFloat(e.lon) || 0;
+      const sep = parseFloat(e.sep) || 0.20;
+      C23 += ((lon * (1/sep)) / 6.09 / 13.3 / F3) * 1.1;
+    });
+
+    const D7 = parseFloat(fCuantia.estribos[0].sep) || 0.20;
+    const H9 = 2;
+
+    const C19 = C15 > 0 ? ((C15*1.15)/6   /1.87 /F3)*1.1 : 0;
+    const C20 = C16 > 0 ? ((C16*1.15)/6   /3.3  /F3)*1.1 : 0;
+    const C21 = C17 > 0 ? ((C17*1.15)/6.09/7.4  /F3)*1.1 : 0;
+    const C22 = C18 > 0 ? ((C18*1.15)/6.09/13.3 /F3)*1.1 : 0;
+    const C24 = (C4+D4)*H9/F3;
+    const C25 = C19+C20+C21+C22+C23;
+    const C26 = ((C15+C16+C17+C18)*(1/D7))/F3/80*1.15;
+
+    const total38 = C22 + C23;
+    const fmt   = v => v > 0 ? Number(v).toFixed(2) : '-';
+    const fmtRD = v => v > 0 ? 'RD$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '-';
+    const fmtN  = v => Number(v).toFixed(3);
+
+    // Hormigon
+    const hData = HORMIGON_DATA[fCuantia.resistencia];
+    const esManual = fCuantia.tipoHorm === 'manual';
+    let precioHorm = 0, totalHorm = 0;
+    let hormItems = [];
+
+    if (esManual && hData) {
+      const costCem  = hData.cemento * PRECIOS.cemento;
+      const costAren = hData.arena   * (PRECIOS.arenaHorm||PRECIOS.arena);
+      const costGrav = hData.grava   * PRECIOS.grava;
+      const costAgua = hData.agua    * PRECIOS.agua;
+      precioHorm = costCem + costAren + costGrav + costAgua;
+      totalHorm  = precioHorm;
+      hormItems = [
+        { label:'  └ Cemento gris',     cant:fmtN(hData.cemento), uni:'fds/m³', pu:fmtRD(PRECIOS.cemento),                  total:fmtRD(costCem),  sub:true },
+        { label:'  └ Arena triturada',  cant:fmtN(hData.arena),   uni:'m³/m³',  pu:fmtRD(PRECIOS.arenaHorm||PRECIOS.arena), total:fmtRD(costAren), sub:true },
+        { label:'  └ Grava combinada',  cant:fmtN(hData.grava),   uni:'m³/m³',  pu:fmtRD(PRECIOS.grava),                   total:fmtRD(costGrav), sub:true },
+        { label:'  └ Agua',             cant:fmtN(hData.agua),    uni:'Lts/m³', pu:fmtRD(PRECIOS.agua),                    total:fmtRD(costAgua), sub:true },
+      ];
+    } else {
+      precioHorm = PRECIOS.hormigones[fCuantia.hormigon] || 0;
+      totalHorm  = precioHorm;
+    }
+
+    const cant1    = C19 > 0 ? parseFloat(C19.toFixed(4)) : 0;
+    const cant34   = C20 > 0 ? parseFloat(C20.toFixed(4)) : 0;
+    const cant12   = C21 > 0 ? parseFloat(C21.toFixed(4)) : 0;
+    const cant38   = total38 > 0 ? parseFloat(total38.toFixed(4)) : 0;
+    const cantAlm  = parseFloat(C26.toFixed(4));
+    const cantCarp = parseFloat(C24.toFixed(4));
+    const cantMO   = parseFloat(C25.toFixed(4));
+
+    const total1    = cant1    * PRECIOS.acero1;
+    const total34   = cant34   * PRECIOS.acero34;
+    const total12   = cant12   * PRECIOS.acero12;
+    const total38v  = cant38   * PRECIOS.acero38;
+    const totalAlm  = cantAlm  * PRECIOS.alambre;
+    const totalCarp = cantCarp * PRECIOS.carp;
+    const totalMO   = cantMO   * PRECIOS.moAcero;
+
+    const grandTotal = totalHorm + total1 + total34 + total12 + total38v + totalAlm + totalCarp + totalMO;
+
+    const labelHorm = esManual
+      ? 'Hormigón Manual '+fCuantia.resistencia+' Kg/cm² ('+hData?.prop+')'
+      : 'Hormigón Industrial '+fCuantia.hormigon;
+
+    const items = [
+      { label: labelHorm, cant: fmt(1), uni:'m³', pu: fmtRD(precioHorm), total: fmtRD(totalHorm) },
+      ...hormItems,
+    ];
+
+    if (cant1  >0) items.push({ label:'Acero 1"',       cant:fmt(cant1),  uni:'QQ/m³', pu:fmtRD(PRECIOS.acero1),  total:fmtRD(total1)   });
+    if (cant34 >0) items.push({ label:'Acero 3/4"',     cant:fmt(cant34), uni:'QQ/m³', pu:fmtRD(PRECIOS.acero34), total:fmtRD(total34)  });
+    if (cant12 >0) items.push({ label:'Acero 1/2"',     cant:fmt(cant12), uni:'QQ/m³', pu:fmtRD(PRECIOS.acero12), total:fmtRD(total12)  });
+    if (cant38 >0) items.push({ label:'Acero 3/8"',     cant:fmt(cant38), uni:'QQ/m³', pu:fmtRD(PRECIOS.acero38), total:fmtRD(total38v) });
+    if (cantAlm>0) items.push({ label:'Alambre #18',    cant:fmt(cantAlm),uni:'lb/m³',  pu:fmtRD(PRECIOS.alambre), total:fmtRD(totalAlm) });
+    items.push({ label:'Carpintería',      cant:fmt(cantCarp), uni:'m²/m³', pu:fmtRD(PRECIOS.carp),    total:fmtRD(totalCarp) });
+    items.push({ label:'M.O. Varillero',   cant:fmt(cantMO),   uni:'QQ/m³', pu:fmtRD(PRECIOS.moAcero), total:fmtRD(totalMO)  });
+    items.push({ label:'Calzos',           cant:'-',            uni:'',      pu:'-',                    total:'-'              });
+
+    setResultado({
+      tipo: 'Cuantia Columna', modulo: 'cuantiaColumna',
+      desc: fCuantia.nombre+' — '+C4+' x '+D4+' m',
+      grandTotal,
+      items,
+    });
+  };;
+  const MOD_COLORS = {
+    cuantiaColumna:{bg:'#134e4a', accent:'#0f766e', light:'#ccfbf1'},
+    zapata:        {bg:'#1e3a5f', accent:'#3b82f6', light:'#dbeafe'},
+    zapataMuro:    {bg:'#4c1d95', accent:'#8b5cf6', light:'#ede9fe'},
+    columna:       {bg:'#7f1d1d', accent:'#ef4444', light:'#fee2e2'},
+    viga:          {bg:'#7c2d12', accent:'#f97316', light:'#ffedd5'},
+    losa:          {bg:'#164e63', accent:'#06b6d4', light:'#cffafe'},
+    muros:         {bg:'#78350f', accent:'#f59e0b', light:'#fef3c7'},
+    murosBloques:  {bg:'#92400e', accent:'#b45309', light:'#fef3c7'},
+    piso:          {bg:'#1e1b4b', accent:'#6366f1', light:'#e0e7ff'},
+  };
+  const mc = resultado ? (MOD_COLORS[resultado.modulo]||MOD_COLORS.cuantiaColumna) : MOD_COLORS.cuantiaColumna;
+
+  // ── Shared input style ──────────────────────────────────────────────────────
+  const inp = 'w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400';
+  const lbl = 'block text-xs font-bold text-slate-500 uppercase mb-1';
+  const sel = inp + ' cursor-pointer';
+  const sectionHdr = (color, text) => (
+    <div style={{borderLeft:`3px solid ${color}`, paddingLeft:'10px', marginBottom:'12px'}}>
+      <span style={{fontSize:'11px', fontWeight:'800', color:color, textTransform:'uppercase', letterSpacing:'0.06em'}}>{text}</span>
+    </div>
+  );
+  const card = 'bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-3';
+  const calcBtn = (color, label, fn) => (
+    <button onClick={fn} style={{width:'100%',padding:'14px',background:color,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',fontSize:'13px',cursor:'pointer',textTransform:'uppercase',letterSpacing:'0.06em',marginTop:'8px'}}>
+      ⚡ {label}
+    </button>
+  );
+
+  // ── PANTALLA DE RESULTADO ────────────────────────────────────────────────────
+  if (resultado) {
+    const fRDr = v => v > 0 ? 'RD$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '-';
+    return (
+      <div style={{display:'flex', flexDirection:'column', height:'100%', background:'#f8fafc'}}>
+        {/* Header */}
+        <div style={{background:mc.bg, padding:'16px 20px', flexShrink:0}}>
+          <button onClick={()=>setResultado(null)} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'white',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',marginBottom:'10px'}}>
+            ← Volver
+          </button>
+          <div style={{color:'white', fontWeight:'800', fontSize:'18px'}}>{resultado.tipo}</div>
+          <div style={{color:'rgba(255,255,255,0.6)', fontSize:'12px', marginTop:'2px'}}>{resultado.desc}</div>
+        </div>
+        {/* Tabla */}
+        <div style={{flex:1, overflowY:'auto', padding:'16px'}}>
+          <div style={{background:'white', borderRadius:'14px', border:'1px solid #e2e8f0', overflow:'hidden', marginBottom:'12px'}}>
+            <table style={{width:'100%', borderCollapse:'collapse', fontSize:'11px'}}>
+              <thead>
+                <tr style={{background:mc.bg}}>
+                  <th style={{padding:'8px 10px',color:'white',fontWeight:'800',textAlign:'left',fontSize:'10px',textTransform:'uppercase'}}>Descripción</th>
+                  <th style={{padding:'8px 6px',color:'white',fontWeight:'800',textAlign:'center',fontSize:'10px',textTransform:'uppercase',width:'54px'}}>Cant.</th>
+                  <th style={{padding:'8px 6px',color:'white',fontWeight:'800',textAlign:'center',fontSize:'10px',textTransform:'uppercase',width:'46px'}}>U.</th>
+                  <th style={{padding:'8px 6px',color:'white',fontWeight:'800',textAlign:'right',fontSize:'10px',textTransform:'uppercase',width:'88px'}}>P.U.</th>
+                  <th style={{padding:'8px 10px',color:'white',fontWeight:'800',textAlign:'right',fontSize:'10px',textTransform:'uppercase',width:'88px'}}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resultado.items.map((it,i)=>(
+                  <tr key={i} style={{background:it.sub?(resultado.modulo==='zapata'?'#eff6ff':'#f0fdfa'):i%2===0?'white':'#f8fafc',borderBottom:'1px solid #f1f5f9'}}>
+                    <td style={{padding:it.sub?'5px 10px 5px 22px':'8px 10px',color:it.sub?mc.accent:'#1e293b',fontWeight:it.sub?'500':'600',fontSize:it.sub?'10px':'11px',fontStyle:it.sub?'italic':'normal'}}>{it.label}</td>
+                    <td style={{padding:'8px 6px',textAlign:'center',fontFamily:'monospace',fontWeight:'700',color:it.sub?mc.accent:'#374151',fontSize:'11px'}}>{it.cant||it.val}</td>
+                    <td style={{padding:'8px 6px',textAlign:'center',color:'#64748b',fontSize:'10px',fontWeight:'600'}}>{it.uni||it.unit}</td>
+                    <td style={{padding:'8px 6px',textAlign:'right',fontFamily:'monospace',color:'#374151',fontSize:'10px'}}>{it.pu||'-'}</td>
+                    <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:it.sub?'#94a3b8':mc.accent,fontSize:'11px'}}>{it.total||'-'}</td>
+                  </tr>
+                ))}
+                {resultado.grandTotal > 0 && (
+                  <tr style={{background:mc.bg, borderTop:'2px solid '+mc.accent}}>
+                    <td colSpan={4} style={{padding:'10px',color:'white',fontWeight:'800',fontSize:'12px',textTransform:'uppercase',letterSpacing:'0.05em'}}>TOTAL GENERAL</td>
+                    <td style={{padding:'10px',textAlign:'right',fontFamily:'monospace',fontWeight:'900',color:'white',fontSize:'13px'}}>
+                      {'RD$ '+Number(resultado.grandTotal).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {/* Botón agregar al presupuesto */}
+          {onAddToPresupuesto && (
+            <button onClick={()=>{
+              const parseRD=(s)=>{ if(!s||s==='-')return 0; return parseFloat(String(s).replace(/[RD$\s,]/g,''))||0; };
+              const items=(resultado.items||[]).map((it,i)=>{
+                const pu=parseRD(it.pu); const total=parseRD(it.total); const cant=parseFloat(it.cant||it.val)||0;
+                return { id:Date.now()+i, codigo:'', descripcion:it.label, tipo:'item', cantidad:cant, unidad:it.uni||it.unit||'', precio_unitario:pu||(cant>0&&total>0?total/cant:0), valor_rd:total||cant*pu };
+              });
+              onAddToPresupuesto({ descripcion:resultado.tipo+' — '+resultado.desc, unidad:'u', cantidad:1, precio_unitario:resultado.grandTotal||0, enCotizacion:true, items });
+            }}
+              style={{width:'100%',padding:'13px',background:mc.accent,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',fontSize:'13px',cursor:'pointer',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'8px'}}>
+              + Agregar al Presupuesto Activo
+            </button>
+          )}
+          <button onClick={()=>{setResultado(null);setScreen('menu');}}
+            style={{width:'100%',padding:'11px',background:'white',color:'#64748b',border:'1px solid #e2e8f0',borderRadius:'12px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
+            Nueva Calculadora
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── MENU ────────────────────────────────────────────────────────────────────
+
+  if (screen === 'menu') return (
+    <div style={{padding:'20px', height:'100%', overflowY:'auto', background:'#f8fafc'}}>
+      <div style={{marginBottom:'20px'}}>
+        <h2 style={{fontWeight:'900', fontSize:'20px', color:'#0f172a', margin:0, letterSpacing:'-0.02em'}}>Cálculo de Cuantías</h2>
+        <p style={{fontSize:'12px', color:'#64748b', marginTop:'4px', fontWeight:'500'}}>Selecciona el elemento estructural a calcular</p>
+      </div>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+        {/* ZAPATA */}
+        <button onClick={() => { setScreen('zapata'); setResultado(null); }}
+          style={{padding:'16px', background:'white', border:'1px solid #e2e8f0', borderTop:'3px solid #1e3a5f', borderRadius:'12px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'8px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', transition:'all 0.15s', textAlign:'left'}}
+          onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 18px rgba(30,58,95,0.15)';}}
+          onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';}}>
+          <div style={{width:'44px',height:'44px',background:'#dbeafe',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1e3a5f" strokeWidth="2" strokeLinecap="round"><rect x="2" y="16" width="20" height="5" rx="1"/><rect x="6" y="10" width="12" height="6"/><rect x="9" y="5" width="6" height="5"/></svg>
+          </div>
+          <div>
+            <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>Zapata Aislada</div>
+            <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'500',marginTop:'3px',lineHeight:'1.4'}}>Cuantía de acero inferior y superior</div>
+          </div>
+          <span style={{fontSize:'18px',color:'#1e3a5f',fontWeight:'700',alignSelf:'flex-end',marginTop:'auto'}}>›</span>
+        </button>
+        {/* MUROS DE BLOQUES */}
+        <button onClick={() => { setScreen('murosBloques'); setResultado(null); }}
+          style={{padding:'16px', background:'white', border:'1px solid #e2e8f0', borderTop:'3px solid #b45309', borderRadius:'12px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'8px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', transition:'all 0.15s', textAlign:'left'}}
+          onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 18px rgba(180,83,9,0.15)';}}
+          onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';}}>
+          <div style={{width:'44px',height:'44px',background:'#fef3c7',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2" strokeLinecap="round"><rect x="2" y="7" width="9" height="5" rx="1"/><rect x="13" y="7" width="9" height="5" rx="1"/><rect x="2" y="14" width="9" height="5" rx="1"/><rect x="13" y="14" width="9" height="5" rx="1"/></svg>
+          </div>
+          <div>
+            <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>Muros de Bloques</div>
+            <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'500',marginTop:'3px',lineHeight:'1.4'}}>Bloques, mortero y bastones por m²</div>
+          </div>
+          <span style={{fontSize:'18px',color:'#b45309',fontWeight:'700',alignSelf:'flex-end',marginTop:'auto'}}>›</span>
+        </button>
+        {/* COLUMNA */}
+        <button onClick={() => { setScreen('cuantiaColumna'); setResultado(null); }}
+          style={{padding:'16px', background:'white', border:'1px solid #e2e8f0', borderTop:'3px solid #0f766e', borderRadius:'12px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'8px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', transition:'all 0.15s', textAlign:'left'}}
+          onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 18px rgba(15,118,110,0.15)';}}
+          onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';}}>
+          <div style={{width:'44px',height:'44px',background:'#ccfbf1',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0f766e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="2" width="8" height="20" rx="1"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          </div>
+          <div>
+            <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>Columna</div>
+            <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'500',marginTop:'3px',lineHeight:'1.4'}}>Cuantía de acero, hormigón y costo total</div>
+          </div>
+          <span style={{fontSize:'18px',color:'#0f766e',fontWeight:'700',alignSelf:'flex-end',marginTop:'auto'}}>›</span>
+        </button>
+        {/* BADÉN */}
+        <button onClick={() => { setScreen('baden'); setResultado(null); }}
+          style={{padding:'16px', background:'white', border:'1px solid #e2e8f0', borderTop:'3px solid #b91c1c', borderRadius:'12px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'8px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', transition:'all 0.15s', textAlign:'left'}}
+          onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 18px rgba(185,28,28,0.15)';}}
+          onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';}}>
+          <div style={{width:'44px',height:'44px',background:'#fee2e2',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" strokeWidth="2" strokeLinecap="round"><path d="M2 12 Q6 6 12 12 Q18 18 22 12"/><line x1="2" y1="18" x2="22" y2="18"/></svg>
+          </div>
+          <div>
+            <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>Badén</div>
+            <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'500',marginTop:'3px',lineHeight:'1.4'}}>Hormigón ciclópeo con losa HA</div>
+          </div>
+          <span style={{fontSize:'18px',color:'#b91c1c',fontWeight:'700',alignSelf:'flex-end',marginTop:'auto'}}>›</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── ZAPATA AISLADA ───────────────────────────────────────────────────────────
+  if (screen === 'zapata') {
+    const C3p=parseFloat(zLargo)||0, D3p=parseFloat(zAncho)||0;
+    const vol3 = C3p*D3p*(parseFloat(zAltura)||0);
+    const FACT = {'1':{f:1.87,d:6},'3/4':{f:3.3,d:6},'1/2':{f:7.4,d:6},'3/8':{f:13,d:6}};
+
+    const updZ=(setFn,eje,diam,campo,val)=>setFn(prev=>({...prev,[eje]:{...prev[eje],[diam]:{...prev[eje][diam],[campo]:val}}}));
+
+    const calcBarras=(aceroObj,eje)=>{
+      const dim=eje==='xx'?D3p:C3p;
+      const res={};
+      DIAMS_K.forEach(k=>{
+        if(aceroObj[eje][k].act){const s=parseFloat(aceroObj[eje][k].sep)||0.20;res[k]=dim>0?Math.ceil(dim/s+1):0;}
+      });
+      return res;
+    };
+
+    const calcZapataNew=()=>{
+      const C3=C3p,D3=D3p,E3=parseFloat(zAltura)||0;
+      if(!C3||!D3||!E3){alert('Completa las dimensiones.');return;}
+      const G1=C3*D3*E3;
+      const calcCuantia=(aceroObj)=>{
+        let t1=0,t34=0,t12=0,t38=0;
+        DIAMS_K.forEach(k=>{
+          const fk=FACT[k];
+          if(aceroObj.xx[k].act){const s=parseFloat(aceroObj.xx[k].sep)||0.20;const b=Math.ceil(D3/s+1);const c=(C3+0.3)*b/fk.d/fk.f/G1*1.1;if(k==='1')t1+=c;if(k==='3/4')t34+=c;if(k==='1/2')t12+=c;if(k==='3/8')t38+=c;}
+          if(aceroObj.yy[k].act){const s=parseFloat(aceroObj.yy[k].sep)||0.20;const b=Math.ceil(C3/s+1);const c=(D3+0.3)*b/fk.d/fk.f/G1*1.1;if(k==='1')t1+=c;if(k==='3/4')t34+=c;if(k==='1/2')t12+=c;if(k==='3/8')t38+=c;}
+        });
+        return{t1,t34,t12,t38};
+      };
+      const calcAlm=(aceroObj)=>{let sX=0,sY=0;DIAMS_K.forEach(k=>{if(aceroObj.xx[k].act){const s=parseFloat(aceroObj.xx[k].sep)||0.20;sX+=Math.ceil(D3/s+1);}if(aceroObj.yy[k].act){const s=parseFloat(aceroObj.yy[k].sep)||0.20;sY+=Math.ceil(C3/s+1);}});return sX*sY/G1/80*1.1;};
+      const inf=zInfActivo?calcCuantia(zInf):{t1:0,t34:0,t12:0,t38:0};
+      const sup=zSupActivo?calcCuantia(zSup):{t1:0,t34:0,t12:0,t38:0};
+      const almInf=zInfActivo?calcAlm(zInf):0,almSup=zSupActivo?calcAlm(zSup):0;
+      const H1=inf.t1+sup.t1,H34=inf.t34+sup.t34,H12=inf.t12+sup.t12,H38=inf.t38+sup.t38;
+      const totalMO=H1+H34+H12+H38,totalAlm=almInf+almSup;
+      const hormLimp=C3*D3*0.05,poliet=C3*D3;
+      const PRECIOS=PRECIOS_REF.current;
+      const fn2=(v,d=2)=>Number(v).toFixed(d);
+      const fRD=v=>v>0?'RD$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'-';
+      const esManualZ=zTipoHorm==='manual',hDataZ=HORMIGON_DATA[zResistencia];
+      let precioHormZ=0,labelHormZ='',hormItemsZ=[];
+      if(esManualZ&&hDataZ){const cC=hDataZ.cemento*PRECIOS.cemento,cA=hDataZ.arena*(PRECIOS.arenaHorm||PRECIOS.arena),cG=hDataZ.grava*PRECIOS.grava,cW=hDataZ.agua*PRECIOS.agua;precioHormZ=cC+cA+cG+cW;labelHormZ=`Hormigón Manual ${zResistencia}Kg/cm² (${hDataZ.prop})`;hormItemsZ=[{label:'  └ Cemento gris',cant:fn2(hDataZ.cemento,3),uni:'fds/m³',pu:fRD(PRECIOS.cemento),total:fRD(cC),sub:true},{label:'  └ Arena triturada',cant:fn2(hDataZ.arena,3),uni:'m³/m³',pu:fRD(PRECIOS.arenaHorm||PRECIOS.arena),total:fRD(cA),sub:true},{label:'  └ Grava combinada',cant:fn2(hDataZ.grava,3),uni:'m³/m³',pu:fRD(PRECIOS.grava),total:fRD(cG),sub:true},{label:'  └ Agua',cant:fn2(hDataZ.agua,3),uni:'Lts/m³',pu:fRD(PRECIOS.agua),total:fRD(cW),sub:true}];}else{precioHormZ=PRECIOS.hormigones[zHormInd]||0;labelHormZ=`Hormigón Industrial ${zHormInd}`;}
+      const t1=H1*PRECIOS.acero1,t34=H34*PRECIOS.acero34,t12=H12*PRECIOS.acero12,t38=H38*PRECIOS.acero38;
+      const tAlm=totalAlm*PRECIOS.alambre,tMO=totalMO*PRECIOS.moAcero;
+      const grandTotal=precioHormZ+t1+t34+t12+t38+tAlm+tMO;
+      const items=[{label:'Volumen',cant:fn2(G1,3),uni:'m³',pu:'-',total:'-'},{label:labelHormZ,cant:fn2(1,0),uni:'m³',pu:fRD(precioHormZ),total:fRD(precioHormZ)},...hormItemsZ];
+      if(H1>0)items.push({label:'Total Acero 1"',  cant:fn2(H1,4), uni:'qq/m³',pu:fRD(PRECIOS.acero1), total:fRD(t1)});
+      if(H34>0)items.push({label:'Total Acero 3/4"',cant:fn2(H34,4),uni:'qq/m³',pu:fRD(PRECIOS.acero34),total:fRD(t34)});
+      if(H12>0)items.push({label:'Total Acero 1/2"',cant:fn2(H12,4),uni:'qq/m³',pu:fRD(PRECIOS.acero12),total:fRD(t12)});
+      if(H38>0)items.push({label:'Total Acero 3/8"',cant:fn2(H38,4),uni:'qq/m³',pu:fRD(PRECIOS.acero38),total:fRD(t38)});
+      if(totalAlm>0)items.push({label:'Total Alambre #18',cant:fn2(totalAlm,4),uni:'lb/m³',pu:fRD(PRECIOS.alambre),total:fRD(tAlm)});
+      items.push({label:'M.O. Varillero',cant:fn2(totalMO,4),uni:'qq/m³',pu:fRD(PRECIOS.moAcero),total:fRD(tMO)});
+      items.push({label:'Hormigón de Limpieza',cant:fn2(hormLimp,3),uni:'m³',pu:'-',total:'-'});
+      items.push({label:'Polietileno',cant:fn2(poliet,2),uni:'m²',pu:'-',total:'-'});
+      setResultado({tipo:'Zapata Aislada',modulo:'zapata',desc:`${C3}×${D3}×${E3}m`,grandTotal,items});
+    };
+
+    const inpS={width:'100%',padding:'8px 10px',border:'1px solid #e2e8f0',borderRadius:'8px',fontSize:'13px',fontWeight:'700',outline:'none',background:'#f8fafc',boxSizing:'border-box'};
+    const lblS={fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:'4px'};
+    const hdrS=(col)=>({borderLeft:`3px solid ${col}`,paddingLeft:'10px',marginBottom:'12px',fontSize:'11px',fontWeight:'800',color:col,textTransform:'uppercase',letterSpacing:'0.06em'});
+
+    const AceroSection=({label,color,activo,setActivo,acero,setAcero})=>{
+      const bXX=calcBarras(acero,'xx'),bYY=calcBarras(acero,'yy');
+      return(
+        <div style={{background:'white',border:'2px solid '+(activo?color:'#e2e8f0'),borderRadius:'12px',padding:'14px',marginBottom:'10px',transition:'border .2s'}}>
+          <label style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer',marginBottom:activo?'14px':'0'}}>
+            <input type="checkbox" checked={activo} onChange={e=>setActivo(e.target.checked)} style={{width:'18px',height:'18px',accentColor:color,cursor:'pointer',flexShrink:0}}/>
+            <span style={{fontWeight:'800',fontSize:'13px',color:activo?color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.06em'}}>{label}</span>
+          </label>
+          {activo&&(['xx','yy']).map(eje=>(
+            <div key={eje} style={{marginBottom:'12px'}}>
+              <div style={{fontSize:'10px',fontWeight:'800',color:color,marginBottom:'8px',paddingLeft:'8px',borderLeft:'3px solid '+color,textTransform:'uppercase'}}>
+                {eje.toUpperCase()} <span style={{fontWeight:'500',color:'#94a3b8',textTransform:'none',fontSize:'9px'}}>{eje==='xx'?'(usa Ancho)':'(usa Largo)'}</span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'8px'}}>
+                {DIAMS_K.map((k,i)=>{
+                  const d=acero[eje][k];
+                  const barras=eje==='xx'?bXX[k]:bYY[k];
+                  return(
+                    <div key={k} style={{background:d.act?'#f0f9ff':'#f8fafc',border:'1px solid '+(d.act?color:'#e2e8f0'),borderRadius:'8px',padding:'8px',transition:'all .15s'}}>
+                      <label style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',marginBottom:d.act?'8px':'0'}}>
+                        <input type="checkbox" checked={d.act} onChange={e=>updZ(setAcero,eje,k,'act',e.target.checked)} style={{accentColor:color,cursor:'pointer'}}/>
+                        <span style={{fontSize:'12px',fontWeight:'800',color:d.act?color:'#94a3b8'}}>{DIAMS_Z[i]}</span>
+                      </label>
+                      {d.act&&(<div>
+                        <div style={{fontSize:'9px',color:'#64748b',fontWeight:'700',textTransform:'uppercase',marginBottom:'3px'}}>Sep. (m)</div>
+                        <input type="number" step="0.01" value={d.sep} onChange={e=>updZ(setAcero,eje,k,'sep',e.target.value)}
+                          style={{width:'100%',padding:'5px 6px',border:'1px solid '+color,borderRadius:'5px',fontSize:'12px',fontWeight:'700',outline:'none',textAlign:'center',background:'white',boxSizing:'border-box',color:color}}/>
+                        {barras>0&&<div style={{textAlign:'center',fontSize:'10px',fontWeight:'800',color:color,marginTop:'3px'}}>{barras} barras</div>}
+                      </div>)}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    };
+
+    return(
+      <div style={{padding:'16px',overflowY:'auto',height:'100%',background:'#f8fafc'}}>
+        <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+        <h3 style={{fontWeight:'800',color:'#1e3a5f',marginBottom:'4px',fontSize:'16px'}}>Zapata Aislada</h3>
+        <p style={{fontSize:'11px',color:'#94a3b8',marginBottom:'14px',fontWeight:'600',textTransform:'uppercase',letterSpacing:'0.05em'}}>Zapatas de Columnas</p>
+        <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:'12px',padding:'14px',marginBottom:'10px'}}>
+          <div style={hdrS('#1e3a5f')}>Dimensiones</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'10px',marginBottom:'10px'}}>
+            <div><label style={lblS}>Largo C3 (m)</label><input type="number" step="0.01" value={zLargo} onChange={e=>setZLargo(e.target.value)} style={inpS}/></div>
+            <div><label style={lblS}>Ancho D3 (m)</label><input type="number" step="0.01" value={zAncho} onChange={e=>setZAncho(e.target.value)} style={inpS}/></div>
+            <div><label style={lblS}>Altura E3 (m)</label><input type="number" step="0.01" value={zAltura} onChange={e=>setZAltura(e.target.value)} style={inpS}/></div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+            <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'8px',padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:'11px',color:'#1e3a5f',fontWeight:'700'}}>Volumen</span>
+              <span style={{fontFamily:'monospace',fontWeight:'800',color:'#1e3a5f',fontSize:'13px'}}>{vol3.toFixed(3)} m³</span>
+            </div>
+            <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:'8px',padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:'11px',color:'#166534',fontWeight:'700'}}>H. Limpieza</span>
+              <span style={{fontFamily:'monospace',fontWeight:'800',color:'#166534',fontSize:'13px'}}>{(C3p*D3p*0.05).toFixed(3)} m³</span>
+            </div>
+          </div>
+        </div>
+        <AceroSection label="Acero Inferior" color="#1e3a5f" activo={zInfActivo} setActivo={setZInfActivo} acero={zInf} setAcero={setZInf}/>
+        <AceroSection label="Acero Superior" color="#3b82f6" activo={zSupActivo} setActivo={setZSupActivo} acero={zSup} setAcero={setZSup}/>
+        <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:'12px',padding:'14px',marginBottom:'12px'}}>
+          <div style={hdrS('#1e3a5f')}>Hormigón</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'12px'}}>
+            {['manual','industrial'].map(t=>(
+              <button key={t} onClick={()=>setZTipoHorm(t)} style={{padding:'9px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'12px',cursor:'pointer',textTransform:'uppercase',background:zTipoHorm===t?'#1e3a5f':'#f1f5f9',color:zTipoHorm===t?'white':'#64748b'}}>{t==='manual'?'Manual':'Industrial'}</button>
+            ))}
+          </div>
+          {zTipoHorm==='manual'&&(<div>
+            <label style={lblS}>Resistencia (Kg/cm²)</label>
+            <select value={zResistencia} onChange={e=>setZResistencia(e.target.value)} style={{...inpS,marginBottom:'10px'}}>
+              {Object.entries(HORMIGON_DATA).map(([k,v])=>(<option key={k} value={k}>{k} Kg/cm² — {v.prop}</option>))}
+            </select>
+            {HORMIGON_DATA[zResistencia]&&(<div style={{background:'#eff6ff',borderRadius:'8px',padding:'10px',border:'1px solid #bfdbfe'}}>
+              <div style={{fontSize:'10px',fontWeight:'700',color:'#1e3a5f',textTransform:'uppercase',marginBottom:'8px'}}>Materiales por m³ — {HORMIGON_DATA[zResistencia].prop}</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'6px'}}>
+                {[{l:'Cemento',v:HORMIGON_DATA[zResistencia].cemento,u:'fds'},{l:'Arena',v:HORMIGON_DATA[zResistencia].arena,u:'m³'},{l:'Grava',v:HORMIGON_DATA[zResistencia].grava,u:'m³'},{l:'Agua',v:HORMIGON_DATA[zResistencia].agua,u:'Lts'}].map(it=>(
+                  <div key={it.l} style={{textAlign:'center',background:'white',borderRadius:'6px',padding:'6px',border:'1px solid #dbeafe'}}>
+                    <div style={{fontSize:'9px',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>{it.l}</div>
+                    <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>{it.v}</div>
+                    <div style={{fontSize:'9px',color:'#94a3b8'}}>{it.u}</div>
+                  </div>
+                ))}
+              </div>
+            </div>)}
+          </div>)}
+          {zTipoHorm==='industrial'&&(<div>
+            <label style={lblS}>Resistencia y Precio</label>
+            <select value={zHormInd} onChange={e=>setZHormInd(e.target.value)} style={inpS}>
+              {Object.entries(PRECIOS_REF.current.hormigones).map(([k,v])=>(<option key={k} value={k}>{k} — RD$ {v.toLocaleString('en-US',{minimumFractionDigits:2})}/m³</option>))}
+            </select>
+          </div>)}
+        </div>
+        <button onClick={calcZapataNew} style={{width:'100%',padding:'14px',background:'#1e3a5f',color:'white',border:'none',borderRadius:'12px',fontWeight:'800',fontSize:'13px',cursor:'pointer',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'20px'}}>⚡ CALCULAR ZAPATA</button>
+      </div>
+    );
+  }
+
+  // ── MUROS DE BLOQUES ─────────────────────────────────────────────────────────
+  if (screen === 'murosBloques') {
+    const COLOR = '#b45309';
+    const TIPO_DATA = {
+      '10':{ label:'4" (10 cm)',volMort:0.012,volRell:0.15,desc:'Bloque 4"', pBloque:27.24,pColoc:193.05},
+      '15':{ label:'6" (15 cm)',volMort:0.016,volRell:0.20,desc:'Bloque 6"', pBloque:31.51,pColoc:160.81},
+      '20':{ label:'8" (20 cm)',volMort:0.023,volRell:0.30,desc:'Bloque 8"', pBloque:40.71,pColoc:178.75},
+    };
+    const MORTERO_DATA_M={
+      '1:2':{cem:11.97,are:0.97,agua:235},'1:3':{cem:10.66,are:1.10,agua:203},
+      '1:4':{cem:8.54,are:1.16,agua:178},'1:5':{cem:7.09,are:1.18,agua:160},
+      '1:6':{cem:6.10,are:1.20,agua:145},'1:7':{cem:5.35,are:1.25,agua:135},
+    };
+    const VARILLAS_QQ={'1/2':7,'3/8':13};
+    const LONG_VARILLA=6.09;
+    const tData=TIPO_DATA[mBloques.espesor],mData=MORTERO_DATA_M[mBloques.propMortero];
+    const largo=parseFloat(mBloques.largo)||0, alto=parseFloat(mBloques.alto)||0;
+    const area=largo*alto;
+    const bloquesPrev=Math.ceil(13*area),voltMortPrev=tData?tData.volMort*area:0;
+
+    const calcMurosBloques=()=>{
+      if(!area){alert('Ingresa largo y alto del muro.');return;}
+      if(!tData||!mData)return;
+      const PRECIOS=PRECIOS_REF.current;
+      const fn2=(v,d=2)=>Number(v).toFixed(d);
+      const fRD=v=>v>0?'RD$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'-';
+      const bloques=Math.ceil(13*area),pBloque=tData.pBloque,tBloques=bloques*pBloque;
+      const pColoc=tData.pColoc,tColoc=area*pColoc;
+      const volMort=tData.volMort*area,cemMort=volMort*mData.cem,areMort=volMort*mData.are;
+      // Bastones verticales
+      let qqBast=0,tBast=0,pBast=0;
+      if(mBloques.bastones.act){
+        const sep=parseFloat(mBloques.bastones.sep)||0.20,varPQ=VARILLAS_QQ[mBloques.bastones.diam]||13;
+        qqBast=((1/sep)/varPQ/LONG_VARILLA)*1.05*area;
+        pBast=mBloques.bastones.diam==='1/2'?PRECIOS.acero12:PRECIOS.acero38;
+        tBast=qqBast*pBast;
+      }
+      // Acero horizontal: cant / sep / 6.09 / varillas_qq × 1.10
+      let qqAcH=0,tAcH=0,pAcH=0;
+      if(mBloques.aceroH.act){
+        const cantH  = parseFloat(mBloques.aceroH.cant)||2;
+        const sepH   = parseFloat(mBloques.aceroH.sep)||0.60;
+        const varPQH = VARILLAS_QQ[mBloques.aceroH.diam]||13;
+        qqAcH = cantH / sepH / LONG_VARILLA / varPQH * 1.10;
+        pAcH  = mBloques.aceroH.diam==='1/2'?PRECIOS.acero12:PRECIOS.acero38;
+        tAcH  = qqAcH * pAcH;
+      }
+      const qqAcero=qqBast+qqAcH;
+      const lbAlambre=qqAcero*1.8;
+      const tAlambre=lbAlambre*PRECIOS.alambre;
+      const tMO=qqAcero*PRECIOS.moAcero;
+      const P_ANDAMIO=130;
+      let cantAndamios=0,tAndamios=0;
+      if(mBloques.andamios){cantAndamios=area*0.63;tAndamios=cantAndamios*P_ANDAMIO;}
+      let hormItems=[],precioHorm=0,volRell=0;
+      if(mBloques.relleno.act){
+        const sepBast=mBloques.bastones.act?(parseFloat(mBloques.bastones.sep)||0.20):0.20;
+        volRell=tData.volRell*area*(0.20/sepBast);
+        if(mBloques.tipoHorm==='manual'){
+          const hData=HORMIGON_DATA[mBloques.propHorm];
+          if(hData){const cC=hData.cemento*volRell*PRECIOS.cemento,cA=hData.arena*volRell*(PRECIOS.arenaHorm||PRECIOS.arena),cG=hData.grava*volRell*PRECIOS.grava;precioHorm=cC+cA+cG;hormItems=[{label:`Hormigón Relleno ${mBloques.propHorm}Kg/cm²`,cant:fn2(volRell,3),uni:'m³',pu:'-',total:'-'},{label:'  └ Cemento',cant:fn2(hData.cemento*volRell,2),uni:'fds',pu:fRD(PRECIOS.cemento),total:fRD(cC),sub:true},{label:'  └ Arena',cant:fn2(hData.arena*volRell,3),uni:'m³',pu:fRD(PRECIOS.arenaHorm||PRECIOS.arena),total:fRD(cA),sub:true},{label:'  └ Grava',cant:fn2(hData.grava*volRell,3),uni:'m³',pu:fRD(PRECIOS.grava),total:fRD(cG),sub:true}];}
+        }else{precioHorm=(PRECIOS.hormigones[mBloques.hormInd]||0)*volRell;hormItems=[{label:`Hormigón Industrial ${mBloques.hormInd}`,cant:fn2(volRell,3),uni:'m³',pu:fRD(PRECIOS.hormigones[mBloques.hormInd]||0),total:fRD(precioHorm)}];}
+      }
+      const grandTotal=tBloques+tColoc+(cemMort*PRECIOS.cemento)+(areMort*PRECIOS.arena)+tBast+tAcH+tAlambre+tMO+tAndamios+precioHorm;
+      const items=[
+        {label:`Bloques ${tData.desc} (13/m²)`,cant:String(bloques),uni:'pza',pu:fRD(pBloque),total:fRD(tBloques)},
+        {label:'Colocación de Bloques (M.O.)',cant:fn2(area,2),uni:'m²',pu:fRD(pColoc),total:fRD(tColoc)},
+        {label:`Mortero Unión (${mBloques.propMortero})`,cant:fn2(volMort,3),uni:'m³',pu:'-',total:'-'},
+        {label:'  └ Cemento mortero',cant:fn2(cemMort,2),uni:'fds',pu:fRD(PRECIOS.cemento),total:fRD(cemMort*PRECIOS.cemento),sub:true},
+        {label:'  └ Arena mortero',  cant:fn2(areMort,3),uni:'m³', pu:fRD(PRECIOS.arena),  total:fRD(areMort*PRECIOS.arena),  sub:true},
+      ];
+      if(mBloques.bastones.act) items.push({label:`Bastones Verticales ${mBloques.bastones.diam}" @ ${mBloques.bastones.sep}m`,cant:fn2(qqBast,3),uni:'qq',pu:fRD(pBast),total:fRD(tBast)});
+      if(mBloques.aceroH.act)   items.push({label:`Acero Horizontal ${mBloques.aceroH.diam}" × ${mBloques.aceroH.cant} barras @ ${mBloques.aceroH.sep}m`,cant:fn2(qqAcH,3),uni:'qq',pu:fRD(pAcH),total:fRD(tAcH)});
+      if(qqAcero>0){
+        items.push({label:'Alambre dulce (1.8 lb / qq)',cant:fn2(lbAlambre,3),uni:'lb',pu:fRD(PRECIOS.alambre),total:fRD(tAlambre)});
+        items.push({label:'M.O. Varillero',cant:fn2(qqAcero,3),uni:'qq',pu:fRD(PRECIOS.moAcero),total:fRD(tMO)});
+      }
+      if(mBloques.andamios) items.push({label:'Andamios (0.63 m²/m²)',cant:fn2(cantAndamios,2),uni:'m²',pu:fRD(P_ANDAMIO),total:fRD(tAndamios)});
+      if(mBloques.relleno.act) items.push(...hormItems);
+      setResultado({tipo:'Muros de Bloques',modulo:'murosBloques',desc:`${largo}×${alto}m — ${fn2(area,2)} m² — ${tData.desc}`,grandTotal,items});
+    };
+
+    const s={background:'white',border:'1px solid #e2e8f0',borderRadius:'12px',padding:'14px',marginBottom:'10px'};
+    const inpS={width:'100%',padding:'8px 10px',border:'1px solid #e2e8f0',borderRadius:'8px',fontSize:'13px',fontWeight:'700',outline:'none',background:'#f8fafc',boxSizing:'border-box'};
+    const lblS={fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:'4px'};
+    const hdrS=(col)=>({borderLeft:`3px solid ${col}`,paddingLeft:'10px',marginBottom:'12px',fontSize:'11px',fontWeight:'800',color:col,textTransform:'uppercase',letterSpacing:'0.06em'});
+
+    return(
+      <div style={{padding:'16px',overflowY:'auto',height:'100%',background:'#f8fafc'}}>
+        <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+        <h3 style={{fontWeight:'800',color:COLOR,marginBottom:'4px',fontSize:'16px'}}>Muros de Bloques</h3>
+        <p style={{fontSize:'11px',color:'#94a3b8',marginBottom:'14px',fontWeight:'600',textTransform:'uppercase',letterSpacing:'0.05em'}}>Cálculo por m² de muro</p>
+        <div style={s}>
+          <div style={hdrS(COLOR)}>Área y Tipo de Bloque</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'10px'}}>
+            <div><label style={lblS}>Largo (m)</label><input type="number" step="0.01" value={mBloques.largo} onChange={e=>setMBloques({...mBloques,largo:e.target.value})} style={inpS}/></div>
+            <div><label style={lblS}>Alto (m)</label><input type="number" step="0.01" value={mBloques.alto} onChange={e=>setMBloques({...mBloques,alto:e.target.value})} style={inpS}/></div>
+          </div>
+          <div style={{marginBottom:'10px'}}>
+            <label style={lblS}>Tipo de Bloque</label>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px'}}>
+              {[['10','4" (10cm)'],['15','6" (15cm)'],['20','8" (20cm)']].map(([v,l])=>(
+                <button key={v} onClick={()=>setMBloques({...mBloques,espesor:v})} style={{padding:'10px 4px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'11px',cursor:'pointer',background:mBloques.espesor===v?COLOR:'#f1f5f9',color:mBloques.espesor===v?'white':'#64748b'}}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+            <div style={{background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:'8px',padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:'11px',color:COLOR,fontWeight:'700'}}>Bloques (13/m²)</span>
+              <span style={{fontFamily:'monospace',fontWeight:'800',color:COLOR,fontSize:'13px'}}>{bloquesPrev} pza</span>
+            </div>
+            <div style={{background:'#f0fdf4',border:'1px solid #86efac',borderRadius:'8px',padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:'11px',color:'#166534',fontWeight:'700'}}>Vol. Mortero</span>
+              <span style={{fontFamily:'monospace',fontWeight:'800',color:'#166534',fontSize:'13px'}}>{voltMortPrev.toFixed(3)} m³</span>
+            </div>
+          </div>
+        </div>
+        <div style={s}>
+          <div style={hdrS(COLOR)}>Mortero de Unión — Proporción</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px',marginBottom:'10px'}}>
+            {['1:2','1:3','1:4','1:5','1:6','1:7'].map(p=>(
+              <button key={p} onClick={()=>setMBloques({...mBloques,propMortero:p})} style={{padding:'8px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'12px',cursor:'pointer',background:mBloques.propMortero===p?COLOR:'#f1f5f9',color:mBloques.propMortero===p?'white':'#64748b'}}>{p}</button>
+            ))}
+          </div>
+          {mData&&(<div style={{background:'#fef3c7',borderRadius:'8px',padding:'10px',border:'1px solid #f59e0b'}}>
+            <div style={{fontSize:'10px',fontWeight:'700',color:COLOR,textTransform:'uppercase',marginBottom:'8px'}}>Materiales por m³</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px'}}>
+              {[{l:'Cemento',v:mData.cem,u:'fds'},{l:'Arena',v:mData.are,u:'m³'},{l:'Agua',v:mData.agua,u:'Lts'}].map(it=>(
+                <div key={it.l} style={{textAlign:'center',background:'white',borderRadius:'6px',padding:'6px',border:'1px solid #fde68a'}}>
+                  <div style={{fontSize:'9px',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>{it.l}</div>
+                  <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>{it.v}</div>
+                  <div style={{fontSize:'9px',color:'#94a3b8'}}>{it.u}</div>
+                </div>
+              ))}
+            </div>
+          </div>)}
+        </div>
+        <div style={{...s,border:`2px solid ${mBloques.bastones.act?COLOR:'#e2e8f0'}`,transition:'border .2s'}}>
+          <label style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer',marginBottom:mBloques.bastones.act?'14px':'0'}}>
+            <input type="checkbox" checked={mBloques.bastones.act} onChange={e=>setMBloques({...mBloques,bastones:{...mBloques.bastones,act:e.target.checked}})} style={{width:'18px',height:'18px',accentColor:COLOR,cursor:'pointer'}}/>
+            <span style={{fontWeight:'800',fontSize:'13px',color:mBloques.bastones.act?COLOR:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.06em'}}>Bastones + Alambre + M.O.</span>
+          </label>
+          {mBloques.bastones.act&&(<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
+            <div><label style={lblS}>Diámetro</label>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
+                {[['3/8','3/8"'],['1/2','1/2"']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setMBloques({...mBloques,bastones:{...mBloques.bastones,diam:v}})} style={{padding:'8px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'12px',cursor:'pointer',background:mBloques.bastones.diam===v?COLOR:'#f1f5f9',color:mBloques.bastones.diam===v?'white':'#64748b'}}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div><label style={lblS}>Separación</label>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
+                {[['0.20','0.20m'],['0.40','0.40m'],['0.60','0.60m'],['0.80','0.80m']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setMBloques({...mBloques,bastones:{...mBloques.bastones,sep:v}})} style={{padding:'7px 4px',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer',background:mBloques.bastones.sep===v?COLOR:'#f1f5f9',color:mBloques.bastones.sep===v?'white':'#64748b'}}>{l}</button>
+                ))}
+              </div>
+            </div>
+          </div>)}
+        </div>
+        {/* Acero horizontal */}
+        <div style={{...s,border:`2px solid ${mBloques.aceroH.act?'#0369a1':'#e2e8f0'}`,transition:'border .2s'}}>
+          <label style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer',marginBottom:mBloques.aceroH.act?'14px':'0'}}>
+            <input type="checkbox" checked={mBloques.aceroH.act} onChange={e=>setMBloques({...mBloques,aceroH:{...mBloques.aceroH,act:e.target.checked}})} style={{width:'18px',height:'18px',accentColor:'#0369a1',cursor:'pointer'}}/>
+            <span style={{fontWeight:'800',fontSize:'13px',color:mBloques.aceroH.act?'#0369a1':'#94a3b8',textTransform:'uppercase',letterSpacing:'0.06em'}}>Acero Horizontal</span>
+          </label>
+          {mBloques.aceroH.act&&(<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'10px',marginTop:'2px'}}>
+            <div><label style={lblS}>Cantidad de barras</label>
+              <input type="number" step="1" min="1" value={mBloques.aceroH.cant}
+                onChange={e=>setMBloques({...mBloques,aceroH:{...mBloques.aceroH,cant:e.target.value}})}
+                style={inpS}/>
+            </div>
+            <div><label style={lblS}>Diámetro</label>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
+                {[['3/8','3/8"'],['1/2','1/2"']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setMBloques({...mBloques,aceroH:{...mBloques.aceroH,diam:v}})} style={{padding:'8px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'12px',cursor:'pointer',background:mBloques.aceroH.diam===v?'#0369a1':'#f1f5f9',color:mBloques.aceroH.diam===v?'white':'#64748b'}}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div><label style={lblS}>Separación (m)</label>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
+                {[['0.20','0.20'],['0.40','0.40'],['0.60','0.60'],['0.80','0.80']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setMBloques({...mBloques,aceroH:{...mBloques.aceroH,sep:v}})} style={{padding:'7px 4px',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer',background:mBloques.aceroH.sep===v?'#0369a1':'#f1f5f9',color:mBloques.aceroH.sep===v?'white':'#64748b'}}>{l}</button>
+                ))}
+              </div>
+            </div>
+          </div>)}
+        </div>
+        <div style={{...s,border:`2px solid ${mBloques.andamios?'#7c3aed':'#e2e8f0'}`,transition:'border .2s'}}>
+          <label style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer'}}>
+            <input type="checkbox" checked={!!mBloques.andamios} onChange={e=>setMBloques({...mBloques,andamios:e.target.checked})} style={{width:'18px',height:'18px',accentColor:'#7c3aed',cursor:'pointer'}}/>
+            <div>
+              <span style={{fontWeight:'800',fontSize:'13px',color:mBloques.andamios?'#7c3aed':'#94a3b8',textTransform:'uppercase',letterSpacing:'0.06em'}}>Andamios</span>
+              {mBloques.andamios&&<div style={{fontSize:'10px',color:'#7c3aed',fontWeight:'600',marginTop:'2px'}}>0.63 m² por m² = {(area*0.63).toFixed(2)} m² × RD$130/m²</div>}
+            </div>
+          </label>
+        </div>
+        <div style={{...s,border:`2px solid ${mBloques.relleno.act?'#1e3a5f':'#e2e8f0'}`,transition:'border .2s',marginBottom:'12px'}}>
+          <label style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer',marginBottom:mBloques.relleno.act?'14px':'0'}}>
+            <input type="checkbox" checked={mBloques.relleno.act} onChange={e=>setMBloques({...mBloques,relleno:{...mBloques.relleno,act:e.target.checked}})} style={{width:'18px',height:'18px',accentColor:'#1e3a5f',cursor:'pointer'}}/>
+            <span style={{fontWeight:'800',fontSize:'13px',color:mBloques.relleno.act?'#1e3a5f':'#94a3b8',textTransform:'uppercase',letterSpacing:'0.06em'}}>Hormigón de Relleno (Cámaras)</span>
+          </label>
+          {mBloques.relleno.act&&(<div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'12px'}}>
+              {['manual','industrial'].map(t=>(<button key={t} onClick={()=>setMBloques({...mBloques,tipoHorm:t})} style={{padding:'9px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'12px',cursor:'pointer',textTransform:'uppercase',background:mBloques.tipoHorm===t?'#1e3a5f':'#f1f5f9',color:mBloques.tipoHorm===t?'white':'#64748b'}}>{t==='manual'?'Manual':'Industrial'}</button>))}
+            </div>
+            {mBloques.tipoHorm==='manual'&&(<div><label style={lblS}>Resistencia (Kg/cm²)</label><select value={mBloques.propHorm} onChange={e=>setMBloques({...mBloques,propHorm:e.target.value})} style={inpS}>{Object.entries(HORMIGON_DATA).map(([k,v])=>(<option key={k} value={k}>{k} Kg/cm² — {v.prop}</option>))}</select></div>)}
+            {mBloques.tipoHorm==='industrial'&&(<div><label style={lblS}>Resistencia y Precio</label><select value={mBloques.hormInd} onChange={e=>setMBloques({...mBloques,hormInd:e.target.value})} style={inpS}>{Object.entries(PRECIOS_REF.current.hormigones).map(([k,v])=>(<option key={k} value={k}>{k} — RD$ {v.toLocaleString('en-US',{minimumFractionDigits:2})}/m³</option>))}</select></div>)}
+          </div>)}
+        </div>
+        <button onClick={calcMurosBloques} style={{width:'100%',padding:'14px',background:COLOR,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',fontSize:'13px',cursor:'pointer',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'20px'}}>⚡ CALCULAR MUROS</button>
+      </div>
+    );
+  }
+
+  // ── BADÉN CICLÓPEO ──────────────────────────────────────────────────────────
+  if (screen === 'baden') {
+    const COLOR_B = '#b91c1c';
+    const STEEL_W = {'3/8':0.0123328,'1/2':0.0219104,'3/4':0.0495656,'1':0.087576};
+    const MORTERO_DATA_B = {
+      '1:2':{ cem:11.97, are:0.97, agua:235 },
+      '1:3':{ cem:10.66, are:1.10, agua:203 },
+      '1:4':{ cem:8.54,  are:1.16, agua:178 },
+      '1:5':{ cem:7.09,  are:1.18, agua:160 },
+      '1:6':{ cem:6.10,  are:1.20, agua:145 },
+      '1:7':{ cem:5.35,  are:1.25, agua:135 },
+    };
+    const Y=parseFloat(fBaden.Y)||0, Z=parseFloat(fBaden.Z)||0;
+    const sep=parseFloat(fBaden.sep)||0.15;
+    const area = Y*Z;
+    const bY=Y&&sep?Math.ceil(Y/sep+1):0, bZ=Z&&sep?Math.ceil(Z/sep+1):0;
+    const mD=MORTERO_DATA_B[fBaden.propMort];
+
+    const calcBaden = () => {
+      if (!Y||!Z) { alert('Ingresa las dimensiones.'); return; }
+      const espHA  = parseFloat(fBaden.espHA)||0.15;
+      const espCic = parseFloat(fBaden.espCic)||0.30;
+      const desp   = (parseFloat(fBaden.desp)||5)/100;
+      const PRECIOS = PRECIOS_REF.current;
+      const fn2=(v,d=2)=>Number(v).toFixed(d);
+      const fRD=v=>v>0?'RD$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'-';
+
+      const barsY=Math.ceil(Y/sep+1), barsZ=Math.ceil(Z/sep+1);
+      const longAcero = barsY*Z + barsZ*Y;
+      const wpm = STEEL_W[fBaden.tipo]||STEEL_W['3/8'];
+      const steelQQ = longAcero * wpm * (1+desp);
+      const alambreLb = steelQQ/2;
+      const pAcero = fBaden.tipo==='3/8'?PRECIOS.acero38:fBaden.tipo==='1/2'?PRECIOS.acero12:fBaden.tipo==='3/4'?PRECIOS.acero34:PRECIOS.acero1;
+      const tAcero   = steelQQ * pAcero;
+      const tAlambre = alambreLb * PRECIOS.alambre;
+      const tMOAcero = steelQQ * PRECIOS.moAcero;
+
+      const volHA = area * espHA * 1.02;
+      let tHormHA=0, hormHAItems=[];
+      if (fBaden.tipoHorm==='manual') {
+        const hD=HORMIGON_DATA[fBaden.resHorm];
+        if (hD) {
+          const cC=hD.cemento*volHA*PRECIOS.cemento,cA=hD.arena*volHA*(PRECIOS.arenaHorm||PRECIOS.arena),cG=hD.grava*volHA*PRECIOS.grava,cW=hD.agua*volHA*PRECIOS.agua;
+          tHormHA=cC+cA+cG+cW;
+          hormHAItems=[
+            {label:`Hormigón H.A. ${fBaden.resHorm}Kg/cm² (${hD.prop}) +2% desp.`,cant:fn2(volHA,3),uni:'m³',pu:'-',total:'-'},
+            {label:'  └ Cemento gris',    cant:fn2(hD.cemento*volHA,2),uni:'fds',pu:fRD(PRECIOS.cemento),                   total:fRD(cC),sub:true},
+            {label:'  └ Arena triturada', cant:fn2(hD.arena*volHA,3),  uni:'m³', pu:fRD(PRECIOS.arenaHorm||PRECIOS.arena), total:fRD(cA),sub:true},
+            {label:'  └ Grava combinada', cant:fn2(hD.grava*volHA,3),  uni:'m³', pu:fRD(PRECIOS.grava),                   total:fRD(cG),sub:true},
+            {label:'  └ Agua',            cant:fn2(hD.agua*volHA,3),   uni:'Lts',pu:fRD(PRECIOS.agua),                    total:fRD(cW),sub:true},
+          ];
+        }
+      } else {
+        const pH=PRECIOS.hormigones[fBaden.hormInd]||0;
+        tHormHA=volHA*pH;
+        hormHAItems=[{label:`Hormigón Industrial ${fBaden.hormInd} +2% desp.`,cant:fn2(volHA,3),uni:'m³',pu:fRD(pH),total:fRD(tHormHA)}];
+      }
+
+      const volCicTotal = area * espCic * 1.1;
+      const volCicHorm  = volCicTotal * 0.15;
+      const volPiedras  = volCicTotal * 0.85;
+      let tCicHorm=0, cCicItems=[];
+      if (fBaden.tipoCic==='manual') {
+        const hC=HORMIGON_DATA[fBaden.resCic];
+        if (hC) {
+          const cC=hC.cemento*volCicHorm*PRECIOS.cemento,cA=hC.arena*volCicHorm*(PRECIOS.arenaHorm||PRECIOS.arena),cG=hC.grava*volCicHorm*PRECIOS.grava;
+          tCicHorm=cC+cA+cG;
+          cCicItems=[
+            {label:`Base Ciclópeo ${fBaden.resCic}Kg/cm² (${hC.prop}), 15%vol +10%desp.`,cant:fn2(volCicHorm,3),uni:'m³',pu:'-',total:'-'},
+            {label:'  └ Cemento gris',    cant:fn2(hC.cemento*volCicHorm,2),uni:'fds',pu:fRD(PRECIOS.cemento),                   total:fRD(cC),sub:true},
+            {label:'  └ Arena triturada', cant:fn2(hC.arena*volCicHorm,3),  uni:'m³', pu:fRD(PRECIOS.arenaHorm||PRECIOS.arena), total:fRD(cA),sub:true},
+            {label:'  └ Grava combinada', cant:fn2(hC.grava*volCicHorm,3),  uni:'m³', pu:fRD(PRECIOS.grava),                   total:fRD(cG),sub:true},
+          ];
+        }
+      } else {
+        const pC=PRECIOS.hormigones[fBaden.cicInd]||0;
+        tCicHorm=volCicHorm*pC;
+        cCicItems=[{label:`Base Ciclópeo Industrial ${fBaden.cicInd}, 15%vol +10%desp.`,cant:fn2(volCicHorm,3),uni:'m³',pu:fRD(pC),total:fRD(tCicHorm)}];
+      }
+
+      const volMort = area * 0.005;
+      const cemMort=mD?volMort*mD.cem:0, areMort=mD?volMort*mD.are:0;
+      // El m³ de mortero 1:2 para pulido tiene precio propio en la base de datos
+      const tMort = volMort * PRECIOS.mortPulido;
+      const tMOPulido = area * PRECIOS.moPulidoPiso;
+      const tMOPiedras = volPiedras * PRECIOS.moColocPied;
+      const grandTotal = tAcero+tAlambre+tMOAcero+tHormHA+tCicHorm+tMort+tMOPulido+tMOPiedras;
+
+      const items=[
+        {label:`Acero ${fBaden.tipo}" @ ${fBaden.sep}m a.d. +${(desp*100).toFixed(0)}% desp.`,cant:fn2(steelQQ,4),uni:'qq',pu:fRD(pAcero),total:fRD(tAcero)},
+        {label:'Alambre dulce (1 lb / 2 qq)', cant:fn2(alambreLb,3), uni:'lb', pu:fRD(PRECIOS.alambre), total:fRD(tAlambre)},
+        {label:'M.O. Varillero (acero normal)', cant:fn2(steelQQ,4), uni:'qq', pu:fRD(PRECIOS.moAcero), total:fRD(tMOAcero)},
+        ...hormHAItems,
+        ...cCicItems,
+        {label:'Piedras Grandes (85% vol. ciclópeo) +10% desp.', cant:fn2(volPiedras,3), uni:'m³', pu:'-', total:'-'},
+        {label:'M.O. Colocar Piedras (cimiento de piedra)', cant:fn2(volPiedras,3), uni:'m³', pu:fRD(PRECIOS.moColocPied), total:fRD(tMOPiedras)},
+        {label:`Mortero ${fBaden.propMort} Pulido (e=0.005m)`, cant:fn2(volMort,4), uni:'m³', pu:fRD(PRECIOS.mortPulido), total:fRD(tMort)},
+        {label:'  └ Cemento mortero', cant:fn2(cemMort,2), uni:'fds', pu:fRD(PRECIOS.cemento), total:fRD(cemMort*PRECIOS.cemento), sub:true},
+        {label:'  └ Arena gruesa',    cant:fn2(areMort,3), uni:'m³',  pu:fRD(PRECIOS.arena),   total:fRD(areMort*PRECIOS.arena),   sub:true},
+        {label:'M.O. Pulido del Piso (cemento pulido fino)', cant:fn2(area,2), uni:'m²', pu:fRD(PRECIOS.moPulidoPiso), total:fRD(tMOPulido)},
+      ];
+      setResultado({tipo:'Badén Ciclópeo',modulo:'murosBloques',desc:`${Y}×${Z}m — ${fn2(area,2)} m²`,grandTotal,items});
+    };
+
+    const s   = {background:'white',border:'1px solid #e2e8f0',borderRadius:'12px',padding:'14px',marginBottom:'10px'};
+    const inpS= {width:'100%',padding:'8px 10px',border:'1px solid #e2e8f0',borderRadius:'8px',fontSize:'13px',fontWeight:'700',outline:'none',background:'#f8fafc',boxSizing:'border-box'};
+    const lblS= {fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:'4px'};
+    const hdrS= (col)=>({borderLeft:`3px solid ${col}`,paddingLeft:'10px',marginBottom:'12px',fontSize:'11px',fontWeight:'800',color:col,textTransform:'uppercase',letterSpacing:'0.06em'});
+    const toggleB=(opts,val,campo,col)=>(
+      <div style={{display:'grid',gridTemplateColumns:`repeat(${opts.length},1fr)`,gap:'6px'}}>
+        {opts.map(([v,l])=>(
+          <button key={v} onClick={()=>setFBaden(p=>({...p,[campo]:v}))}
+            style={{padding:'8px 4px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'11px',cursor:'pointer',
+              background:val===v?col:'#f1f5f9',color:val===v?'white':'#64748b'}}>{l}</button>
+        ))}
+      </div>
+    );
+    const HormSec=({tipoK,resK,indK,col})=>(
+      <div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'10px'}}>
+          {['manual','industrial'].map(t=>(
+            <button key={t} onClick={()=>setFBaden(p=>({...p,[tipoK]:t}))}
+              style={{padding:'9px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'12px',cursor:'pointer',textTransform:'uppercase',
+                background:fBaden[tipoK]===t?col:'#f1f5f9',color:fBaden[tipoK]===t?'white':'#64748b'}}>
+              {t==='manual'?'Manual':'Industrial'}
+            </button>
+          ))}
+        </div>
+        {fBaden[tipoK]==='manual'&&(<div><label style={lblS}>Resistencia (Kg/cm²)</label>
+          <select value={fBaden[resK]} onChange={e=>setFBaden(p=>({...p,[resK]:e.target.value}))} style={inpS}>
+            {Object.entries(HORMIGON_DATA).map(([k,v])=>(<option key={k} value={k}>{k} Kg/cm² — {v.prop}</option>))}
+          </select></div>)}
+        {fBaden[tipoK]==='industrial'&&(<div><label style={lblS}>Resistencia y Precio</label>
+          <select value={fBaden[indK]} onChange={e=>setFBaden(p=>({...p,[indK]:e.target.value}))} style={inpS}>
+            {Object.entries(PRECIOS_REF.current.hormigones).map(([k,v])=>(<option key={k} value={k}>{k} — RD$ {v.toLocaleString('en-US',{minimumFractionDigits:2})}/m³</option>))}
+          </select></div>)}
+      </div>
+    );
+
+    return (
+      <div style={{padding:'16px',overflowY:'auto',height:'100%',background:'#f8fafc'}}>
+        <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+        <h3 style={{fontWeight:'800',color:COLOR_B,marginBottom:'4px',fontSize:'16px'}}>Badén Ciclópeo</h3>
+        <p style={{fontSize:'11px',color:'#94a3b8',marginBottom:'14px',fontWeight:'600',textTransform:'uppercase',letterSpacing:'0.05em'}}>Hormigón Ciclópeo — Acero Grado 40</p>
+        <div style={s}>
+          <div style={hdrS(COLOR_B)}>Dimensiones</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'10px'}}>
+            <div><label style={lblS}>Ancho Y (m)</label><input type="number" step="0.01" value={fBaden.Y} onChange={e=>setFBaden({...fBaden,Y:e.target.value})} style={inpS}/></div>
+            <div><label style={lblS}>Largo Z (m)</label><input type="number" step="0.01" value={fBaden.Z} onChange={e=>setFBaden({...fBaden,Z:e.target.value})} style={inpS}/></div>
+            <div><label style={lblS}>Espesor H.A. (m)</label><input type="number" step="0.01" value={fBaden.espHA} onChange={e=>setFBaden({...fBaden,espHA:e.target.value})} style={inpS}/></div>
+            <div><label style={lblS}>Espesor Ciclópeo (m)</label><input type="number" step="0.01" value={fBaden.espCic} onChange={e=>setFBaden({...fBaden,espCic:e.target.value})} style={inpS}/></div>
+            <div><label style={lblS}>Pendiente (%)</label><input type="number" step="1" value={fBaden.pendiente} onChange={e=>setFBaden({...fBaden,pendiente:e.target.value})} style={inpS}/></div>
+            <div><label style={lblS}>Desperdicio Acero (%)</label><input type="number" step="1" value={fBaden.desp} onChange={e=>setFBaden({...fBaden,desp:e.target.value})} style={inpS}/></div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px'}}>
+            <div style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:'8px',padding:'8px',textAlign:'center'}}>
+              <div style={{fontSize:'10px',color:COLOR_B,fontWeight:'700'}}>Área</div>
+              <div style={{fontFamily:'monospace',fontWeight:'800',color:COLOR_B,fontSize:'13px'}}>{area.toFixed(2)} m²</div>
+            </div>
+            <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'8px',padding:'8px',textAlign:'center'}}>
+              <div style={{fontSize:'10px',color:'#1e3a5f',fontWeight:'700'}}>Barras Y→Z</div>
+              <div style={{fontFamily:'monospace',fontWeight:'800',color:'#1e3a5f',fontSize:'13px'}}>{bY} barras</div>
+            </div>
+            <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'8px',padding:'8px',textAlign:'center'}}>
+              <div style={{fontSize:'10px',color:'#1e3a5f',fontWeight:'700'}}>Barras Z→Y</div>
+              <div style={{fontFamily:'monospace',fontWeight:'800',color:'#1e3a5f',fontSize:'13px'}}>{bZ} barras</div>
+            </div>
+          </div>
+        </div>
+        <div style={s}>
+          <div style={hdrS(COLOR_B)}>Acero Grado 40 — Ambas Direcciones</div>
+          <div style={{marginBottom:'10px'}}><label style={lblS}>Diámetro</label>
+            {toggleB([['3/8','3/8"'],['1/2','1/2"'],['3/4','3/4"'],['1','1"']],fBaden.tipo,'tipo',COLOR_B)}</div>
+          <div><label style={lblS}>Separación @ (m)</label>
+            {toggleB([['0.10','0.10'],['0.15','0.15'],['0.20','0.20'],['0.25','0.25']],fBaden.sep,'sep',COLOR_B)}</div>
+        </div>
+        <div style={s}><div style={hdrS(COLOR_B)}>Hormigón H.A. Superficie</div>
+          <HormSec tipoK="tipoHorm" resK="resHorm" indK="hormInd" col={COLOR_B}/></div>
+        <div style={s}><div style={hdrS('#78350f')}>Hormigón Base Ciclópeo (15% vol)</div>
+          <HormSec tipoK="tipoCic" resK="resCic" indK="cicInd" col="#78350f"/></div>
+        <div style={s}>
+          <div style={hdrS('#0f766e')}>Mortero para Pulido (e=0.005m)</div>
+          <label style={lblS}>Proporción</label>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px',marginBottom:'10px'}}>
+            {['1:2','1:3','1:4','1:5','1:6','1:7'].map(p=>(
+              <button key={p} onClick={()=>setFBaden({...fBaden,propMort:p})}
+                style={{padding:'8px',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'12px',cursor:'pointer',
+                  background:fBaden.propMort===p?'#0f766e':'#f1f5f9',color:fBaden.propMort===p?'white':'#64748b'}}>{p}</button>
+            ))}
+          </div>
+          {mD&&(<div style={{background:'#f0fdfa',borderRadius:'8px',padding:'10px',border:'1px solid #99f6e4'}}>
+            <div style={{fontSize:'10px',fontWeight:'700',color:'#0f766e',textTransform:'uppercase',marginBottom:'8px'}}>Materiales por m³</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px'}}>
+              {[{l:'Cemento',v:mD.cem,u:'fds'},{l:'Arena',v:mD.are,u:'m³'},{l:'Agua',v:mD.agua,u:'Lts'}].map(it=>(
+                <div key={it.l} style={{textAlign:'center',background:'white',borderRadius:'6px',padding:'6px',border:'1px solid #ccfbf1'}}>
+                  <div style={{fontSize:'9px',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>{it.l}</div>
+                  <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>{it.v}</div>
+                  <div style={{fontSize:'9px',color:'#94a3b8'}}>{it.u}</div>
+                </div>
+              ))}
+            </div>
+          </div>)}
+        </div>
+        <button onClick={calcBaden} style={{width:'100%',padding:'14px',background:COLOR_B,color:'white',border:'none',borderRadius:'12px',fontWeight:'800',fontSize:'13px',cursor:'pointer',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'20px'}}>
+          ⚡ CALCULAR BADÉN
+        </button>
+      </div>
+    );
+  }
+
+
+  if (screen === 'zapataMuro') return (
+    <div style={{padding:'16px', overflowY:'auto', height:'100%'}}>
+      <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+      <h3 style={{fontWeight:'800', color:'#4c1d95', marginBottom:'14px'}}>🧱 Zapata Muro Corrida</h3>
+      <div className={card}>
+        {sectionHdr('#8b5cf6','Geometría')}
+        {fld('Metros Lineales', <input type="number" step="0.01" value={fZMuro.metros} onChange={e=>setFZM({...fZMuro,metros:e.target.value})} className={inp}/>)}
+        {grid2(<>
+          {fld('Ancho (m)', <input type="number" step="0.01" value={fZMuro.ancho} onChange={e=>setFZM({...fZMuro,ancho:e.target.value})} className={inp}/>)}
+          {fld('Espesor (m)', <input type="number" step="0.01" value={fZMuro.espesor} onChange={e=>setFZM({...fZMuro,espesor:e.target.value})} className={inp}/>)}
+        </>)}
+      </div>
+      <div className={card}>
+        {sectionHdr('#8b5cf6','Acero Principal')}
+        {grid2(<>
+          {fld('Cantidad Barras', <input type="number" value={fZMuro.cantLong} onChange={e=>setFZM({...fZMuro,cantLong:e.target.value})} className={inp}/>)}
+          {fld('Diámetro', diamSel(fZMuro.tipoDiam, v=>setFZM({...fZMuro,tipoDiam:v})))}
+        </>)}
+        {sectionHdr('#8b5cf6','Cangrejos')}
+        {grid2(<>
+          {fld('Separación (m)', <input type="number" step="0.01" value={fZMuro.sepCangr} onChange={e=>setFZM({...fZMuro,sepCangr:e.target.value})} className={inp}/>)}
+          {fld('Diámetro', diamSel(fZMuro.diamCangr, v=>setFZM({...fZMuro,diamCangr:v})))}
+        </>)}
+        {fld('% Desperdicio', <input type="number" value={fZMuro.desperdicio} onChange={e=>setFZM({...fZMuro,desperdicio:e.target.value})} className={inp}/>)}
+      </div>
+      <div className={card}>
+        {sectionHdr('#8b5cf6','Hormigón')}
+        {fld('Proporción', <select value={fZMuro.prop} onChange={e=>setFZM({...fZMuro,prop:e.target.value})} className={sel}>
+          {Object.keys(CONCRETE_DATA).map(k=><option key={k} value={k}>{k}</option>)}
+        </select>)}
+      </div>
+      {calcBtn('#8b5cf6','Calcular Zapata Muro', calcZapataMuro)}
+    </div>
+  );
+
+  // ── COLUMNA ─────────────────────────────────────────────────────────────────
+  if (screen === 'columna') return (
+    <div style={{padding:'16px', overflowY:'auto', height:'100%'}}>
+      <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+      <h3 style={{fontWeight:'800', color:'#7f1d1d', marginBottom:'14px'}}>🏛️ Columna (por metro lineal)</h3>
+      <div className={card}>
+        {sectionHdr('#ef4444','Sección')}
+        {grid2(<>
+          {fld('Ancho B (m)', <input type="number" step="0.01" value={fColumna.B} onChange={e=>setFC({...fColumna,B:e.target.value})} className={inp}/>)}
+          {fld('Alto H (m)', <input type="number" step="0.01" value={fColumna.H} onChange={e=>setFC({...fColumna,H:e.target.value})} className={inp}/>)}
+        </>)}
+      </div>
+      <div className={card}>
+        {sectionHdr('#ef4444','Armado Longitudinal')}
+        {Object.entries(fColumna.longit).map(([d,v])=>(
+          <div key={d} style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'8px', padding:'8px', background: v.act?'#fff7ed':'#f8fafc', borderRadius:'8px', border:`1px solid ${v.act?'#fed7aa':'#e2e8f0'}`}}>
+            <input type="checkbox" checked={v.act} onChange={e=>{const nl={...fColumna.longit,[d]:{...v,act:e.target.checked}};setFC({...fColumna,longit:nl});}} style={{accentColor:'#ef4444',width:'16px',height:'16px'}}/>
+            <span style={{fontSize:'12px',fontWeight:'700',color:'#374151',minWidth:'40px'}}>⌀ {d}"</span>
+            {v.act && <input type="number" value={v.pcs} onChange={e=>{const nl={...fColumna.longit,[d]:{...v,pcs:e.target.value}};setFC({...fColumna,longit:nl});}} className={inp} style={{width:'80px'}} placeholder="Cant."/>}
+          </div>
+        ))}
+      </div>
+      <div className={card}>
+        {sectionHdr('#ef4444','Estribos 3/8"')}
+        {fColumna.estribos.map((e,i)=>(
+          <div key={e.id} style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px',padding:'6px',background:e.act?'#fef2f2':'#f8fafc',borderRadius:'8px',border:'1px solid #e2e8f0'}}>
+            <input type="checkbox" checked={e.act} onChange={ev=>{const ne=[...fColumna.estribos];ne[i]={...e,act:ev.target.checked};setFC({...fColumna,estribos:ne});}} style={{accentColor:'#ef4444'}}/>
+            <span style={{fontSize:'11px',fontWeight:'700',color:'#ef4444',minWidth:'24px'}}>{e.id}</span>
+            <input type="number" step="0.01" value={e.len} onChange={ev=>{const ne=[...fColumna.estribos];ne[i]={...e,len:ev.target.value};setFC({...fColumna,estribos:ne});}} className={inp} style={{width:'80px'}} placeholder="Long."/>
+            {i===0&&<input type="number" step="0.01" value={e.sep} onChange={ev=>{const ne=[...fColumna.estribos];ne[i]={...e,sep:ev.target.value};setFC({...fColumna,estribos:ne});}} className={inp} style={{width:'80px'}} placeholder="Sep."/>}
+            {i>0&&<span style={{fontSize:'10px',color:'#94a3b8'}}>sep=E1</span>}
+          </div>
+        ))}
+      </div>
+      {calcBtn('#ef4444','Calcular Columna', calcColumna)}
+    </div>
+  );
+
+  // ── VIGA ────────────────────────────────────────────────────────────────────
+  if (screen === 'viga') return (
+    <div style={{padding:'16px', overflowY:'auto', height:'100%'}}>
+      <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+      <h3 style={{fontWeight:'800', color:'#7c2d12', marginBottom:'14px'}}>📐 Viga</h3>
+      <div className={card}>
+        {sectionHdr('#f97316','Sección')}
+        {grid2(<>
+          {fld('Ancho B (m)', <input type="number" step="0.01" value={fViga.B} onChange={e=>setFV({...fViga,B:e.target.value})} className={inp}/>)}
+          {fld('Peralte H (m)', <input type="number" step="0.01" value={fViga.H} onChange={e=>setFV({...fViga,H:e.target.value})} className={inp}/>)}
+        </>)}
+        {fld('Longitud L (m)', <input type="number" step="0.01" value={fViga.L} onChange={e=>setFV({...fViga,L:e.target.value})} className={inp}/>)}
+      </div>
+      <div className={card}>
+        {sectionHdr('#f97316','Barras Longitudinales')}
+        <div style={{display:'grid', gridTemplateColumns:'60px 1fr 1fr', gap:'6px', marginBottom:'6px'}}>
+          <span style={{fontSize:'10px',color:'#94a3b8',fontWeight:'700',textAlign:'center'}}>DIAM</span>
+          <span style={{fontSize:'10px',color:'#94a3b8',fontWeight:'700',textAlign:'center'}}>CANT.</span>
+          <span style={{fontSize:'10px',color:'#94a3b8',fontWeight:'700',textAlign:'center'}}>LONG. (m)</span>
+        </div>
+        {fViga.barras.map((b,i)=>(
+          <div key={i} style={{display:'grid', gridTemplateColumns:'60px 1fr 1fr', gap:'6px', marginBottom:'6px'}}>
+            <select value={b.diam} onChange={e=>{const nb=[...fViga.barras];nb[i]={...b,diam:e.target.value};setFV({...fViga,barras:nb});}} className={sel} style={{padding:'6px'}}>
+              <option value="3/8">3/8"</option><option value="1/2">1/2"</option><option value="3/4">3/4"</option><option value="1">1"</option>
+            </select>
+            <input type="number" value={b.cant} onChange={e=>{const nb=[...fViga.barras];nb[i]={...b,cant:e.target.value};setFV({...fViga,barras:nb});}} className={inp} placeholder="0"/>
+            <input type="number" step="0.01" value={b.lon} onChange={e=>{const nb=[...fViga.barras];nb[i]={...b,lon:e.target.value};setFV({...fViga,barras:nb});}} className={inp} placeholder="0.00"/>
+          </div>
+        ))}
+      </div>
+      <div className={card}>
+        {sectionHdr('#f97316','Tramos de Estribos 3/8"')}
+        {[{k:'t010',label:'@ 0.10m'},{k:'t015',label:'@ 0.15m'},{k:'t020',label:'@ 0.20m'}].map(t=>(
+          <div key={t.k} style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'8px'}}>
+            <span style={{fontSize:'11px',fontWeight:'700',color:'#f97316',minWidth:'60px'}}>{t.label}</span>
+            <input type="number" step="0.01" value={fViga[t.k]} onChange={e=>setFV({...fViga,[t.k]:e.target.value})} className={inp} placeholder="metros"/>
+          </div>
+        ))}
+      </div>
+      {calcBtn('#f97316','Calcular Viga', calcViga)}
+    </div>
+  );
+
+  // ── LOSA ────────────────────────────────────────────────────────────────────
+  if (screen === 'losa') return (
+    <div style={{padding:'16px', overflowY:'auto', height:'100%'}}>
+      <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+      <h3 style={{fontWeight:'800', color:'#164e63', marginBottom:'14px'}}>🔲 Losa Maciza</h3>
+      <div className={card}>
+        {sectionHdr('#06b6d4','Geometría')}
+        {grid2(<>
+          {fld('Largo X (m)', <input type="number" step="0.01" value={fLosa.X} onChange={e=>setFL({...fLosa,X:e.target.value})} className={inp}/>)}
+          {fld('Ancho Y (m)', <input type="number" step="0.01" value={fLosa.Y} onChange={e=>setFL({...fLosa,Y:e.target.value})} className={inp}/>)}
+        </>)}
+        {grid2(<>
+          {fld('Espesor (m)', <input type="number" step="0.01" value={fLosa.H} onChange={e=>setFL({...fLosa,H:e.target.value})} className={inp}/>)}
+          {fld('Recubrimiento (m)', <input type="number" step="0.001" value={fLosa.rec} onChange={e=>setFL({...fLosa,rec:e.target.value})} className={inp}/>)}
+        </>)}
+        <div style={{background:'#ecfeff',border:'1px solid #a5f3fc',borderRadius:'8px',padding:'10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontSize:'12px',fontWeight:'600',color:'#0891b2'}}>Volumen</span>
+          <span style={{fontFamily:'monospace',fontWeight:'800',color:'#164e63'}}>{n((parseFloat(fLosa.X)||0)*(parseFloat(fLosa.Y)||0)*(parseFloat(fLosa.H)||0),3)} m³</span>
+        </div>
+      </div>
+      <div className={card}>
+        {sectionHdr('#06b6d4','Armado')}
+        {grid2(<>
+          {fld('Diámetro', diamSel(fLosa.diam, v=>setFL({...fLosa,diam:v})))}
+          {fld('Separación (m)', <input type="number" step="0.01" value={fLosa.sep} onChange={e=>setFL({...fLosa,sep:e.target.value})} className={inp}/>)}
+        </>)}
+        {grid2(<>
+          {fld('Solape', <select value={fLosa.solape} onChange={e=>setFL({...fLosa,solape:e.target.value})} className={sel}><option value="SI">Con solape</option><option value="NO">Sin solape</option></select>)}
+          {fld('Hormigón', <select value={fLosa.prop} onChange={e=>setFL({...fLosa,prop:e.target.value})} className={sel}>{Object.keys(CONCRETE_DATA).map(k=><option key={k} value={k}>{k}</option>)}</select>)}
+        </>)}
+      </div>
+      {calcBtn('#06b6d4','Calcular Losa', calcLosa)}
+    </div>
+  );
+
+  // ── MUROS ───────────────────────────────────────────────────────────────────
+  if (screen === 'muros') return (
+    <div style={{padding:'16px', overflowY:'auto', height:'100%'}}>
+      <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+      <h3 style={{fontWeight:'800', color:'#78350f', marginBottom:'14px'}}>🏗️ Muros de Bloques</h3>
+      <div className={card}>
+        {sectionHdr('#f59e0b','Geometría')}
+        <div style={{display:'flex',gap:'8px',marginBottom:'10px'}}>
+          {['4','6','8'].map(t=>(
+            <button key={t} onClick={()=>setFM({...fMuros,tipo:t})}
+              style={{flex:1,padding:'8px',border:'none',borderRadius:'8px',fontWeight:'800',cursor:'pointer',background:fMuros.tipo===t?'#f59e0b':'#f1f5f9',color:fMuros.tipo===t?'white':'#64748b'}}>
+              {t}"
+            </button>
+          ))}
+        </div>
+        {grid2(<>
+          {fld('Largo (m)', <input type="number" step="0.01" value={fMuros.largo} onChange={e=>setFM({...fMuros,largo:e.target.value})} className={inp}/>)}
+          {fld('Alto (m)', <input type="number" step="0.01" value={fMuros.alto} onChange={e=>setFM({...fMuros,alto:e.target.value})} className={inp}/>)}
+        </>)}
+      </div>
+      <div className={card}>
+        {sectionHdr('#f59e0b','Refuerzo Vertical (Bastones)')}
+        {grid2(<>
+          {fld('Diámetro', diamSel(fMuros.vDiam, v=>setFM({...fMuros,vDiam:v})))}
+          {fld('Separación (m)', <input type="number" step="0.01" value={fMuros.vSep} onChange={e=>setFM({...fMuros,vSep:e.target.value})} className={inp}/>)}
+        </>)}
+        {sectionHdr('#f59e0b','Refuerzo Horizontal')}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px',gap:'8px'}}>
+          {fld('Diámetro', diamSel(fMuros.hDiam, v=>setFM({...fMuros,hDiam:v})))}
+          {fld('Separación (m)', <input type="number" step="0.01" value={fMuros.hSep} onChange={e=>setFM({...fMuros,hSep:e.target.value})} className={inp}/>)}
+          {fld('Cant.', <input type="number" value={fMuros.hCant} onChange={e=>setFM({...fMuros,hCant:e.target.value})} className={inp}/>)}
+        </div>
+      </div>
+      <div className={card}>
+        {sectionHdr('#f59e0b','Mezclas')}
+        {grid2(<>
+          {fld('Mortero (unión)', <select value={fMuros.mortero} onChange={e=>setFM({...fMuros,mortero:e.target.value})} className={sel}>{Object.keys(MORTAR_DATA).map(k=><option key={k} value={k}>{k}</option>)}</select>)}
+          {fld('Hormigón (cámara)', <select value={fMuros.horm} onChange={e=>setFM({...fMuros,horm:e.target.value})} className={sel}>{Object.keys(CONCRETE_DATA).map(k=><option key={k} value={k}>{k}</option>)}</select>)}
+        </>)}
+      </div>
+      {calcBtn('#f59e0b','Calcular Muros', calcMuros)}
+    </div>
+  );
+
+  // ── PISO ────────────────────────────────────────────────────────────────────
+  if (screen === 'piso') return (
+    <div style={{padding:'16px', overflowY:'auto', height:'100%'}}>
+      <button onClick={()=>setScreen('menu')} style={{background:'#f1f5f9',border:'none',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',color:'#475569',cursor:'pointer',marginBottom:'12px'}}>← Atrás</button>
+      <h3 style={{fontWeight:'800', color:'#1e1b4b', marginBottom:'14px'}}>🟫 Piso / Torta</h3>
+      <div className={card}>
+        {sectionHdr('#6366f1','Geometría')}
+        {grid2(<>
+          {fld('Largo (m)', <input type="number" step="0.01" value={fPiso.L} onChange={e=>setFP({...fPiso,L:e.target.value})} className={inp}/>)}
+          {fld('Ancho (m)', <input type="number" step="0.01" value={fPiso.A} onChange={e=>setFP({...fPiso,A:e.target.value})} className={inp}/>)}
+        </>)}
+        {grid2(<>
+          {fld('Espesor (m)', <input type="number" step="0.01" value={fPiso.E} onChange={e=>setFP({...fPiso,E:e.target.value})} className={inp}/>)}
+          {fld('Desperdicio (%)', <input type="number" value={fPiso.desp} onChange={e=>setFP({...fPiso,desp:e.target.value})} className={inp}/>)}
+        </>)}
+        {fld('Proporción Hormigón', <select value={fPiso.prop} onChange={e=>setFP({...fPiso,prop:e.target.value})} className={sel}>{Object.keys(CONCRETE_DATA).map(k=><option key={k} value={k}>{k}</option>)}</select>)}
+      </div>
+      <div className={card}>
+        {sectionHdr('#6366f1','Refuerzo')}
+        <label style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px',cursor:'pointer'}}>
+          <input type="checkbox" checked={fPiso.malla} onChange={e=>setFP({...fPiso,malla:e.target.checked})} style={{accentColor:'#6366f1',width:'16px',height:'16px'}}/>
+          <span style={{fontSize:'12px',fontWeight:'700',color:'#374151'}}>Malla Electrosoldada</span>
+        </label>
+        <label style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px',cursor:'pointer'}}>
+          <input type="checkbox" checked={fPiso.aceroX} onChange={e=>setFP({...fPiso,aceroX:e.target.checked})} style={{accentColor:'#6366f1',width:'16px',height:'16px'}}/>
+          <span style={{fontSize:'12px',fontWeight:'700',color:'#374151'}}>Acero en X</span>
+        </label>
+        {fPiso.aceroX && grid2(<>
+          {fld('Diámetro', diamSel(fPiso.dX, v=>setFP({...fPiso,dX:v})))}
+          {fld('Separación (m)', <input type="number" step="0.01" value={fPiso.sX} onChange={e=>setFP({...fPiso,sX:e.target.value})} className={inp}/>)}
+        </>)}
+        <label style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px',cursor:'pointer'}}>
+          <input type="checkbox" checked={fPiso.aceroY} onChange={e=>setFP({...fPiso,aceroY:e.target.checked})} style={{accentColor:'#6366f1',width:'16px',height:'16px'}}/>
+          <span style={{fontSize:'12px',fontWeight:'700',color:'#374151'}}>Acero en Y</span>
+        </label>
+        {fPiso.aceroY && grid2(<>
+          {fld('Diámetro', diamSel(fPiso.dY, v=>setFP({...fPiso,dY:v})))}
+          {fld('Separación (m)', <input type="number" step="0.01" value={fPiso.sY} onChange={e=>setFP({...fPiso,sY:e.target.value})} className={inp}/>)}
+        </>)}
+      </div>
+      {calcBtn('#6366f1','Calcular Piso', calcPiso)}
+    </div>
+  );
+
+
+  // ── CUANTÍA COLUMNA SCREEN ─────────────────────────────────────────────────────────
+  if (screen === 'cuantiaColumna') return (
+    <div style={{padding:'16px', overflowY:'auto', height:'100%'}}>
+      <button onClick={() => setScreen('menu')} style={{background:'#f1f5f9', border:'none', padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:'700', color:'#475569', cursor:'pointer', marginBottom:'12px'}}>
+        ← Atrás
+      </button>
+      <h3 style={{fontWeight:'800', color:'#0f766e', marginBottom:'4px', fontSize:'16px'}}>Cálculo de Cuanía</h3>
+      <p style={{fontSize:'11px', color:'#94a3b8', marginBottom:'14px', fontWeight:'600', textTransform:'uppercase', letterSpacing:'0.05em'}}>Columna Rectangular</p>
+
+      {/* Nombre */}
+      <div style={{background:'white', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'14px', marginBottom:'10px'}}>
+        <label style={{display:'block', fontSize:'10px', fontWeight:'800', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:'6px'}}>Nombre del Elemento</label>
+        <input value={fCuantia.nombre} onChange={e=>setFCuantia({...fCuantia,nombre:e.target.value})}
+          style={{width:'100%', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'8px 12px', fontSize:'13px', fontWeight:'700', outline:'none', boxSizing:'border-box'}}
+          placeholder="Ej: Columna C1"/>
+      </div>
+
+      {/* Sección */}
+      <div style={{background:'white', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'14px', marginBottom:'10px'}}>
+        <div style={{borderLeft:'3px solid #0f766e', paddingLeft:'10px', marginBottom:'12px'}}>
+          <span style={{fontSize:'11px', fontWeight:'800', color:'#0f766e', textTransform:'uppercase', letterSpacing:'0.06em'}}>Sección (m)</span>
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+          <div>
+            <label style={{display:'block', fontSize:'10px', fontWeight:'700', color:'#64748b', textTransform:'uppercase', marginBottom:'4px'}}>Largo X</label>
+            <input type="number" step="0.01" value={fCuantia.largoX} onChange={e=>setFCuantia({...fCuantia,largoX:e.target.value})}
+              style={{width:'100%', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'8px 12px', fontSize:'13px', fontWeight:'700', outline:'none', boxSizing:'border-box'}}/>
+          </div>
+          <div>
+            <label style={{display:'block', fontSize:'10px', fontWeight:'700', color:'#64748b', textTransform:'uppercase', marginBottom:'4px'}}>Ancho Y</label>
+            <input type="number" step="0.01" value={fCuantia.anchoY} onChange={e=>setFCuantia({...fCuantia,anchoY:e.target.value})}
+              style={{width:'100%', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'8px 12px', fontSize:'13px', fontWeight:'700', outline:'none', boxSizing:'border-box'}}/>
+          </div>
+        </div>
+        <div style={{background:'#f0fdfa', border:'1px solid #99f6e4', borderRadius:'8px', padding:'8px 12px', marginTop:'10px', display:'flex', justifyContent:'space-between'}}>
+          <span style={{fontSize:'11px', color:'#0f766e', fontWeight:'700'}}>Area de Sección</span>
+          <span style={{fontFamily:'monospace', fontWeight:'800', color:'#0f766e', fontSize:'13px'}}>
+            {((parseFloat(fCuantia.largoX)||0)*(parseFloat(fCuantia.anchoY)||0)).toFixed(4)} m²
+          </span>
+        </div>
+      </div>
+
+      {/* Estribos */}
+      <div style={{background:'white', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'14px', marginBottom:'10px'}}>
+        <div style={{borderLeft:'3px solid #0f766e', paddingLeft:'10px', marginBottom:'10px'}}>
+          <span style={{fontSize:'11px', fontWeight:'800', color:'#0f766e', textTransform:'uppercase', letterSpacing:'0.06em'}}>Estribos 3/8"</span>
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'28px 36px 1fr 1fr', gap:'6px', marginBottom:'6px', paddingBottom:'4px', borderBottom:'1px solid #f1f5f9'}}>
+          <span style={{fontSize:'9px', color:'#94a3b8', fontWeight:'700', textAlign:'center'}}>Act.</span>
+          <span style={{fontSize:'9px', color:'#94a3b8', fontWeight:'700', textAlign:'center'}}>ID</span>
+          <span style={{fontSize:'9px', color:'#94a3b8', fontWeight:'700', textAlign:'center'}}>Long. (m)</span>
+          <span style={{fontSize:'9px', color:'#94a3b8', fontWeight:'700', textAlign:'center'}}>Sep. (m)</span>
+        </div>
+        {fCuantia.estribos.map((est, i) => (
+          <div key={est.id} style={{display:'grid', gridTemplateColumns:'28px 36px 1fr 1fr', gap:'6px', marginBottom:'4px', padding:'5px 0', opacity: est.act ? 1 : 0.45}}>
+            <input type="checkbox" checked={est.act}
+              onChange={ev=>{const ne=[...fCuantia.estribos];ne[i]={...est,act:ev.target.checked};setFCuantia({...fCuantia,estribos:ne});}}
+              style={{accentColor:'#0f766e', width:'15px', height:'15px', margin:'auto'}}/>
+            <span style={{fontSize:'11px', fontWeight:'800', color:'#0f766e', textAlign:'center', lineHeight:'28px'}}>{est.id}</span>
+            <input type="number" step="0.01" value={est.lon}
+              onChange={ev=>{const ne=[...fCuantia.estribos];ne[i]={...est,lon:ev.target.value};setFCuantia({...fCuantia,estribos:ne});}}
+              placeholder="Long."
+              style={{padding:'6px 8px', border:'1px solid #e2e8f0', borderRadius:'6px', fontSize:'12px', fontWeight:'600', textAlign:'center', outline:'none', background: est.act?'white':'#f8fafc', width:'100%', boxSizing:'border-box'}}/>
+            <input type="number" step="0.01" value={est.sep}
+              onChange={ev=>{const ne=[...fCuantia.estribos];ne[i]={...est,sep:ev.target.value};setFCuantia({...fCuantia,estribos:ne});}}
+              placeholder="Sep."
+              style={{padding:'6px 8px', border:'1px solid #0f766e', borderRadius:'6px', fontSize:'12px', fontWeight:'800', textAlign:'center', outline:'none', background: est.act?'#f0fdfa':'#f8fafc', color:'#0f766e', width:'100%', boxSizing:'border-box'}}/>
+          </div>
+        ))}
+      </div>
+
+      {/* Acero Longitudinal */}
+      <div style={{background:'white', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'14px', marginBottom:'12px'}}>
+        <div style={{borderLeft:'3px solid #0f766e', paddingLeft:'10px', marginBottom:'10px'}}>
+          <span style={{fontSize:'11px', fontWeight:'800', color:'#0f766e', textTransform:'uppercase', letterSpacing:'0.06em'}}>Acero Longitudinal</span>
+        </div>
+        {[
+          {key:'long1',  label:'1"'   },
+          {key:'long34', label:'3/4"' },
+          {key:'long12', label:'1/2"' },
+          {key:'long38', label:'3/8"' },
+        ].map(({key, label}) => {
+          const lg = fCuantia[key];
+          return (
+            <div key={key} style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'8px', padding:'8px 10px', background: lg.act ? '#f0fdfa' : '#f8fafc', borderRadius:'8px', border:'1px solid '+(lg.act?'#99f6e4':'#e2e8f0')}}>
+              <input type="checkbox" checked={lg.act}
+                onChange={e=>setFCuantia({...fCuantia,[key]:{...lg,act:e.target.checked}})}
+                style={{accentColor:'#0f766e', width:'16px', height:'16px', flexShrink:0}}/>
+              <span style={{fontSize:'13px', fontWeight:'800', color:'#1e293b', minWidth:'44px'}}>{label}</span>
+              {lg.act && (
+                <div style={{display:'flex', alignItems:'center', gap:'8px', flex:1}}>
+                  <label style={{fontSize:'10px', color:'#64748b', fontWeight:'700', flexShrink:0}}>Cant. barras:</label>
+                  <input type="number" min="0" value={lg.cant}
+                    onChange={e=>setFCuantia({...fCuantia,[key]:{...lg,cant:e.target.value}})}
+                    style={{width:'70px', padding:'6px 8px', border:'1px solid #e2e8f0', borderRadius:'6px', fontSize:'13px', fontWeight:'800', textAlign:'center', outline:'none', background:'white'}}/>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Hormigón */}
+      <div style={{background:'white', border:'1px solid #e2e8f0', borderRadius:'12px', padding:'14px', marginBottom:'12px'}}>
+        <div style={{borderLeft:'3px solid #0f766e', paddingLeft:'10px', marginBottom:'12px'}}>
+          <span style={{fontSize:'11px', fontWeight:'800', color:'#0f766e', textTransform:'uppercase', letterSpacing:'0.06em'}}>Hormigón</span>
+        </div>
+
+        {/* Toggle Manual / Industrial */}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px', marginBottom:'12px'}}>
+          {['manual','industrial'].map(t => (
+            <button key={t} onClick={()=>setFCuantia({...fCuantia,tipoHorm:t})}
+              style={{padding:'9px', border:'none', borderRadius:'8px', fontWeight:'800', fontSize:'12px', cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.04em',
+                background: fCuantia.tipoHorm===t ? '#0f766e' : '#f1f5f9',
+                color: fCuantia.tipoHorm===t ? 'white' : '#64748b'}}>
+              {t === 'manual' ? 'Manual' : 'Industrial'}
+            </button>
+          ))}
+        </div>
+
+        {/* MANUAL */}
+        {fCuantia.tipoHorm === 'manual' && (
+          <div>
+            <label style={{display:'block', fontSize:'10px', fontWeight:'700', color:'#64748b', textTransform:'uppercase', marginBottom:'4px'}}>Resistencia (Kg/cm²)</label>
+            <select value={fCuantia.resistencia}
+              onChange={e=>setFCuantia({...fCuantia, resistencia:e.target.value})}
+              style={{width:'100%', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'8px 12px', fontSize:'13px', fontWeight:'700', outline:'none', marginBottom:'10px'}}>
+              {Object.entries(HORMIGON_DATA).map(([k,v])=>(
+                <option key={k} value={k}>{k} Kg/cm² — Proporción {v.prop}</option>
+              ))}
+            </select>
+            {HORMIGON_DATA[fCuantia.resistencia] && (
+              <div style={{background:'#f0fdfa', borderRadius:'8px', padding:'10px', border:'1px solid #99f6e4'}}>
+                <div style={{fontSize:'10px', fontWeight:'700', color:'#0f766e', textTransform:'uppercase', marginBottom:'8px'}}>
+                  Materiales por m³ — {HORMIGON_DATA[fCuantia.resistencia].prop}
+                </div>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:'6px'}}>
+                  {[
+                    {label:'Cemento', val:HORMIGON_DATA[fCuantia.resistencia].cemento, uni:'fds'},
+                    {label:'Arena',   val:HORMIGON_DATA[fCuantia.resistencia].arena,   uni:'m³'},
+                    {label:'Grava',   val:HORMIGON_DATA[fCuantia.resistencia].grava,   uni:'m³'},
+                    {label:'Agua',    val:HORMIGON_DATA[fCuantia.resistencia].agua,    uni:'Lts'},
+                  ].map(item=>(
+                    <div key={item.label} style={{textAlign:'center', background:'white', borderRadius:'6px', padding:'6px', border:'1px solid #d1fae5'}}>
+                      <div style={{fontSize:'9px', color:'#64748b', fontWeight:'600', textTransform:'uppercase'}}>{item.label}</div>
+                      <div style={{fontSize:'13px', fontWeight:'800', color:'#0f172a'}}>{item.val}</div>
+                      <div style={{fontSize:'9px', color:'#94a3b8'}}>{item.uni}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* INDUSTRIAL */}
+        {fCuantia.tipoHorm === 'industrial' && (
+          <div>
+            <label style={{display:'block', fontSize:'10px', fontWeight:'700', color:'#64748b', textTransform:'uppercase', marginBottom:'4px'}}>Resistencia y Precio</label>
+            <select value={fCuantia.hormigon} onChange={e=>setFCuantia({...fCuantia,hormigon:e.target.value})}
+              style={{width:'100%', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'10px 12px', fontSize:'13px', fontWeight:'700', outline:'none'}}>
+              {Object.entries(PRECIOS.hormigones).map(([k,v])=>(
+                <option key={k} value={k}>{k} — RD$ {v.toLocaleString('en-US',{minimumFractionDigits:2})}/m³</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <button onClick={calcCuantiaColumna}
+        style={{width:'100%', padding:'14px', background:'#0f766e', color:'white', border:'none', borderRadius:'12px', fontWeight:'800', fontSize:'13px', cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:'20px'}}>
+        CALCULAR CUANÍA
+      </button>
+    </div>
+  );
+
+  return null;
+};
+
+
+// ==================== VISTA: BASE DE DATOS (SUPABASE REAL) ====================
+const TIPO_COLORS = {
+  'Insumo':   { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200' },
+  'AnaBasic': { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
+  'MO':       { bg: 'bg-green-50',  text: 'text-green-700',  border: 'border-green-200' },
+  'Jornal':   { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
+  'Herram':   { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+};
+
+const TipoBadge = ({ tipo }) => {
+  if (!tipo) return <span className="text-slate-300">—</span>;
+  const c = TIPO_COLORS[tipo] || { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' };
+  return <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border}`}>{tipo}</span>;
+};
+
+const CostAnalysisView = () => {
+  const TABS = [
+    { key: 'materiales',    label: 'Materiales',       color: '#3b82f6', table: 'materiales' },
+    { key: 'herramientas',  label: 'Herramientas',     color: '#f97316', table: 'herramientas' },
+    { key: 'rendimientos',  label: 'Rendimientos',     color: '#10b981', table: 'rendimientos' },
+    { key: 'mo_cuadrillas', label: 'MO Cuadrillas',    color: '#8b5cf6', table: 'mo_cuadrillas' },
+    { key: 'mo_jornales',   label: 'MO Jornales',      color: '#ec4899', table: 'mo_jornales' },
+    { key: 'analisis_costo',label: 'Análisis de Costo',color: '#0891b2', table: 'analisis_costo' },
+  ];
+
+  const COL_DEFS = {
+    materiales: [
+      { key: 'referencia',      label: 'Ref.',        w: '80px' },
+      { key: 'codigo',          label: 'Código',      w: '90px' },
+      { key: 'descripcion',     label: 'Descripción', w: 'auto', flex: true },
+      { key: 'unidad',          label: 'U.',          w: '50px', center: true },
+      { key: 'precio_base',     label: 'P. Base',     w: '90px', num: true },
+      { key: 'precio_con_itbis',label: 'P.U.+ITBIS',  w: '100px', num: true, bold: true },
+    ],
+    herramientas: [
+      { key: 'referencia',      label: 'Ref.',        w: '80px' },
+      { key: 'codigo',          label: 'Código',      w: '90px' },
+      { key: 'descripcion',     label: 'Descripción', w: 'auto', flex: true },
+      { key: 'unidad',          label: 'U.',          w: '50px', center: true },
+      { key: 'precio_base',     label: 'P. Base',     w: '90px', num: true },
+      { key: 'precio_con_itbis',label: 'P.U.+ITBIS',  w: '100px', num: true, bold: true },
+    ],
+    rendimientos: [
+      { key: 'referencia',  label: 'Ref.',        w: '80px' },
+      { key: 'codigo',      label: 'Código',      w: '90px' },
+      { key: 'descripcion', label: 'Descripción', w: 'auto', flex: true },
+      { key: 'unidad',      label: 'U.',          w: '50px', center: true },
+      { key: 'cantidad',    label: 'Cant.',       w: '80px', num: true },
+      { key: 'rendimiento', label: 'Rendimiento', w: '100px', num: true, bold: true },
+    ],
+    mo_cuadrillas: [
+      { key: 'referencia',      label: 'Ref.',        w: '80px' },
+      { key: 'codigo',          label: 'Código',      w: '90px' },
+      { key: 'descripcion',     label: 'Descripción', w: 'auto', flex: true },
+      { key: 'unidad',          label: 'U.',          w: '50px', center: true },
+      { key: 'rend_dia',        label: 'Rend/Día',    w: '80px', num: true },
+      { key: 'precio_unitario', label: 'P. Unit.',    w: '90px', num: true, bold: true },
+    ],
+    mo_jornales: [
+      { key: 'referencia',    label: 'Ref.',          w: '80px' },
+      { key: 'codigo',        label: 'Código',        w: '90px' },
+      { key: 'descripcion',   label: 'Descripción',   w: 'auto', flex: true },
+      { key: 'jornal_diario', label: 'Jornal Diario', w: '110px', num: true },
+      { key: 'jornal_hora',   label: 'x Hora',        w: '80px', num: true },
+      { key: 'jornal_mensual',label: 'Mensual',       w: '100px', num: true, bold: true },
+    ],
+    analisis_costo: [
+      { key: 'referencia',      label: 'Ref.',       w: '80px' },
+      { key: 'codigo',          label: 'Código',     w: '90px' },
+      { key: 'descripcion',     label: 'Descripción',w: 'auto', flex: true },
+      { key: 'unidad',          label: 'U.',         w: '50px', center: true },
+      { key: 'cantidad',        label: 'Cant.',      w: '70px', num: true },
+      { key: 'precio_unitario', label: 'P. Unit.',   w: '90px', num: true },
+      { key: 'subtotal',        label: 'Subtotal',   w: '100px', num: true },
+      { key: 'precio_total',    label: 'Total RD$',  w: '110px', num: true, bold: true },
+    ],
+  };
+
+  const [activeTab, setActiveTab]   = useState('materiales');
+  const [search, setSearch]         = useState('');
+  const [data, setData]             = useState([]);
+  const [loading, setLoading]       = useState(false);
+  const [page, setPage]             = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [expandedIds, setExpandedIds] = useState({});
+  const [itemsMap, setItemsMap]     = useState({});
+  const PAGE_SIZE = 200;
+
+  const activeTabDef = TABS.find(t => t.key === activeTab);
+  const color = activeTabDef?.color || '#3b82f6';
+
+  // ── Cargar datos ────────────────────────────────────────────────────────────
+  const loadData = async (tab, searchVal, pageNum) => {
+    setLoading(true);
+    try {
+      const tableName = TABS.find(t => t.key === tab)?.table || tab;
+
+      // Para analisis_costo cargamos TODAS las partidas de una vez
+      if (tab === 'analisis_costo' && !searchVal.trim()) {
+        let allRows = [];
+        let from = 0;
+        const batch = 1000;
+        while (true) {
+          let q = supabase.from(tableName).select('*').eq('tipo_fila', 'partida').order('id', { ascending: true }).range(from, from + batch - 1);
+          const { data: rows, error } = await q;
+          if (error) throw error;
+          if (!rows || rows.length === 0) break;
+          allRows = allRows.concat(rows);
+          if (rows.length < batch) break;
+          from += batch;
+        }
+        setData(allRows);
+        setTotalCount(allRows.length);
+        setExpandedIds({});
+        setItemsMap({});
+        setLoading(false);
+        return;
+      }
+
+      let q = supabase.from(tableName).select('*', { count: 'exact' });
+      if (tab === 'analisis_costo') q = q.eq('tipo_fila', 'partida');
+      if (searchVal.trim()) q = q.ilike('descripcion', `%${searchVal.trim()}%`);
+      const from = pageNum * PAGE_SIZE;
+      q = q.range(from, from + PAGE_SIZE - 1).order('id', { ascending: true });
+      const { data: rows, count, error } = await q;
+      if (error) throw error;
+      setData(rows || []);
+      setTotalCount(count || 0);
+      setExpandedIds({});
+      setItemsMap({});
+    } catch (e) {
+      console.error(e);
+      setData([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    setPage(0);
+    loadData(activeTab, search, 0);
+  }, [activeTab]);
+
+  // Búsqueda con debounce
+  useEffect(() => {
+    const t = setTimeout(() => { setPage(0); loadData(activeTab, search, 0); }, 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => { loadData(activeTab, search, page); }, [page]);
+
+  // ── Expandir items de ana_gral ──────────────────────────────────────────────
+  const toggleExpand = async (row) => {
+    if (activeTab !== 'analisis_costo') return;
+    const id = row.id;
+    if (expandedIds[id]) {
+      setExpandedIds(p => ({ ...p, [id]: false }));
+      return;
+    }
+    if (!itemsMap[id]) {
+      const { data: items } = await supabase
+        .from('analisis_costo')
+        .select('*')
+        .in('tipo_fila', ['item', 'total'])
+        .eq('partida_codigo', row.codigo)
+        .order('id', { ascending: true });
+      setItemsMap(p => ({ ...p, [id]: items || [] }));
+    }
+    setExpandedIds(p => ({ ...p, [id]: true }));
+  };
+
+  // ── Format ──────────────────────────────────────────────────────────────────
+  const fmtNum = (v) => {
+    const n = parseFloat(v);
+    if (!v && v !== 0) return '—';
+    if (isNaN(n)) return '—';
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const cols = COL_DEFS[activeTab] || COL_DEFS.materiales;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'#f8fafc', fontFamily:'system-ui,sans-serif' }}>
+
+      {/* ── HEADER ── */}
+      <div style={{ background:'white', borderBottom:'1px solid #e2e8f0', padding:'12px 20px', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
+          <div>
+            <h2 style={{ fontWeight:'800', fontSize:'16px', color:'#0f172a', margin:0 }}>Base de Datos</h2>
+            <span style={{ fontSize:'11px', color:'#94a3b8' }}>
+              {activeTab === 'analisis_costo' ? `${totalCount.toLocaleString()} partidas` : `${totalCount.toLocaleString()} registros`}
+            </span>
+          </div>
+          {/* Búsqueda */}
+          <div style={{ position:'relative' }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar descripción..."
+              style={{ padding:'7px 12px 7px 32px', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'12px', width:'220px', outline:'none', background:'#f8fafc' }}
+            />
+            <span style={{ position:'absolute', left:'10px', top:'8px', color:'#94a3b8', fontSize:'13px' }}>🔍</span>
+          </div>
+        </div>
+
+        {/* ── PESTAÑAS ── */}
+        <div style={{ display:'flex', gap:'2px', overflowX:'auto' }}>
+          {TABS.map(tab => (
+            <button key={tab.key} onClick={() => { setActiveTab(tab.key); setSearch(''); }}
+              style={{
+                padding:'7px 14px', border:'none', borderRadius:'6px 6px 0 0', cursor:'pointer',
+                fontSize:'11px', fontWeight:'700', whiteSpace:'nowrap',
+                background: activeTab === tab.key ? tab.color : '#f1f5f9',
+                color: activeTab === tab.key ? 'white' : '#64748b',
+                borderBottom: activeTab === tab.key ? `3px solid ${tab.color}` : '3px solid transparent',
+                transition: 'all 0.15s',
+              }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── TABLA ── */}
+      <div style={{ flex:1, overflow:'auto', minHeight:0 }}>
+        {loading ? (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'200px', color:'#94a3b8' }}>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:'24px', marginBottom:'8px' }}>⏳</div>
+              <div style={{ fontSize:'13px', fontWeight:'600' }}>Cargando datos...</div>
+            </div>
+          </div>
+        ) : (
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
+            {/* Cabecera */}
+            <thead>
+              <tr style={{ background: color, position:'sticky', top:0, zIndex:10 }}>
+                {activeTab === 'analisis_costo' && <th style={{ width:'28px', padding:'8px 4px', color:'white' }}></th>}
+                {cols.map(col => (
+                  <th key={col.key} style={{
+                    padding:'8px 10px', color:'white', fontWeight:'700', fontSize:'10px',
+                    textTransform:'uppercase', letterSpacing:'0.05em',
+                    textAlign: col.center || col.num ? 'center' : 'left',
+                    width: col.flex ? undefined : col.w,
+                    minWidth: col.flex ? '160px' : col.w,
+                  }}>{col.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.length === 0 ? (
+                <tr><td colSpan={cols.length + 2} style={{ textAlign:'center', padding:'40px', color:'#94a3b8' }}>
+                  Sin resultados
+                </td></tr>
+              ) : data.map((row, i) => (
+                <React.Fragment key={row.id}>
+                  {/* Fila principal */}
+                  <tr
+                    onClick={() => toggleExpand(row)}
+                    style={{
+                      background: i % 2 === 0 ? 'white' : '#f8fafc',
+                      cursor: activeTab === 'analisis_costo' ? 'pointer' : 'default',
+                      borderBottom:'1px solid #f1f5f9',
+                      transition:'background 0.1s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${color}12`; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = i%2===0?'white':'#f8fafc'; }}
+                  >
+                    {/* Chevron ana_gral */}
+                    {activeTab === 'analisis_costo' && (
+                      <td style={{ width:'28px', textAlign:'center', color: color, fontWeight:'700', fontSize:'11px' }}>
+                        {expandedIds[row.id] ? '▼' : '▶'}
+                      </td>
+                    )}
+                    {cols.map(col => (
+                      <td key={col.key} style={{
+                        padding:'7px 10px',
+                        textAlign: col.center || col.num ? 'center' : 'left',
+                        fontWeight: col.bold ? '800' : '400',
+                        color: col.key === 'precio_total' && row[col.key] ? color
+                             : col.bold ? color
+                             : col.num ? '#374151' : '#1e293b',
+                        fontFamily: col.num ? 'monospace' : 'inherit',
+                        fontSize: col.key === 'descripcion' ? '12px' : col.key === 'precio_total' && row[col.key] ? '13px' : '11px',
+                        whiteSpace: col.key === 'descripcion' ? 'normal' : 'nowrap',
+                        background: col.key === 'precio_total' && row[col.key] ? `${color}10` : 'transparent',
+                        borderRadius: col.key === 'precio_total' ? '6px' : '0',
+                      }}>
+                        {col.key === 'precio_total' && row[col.key]
+                          ? 'RD$ ' + Number(row[col.key]).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+                          : col.num ? fmtNum(row[col.key]) : (row[col.key] ?? '—')}
+                      </td>
+                    ))}
+                  </tr>
+
+                  {/* Items expandidos (analisis_costo) */}
+                  {activeTab === 'analisis_costo' && expandedIds[row.id] && (itemsMap[row.id] || []).map((item, j) => {
+                    const isTotal = item.tipo_fila === 'total';
+                    return (
+                      <tr key={`item-${item.id}`} style={{ background: isTotal ? '#0891b2' : '#f0f9ff', borderBottom: isTotal ? 'none' : '1px solid #e0f2fe' }}>
+                        <td style={{ width:'28px' }}></td>
+                        <td style={{ padding:'5px 10px 5px 24px', color: isTotal ? 'rgba(255,255,255,0.7)' : '#64748b', fontSize:'10px' }}>{isTotal ? '' : (item.referencia || '')}</td>
+                        <td style={{ padding:'5px 10px', color: isTotal ? 'rgba(255,255,255,0.7)' : '#64748b', fontSize:'10px', fontFamily:'monospace' }}>{isTotal ? '' : (item.codigo || '')}</td>
+                        <td style={{ padding:'6px 10px', color: isTotal ? 'white' : '#374151', fontSize: isTotal ? '12px' : '11px', fontWeight: isTotal ? '800' : '400' }}>{isTotal ? '' : item.descripcion}</td>
+                        <td style={{ padding:'6px 10px', textAlign:'center', color: isTotal ? 'white' : '#64748b', fontSize:'11px', fontWeight: isTotal ? '800' : '400' }}>{item.unidad || '—'}</td>
+                        <td style={{ padding:'6px 10px', textAlign:'center', fontFamily:'monospace', fontSize:'11px', color: isTotal ? 'rgba(255,255,255,0.8)' : '#374151' }}>{isTotal ? '' : fmtNum(item.cantidad)}</td>
+                        <td style={{ padding:'6px 10px', textAlign:'center', fontFamily:'monospace', fontSize:'11px', color: isTotal ? 'rgba(255,255,255,0.8)' : '#374151' }}>{isTotal ? '' : fmtNum(item.precio_unitario)}</td>
+                        <td style={{ padding:'6px 10px', textAlign:'center', fontFamily:'monospace', fontSize: isTotal ? '13px' : '11px', fontWeight: isTotal ? '800' : '400', color: isTotal ? 'white' : '#374151' }}>{fmtNum(item.subtotal)}</td>
+                        <td style={{ padding:'6px 10px', textAlign:'center', fontFamily:'monospace', fontSize: isTotal ? '13px' : '11px', fontWeight:'800', color: isTotal ? '#ffffff' : '#0891b2' }}>{fmtNum(item.precio_con_itbis)}</td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── PAGINACIÓN ── */}
+      <div style={{ background:'white', borderTop:'1px solid #e2e8f0', padding:'8px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <span style={{ fontSize:'11px', color:'#94a3b8' }}>
+          Mostrando {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount.toLocaleString()}
+        </span>
+        <div style={{ display:'flex', gap:'6px' }}>
+          <button onClick={() => setPage(0)} disabled={page === 0}
+            style={{ padding:'4px 10px', border:'1px solid #e2e8f0', borderRadius:'6px', fontSize:'11px', cursor: page===0?'not-allowed':'pointer', background: page===0?'#f8fafc':'white', color: page===0?'#cbd5e1':'#374151', fontWeight:'600' }}>«</button>
+          <button onClick={() => setPage(p => Math.max(0, p-1))} disabled={page === 0}
+            style={{ padding:'4px 10px', border:'1px solid #e2e8f0', borderRadius:'6px', fontSize:'11px', cursor: page===0?'not-allowed':'pointer', background: page===0?'#f8fafc':'white', color: page===0?'#cbd5e1':'#374151', fontWeight:'600' }}>‹ Ant.</button>
+          <span style={{ padding:'4px 12px', background: color, color:'white', borderRadius:'6px', fontSize:'11px', fontWeight:'700' }}>
+            {page + 1} / {totalPages || 1}
+          </span>
+          <button onClick={() => setPage(p => Math.min(totalPages-1, p+1))} disabled={page >= totalPages-1}
+            style={{ padding:'4px 10px', border:'1px solid #e2e8f0', borderRadius:'6px', fontSize:'11px', cursor: page>=totalPages-1?'not-allowed':'pointer', background: page>=totalPages-1?'#f8fafc':'white', color: page>=totalPages-1?'#cbd5e1':'#374151', fontWeight:'600' }}>Sig. ›</button>
+          <button onClick={() => setPage(totalPages-1)} disabled={page >= totalPages-1}
+            style={{ padding:'4px 10px', border:'1px solid #e2e8f0', borderRadius:'6px', fontSize:'11px', cursor: page>=totalPages-1?'not-allowed':'pointer', background: page>=totalPages-1?'#f8fafc':'white', color: page>=totalPages-1?'#cbd5e1':'#374151', fontWeight:'600' }}>»</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// ==================== VISTA: PLANTILLAS ====================
+const TemplatesView = () => {
+  const modelos = [
+    { id:1, nombre:'Vivienda Unifamiliar',     tipo:'Residencial', desc:'Modelo completo para vivienda de 1 planta.',      archivo: null },
+    { id:2, nombre:'Vivienda Bifamiliar',      tipo:'Residencial', desc:'Modelo para vivienda de 2 apartamentos.',         archivo: null },
+    { id:3, nombre:'Edificio Multifamiliar',   tipo:'Residencial', desc:'Modelo para edificio de apartamentos.',           archivo: null },
+    { id:4, nombre:'Local Comercial',          tipo:'Comercial',   desc:'Modelo para locales y naves comerciales.',        archivo: null },
+    { id:5, nombre:'Nave Industrial',          tipo:'Industrial',  desc:'Modelo para estructuras industriales.',           archivo: null },
+    { id:6, nombre:'Remodelación',          tipo:'General',     desc:'Plantilla para trabajos de remodelación.',     archivo: null },
+  ];
+
+  const descargar = (m) => {
+    if (!m.archivo) {
+      alert('Este modelo estará disponible próximamente.');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = m.archivo;
+    a.download = m.nombre + '.xlsx';
+    a.click();
+  };
+
+  const colores = {
+    'Residencial': { bg:'#dbeafe', text:'#1d4ed8', border:'#3b82f6' },
+    'Comercial':   { bg:'#d1fae5', text:'#065f46', border:'#10b981' },
+    'Industrial':  { bg:'#fef3c7', text:'#92400e', border:'#f59e0b' },
+    'General':     { bg:'#f1f5f9', text:'#475569', border:'#94a3b8' },
+  };
+
+  return (
+    <div style={{flex:1, display:'flex', flexDirection:'column', height:'100%', background:'#f8fafc', overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{background:'white', borderBottom:'1px solid #e2e8f0', padding:'20px 28px', flexShrink:0}}>
+        <h2 style={{fontWeight:'800', fontSize:'20px', color:'#0f172a', margin:0}}>Modelos de Presupuesto</h2>
+        <p style={{fontSize:'13px', color:'#64748b', marginTop:'4px'}}>Descarga plantillas base para iniciar tu proyecto rápidamente.</p>
+      </div>
+
+      {/* Grid */}
+      <div style={{flex:1, overflowY:'auto', padding:'24px 28px'}}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:'16px'}}>
+          {modelos.map(m => {
+            const c = colores[m.tipo] || colores['General'];
+            return (
+              <div key={m.id} style={{background:'white', borderRadius:'14px', border:'1px solid #e2e8f0', padding:'20px', boxShadow:'0 1px 3px rgba(0,0,0,0.06)', display:'flex', flexDirection:'column', gap:'12px'}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <div style={{width:'44px', height:'44px', borderRadius:'10px', background:c.bg, display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    <LayoutTemplate size={22} color={c.text}/>
+                  </div>
+                  <span style={{background:c.bg, color:c.text, border:'1px solid '+c.border, padding:'3px 10px', borderRadius:'20px', fontSize:'11px', fontWeight:'700', textTransform:'uppercase', letterSpacing:'0.04em'}}>{m.tipo}</span>
+                </div>
+                <div>
+                  <h3 style={{fontWeight:'800', fontSize:'15px', color:'#0f172a', margin:'0 0 4px 0'}}>{m.nombre}</h3>
+                  <p style={{fontSize:'12px', color:'#64748b', margin:0, lineHeight:'1.5'}}>{m.desc}</p>
+                </div>
+                <button onClick={() => descargar(m)}
+                  style={{marginTop:'auto', width:'100%', padding:'10px', border:'1px solid '+c.border, borderRadius:'8px', background: m.archivo ? c.bg : '#f8fafc', color: m.archivo ? c.text : '#94a3b8', fontWeight:'700', fontSize:'12px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', textTransform:'uppercase', letterSpacing:'0.04em'}}>
+                  <Download size={15}/>
+                  {m.archivo ? 'Descargar Modelo' : 'Próximamente'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{marginTop:'24px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:'12px', padding:'16px 20px', display:'flex', alignItems:'center', gap:'12px'}}>
+          <div style={{width:'36px', height:'36px', background:'#dbeafe', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+            <Share2 size={18} color='#1d4ed8'/>
+          </div>
+          <div>
+            <div style={{fontWeight:'700', fontSize:'13px', color:'#1d4ed8'}}>¿Necesitas un modelo personalizado?</div>
+            <div style={{fontSize:'12px', color:'#3b82f6', marginTop:'2px'}}>Los modelos se actualizan periódicamente. Nuevas plantillas disponibles próximamente.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==================== VISTA: DASHBOARD HOME ====================
+const DashboardHome = ({ goToBudget, goToCostAnalysis, goToTemplates, goToCalculators }) => {
+  const cards = [
+    { title:'Presupuesto', sub:'Nuevo Proyecto', desc:'Crea presupuestos detallados con costos directos e indirectos.', action:'Iniciar →', iconBg:'#dbeafe', iconStroke:'#1d4ed8', actionColor:'#1d4ed8', onClick: goToBudget,
+      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg> },
+    { title:'Cálculo de Cuantías', sub:'Cuantías y Costos', desc:'Calcula cuantías de acero, hormigón y costos por elemento estructural.', action:'Calcular →', iconBg:'#ffe4e6', iconStroke:'#e11d48', actionColor:'#e11d48', onClick: goToCalculators,
+      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h4M8 14h4M8 18h4"/></svg> },
+    { title:'Base de Datos', sub:'MOB & Precios', desc:'Consulta precios actualizados de materiales y análisis de costos.', action:'Consultar →', iconBg:'#ffedd5', iconStroke:'#ea580c', actionColor:'#ea580c', onClick: goToCostAnalysis,
+      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg> },
+    { title:'Modelos', sub:'Plantillas', desc:'Estructuras predefinidas para viviendas, naves y más.', action:'Ver →', iconBg:'#ede9fe', iconStroke:'#7c3aed', actionColor:'#7c3aed', onClick: goToTemplates,
+      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg> },
+  ];
+  return (
+    <div style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 20px',minHeight:'100%',backgroundImage:`url(${BACKGROUNDS.dashboard})`,backgroundSize:'cover',backgroundPosition:'center',position:'relative'}}>
+      <div style={{position:'absolute',inset:0,background:'rgba(15,23,42,0.65)'}}></div>
+      <div style={{position:'relative',zIndex:1,textAlign:'center',marginBottom:'40px'}}>
+        <h2 style={{fontSize:'46px',fontWeight:'900',color:'white',letterSpacing:'-0.03em',margin:'0 0 8px'}}>ProCalc</h2>
+        <p style={{color:'#cbd5e1',fontSize:'15px',margin:0}}>Suite profesional para análisis de costos y presupuestos de obra.</p>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'16px',maxWidth:'900px',width:'100%',position:'relative',zIndex:1}}>
+        {cards.map((c,i) => (
+          <div key={i} onClick={c.onClick} style={{background:'white',borderRadius:'18px',padding:'22px',cursor:'pointer',transition:'all 0.2s',display:'flex',flexDirection:'column'}}
+            onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-4px)';e.currentTarget.style.boxShadow='0 16px 40px rgba(0,0,0,0.2)';}}
+            onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='none';}}>
+            <div style={{width:'50px',height:'50px',borderRadius:'13px',background:c.iconBg,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:'14px'}}>{c.icon}</div>
+            <div style={{fontSize:'10px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.1em',color:'#94a3b8',marginBottom:'3px'}}>{c.sub}</div>
+            <div style={{fontSize:'17px',fontWeight:'800',color:'#0f172a',marginBottom:'7px'}}>{c.title}</div>
+            <div style={{fontSize:'11px',color:'#64748b',lineHeight:'1.5',marginBottom:'14px',flex:1}}>{c.desc}</div>
+            <div style={{fontSize:'12px',fontWeight:'700',color:c.actionColor}}>{c.action}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+// ==================== INDIRECTO ROW (stable component to avoid focus loss) ==
+const IndirectoRow = ({ ind, subtotal, onChange }) => (
+  <div style={{display:'flex',alignItems:'center',gap:'6px',background:'#0f172a',borderRadius:'8px',padding:'6px 10px',border:ind.activo?'1px solid #3b82f6':'1px solid #334155'}}>
+    <input type="checkbox" checked={ind.activo} onChange={e => onChange(ind.id,'activo',e.target.checked)} style={{cursor:'pointer',accentColor:'#3b82f6'}}/>
+    <input value={ind.label} onChange={e => onChange(ind.id,'label',e.target.value)}
+      style={{background:'none',border:'none',color:ind.activo?'#e2e8f0':'#475569',fontSize:'12px',fontWeight:'600',width:'130px',outline:'none'}}/>
+    <input type="number" value={ind.pct} min="0" max="100" step="0.5" onChange={e => onChange(ind.id,'pct',e.target.value)}
+      style={{width:'46px',background:'#1e293b',border:'1px solid #334155',borderRadius:'4px',color:'#60a5fa',fontSize:'13px',fontWeight:'700',padding:'2px 4px',textAlign:'right',outline:'none'}}/>
+    <span style={{color:'#475569',fontSize:'12px'}}>%</span>
+    {ind.activo && ind.pct > 0 && (
+      <span style={{color:'#34d399',fontSize:'11px',fontFamily:'monospace',marginLeft:'2px'}}>
+        RD$ {(subtotal*(parseFloat(ind.pct)||0)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+      </span>
+    )}
+  </div>
+);
+
+// ==================== DASHBOARD WRAPPER ====================
+const Dashboard = ({ onLogout }) => {
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // ── Budget State ──────────────────────────────────────────────────────────
+  const [projects, setProjects] = useState([]);
+  const [activeProject, setActiveProject] = useState(null);
+  const [showProjectList, setShowProjectList] = useState(false);
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectClient, setNewProjectClient] = useState('');
+  const [companyName, setCompanyName] = useState('Mi Empresa Constructora');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [companyEmail, setCompanyEmail] = useState('');
+  const [nroCotizacion, setNroCotizacion] = useState('');
+  const [validezDias, setValidezDias] = useState(30);
+  const [showAnaModal, setShowAnaModal] = useState(false);
+  const [showIndirectos, setShowIndirectos] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [anaSearch, setAnaSearch] = useState('');
+  const [anaResults, setAnaResults] = useState([]);
+  const [anaLoading, setAnaLoading] = useState(false);
+  const [editingCell, setEditingCell] = useState(null);
+  const [expandedPartidas, setExpandedPartidasBudget] = useState({});
+  // Costos indirectos: {id, label, pct, monto_fijo}
+  const [indirectos, setIndirectos] = useState([
+    { id: 1, label: 'Dirección Técnica',  pct: 5,   activo: true },
+    { id: 2, label: 'Administración',      pct: 3,   activo: true },
+    { id: 3, label: 'Transporte',          pct: 2,   activo: true },
+    { id: 4, label: 'Imprevistos',         pct: 2,   activo: true },
+    { id: 5, label: 'Otros',              pct: 0,   activo: false },
+  ]);
+
+  // ── Cálculos ──────────────────────────────────────────────────────────────
+  const partidas = activeProject?.partidas || [];
+  const subtotal = partidas.reduce((s, p) => {
+    const base = (parseFloat(p.cantidad)||0) * (parseFloat(p.precio_unitario)||0);
+    return s + base;
+  }, 0);
+  const totalIndirectos = indirectos.filter(i => i.activo).reduce((s, i) => s + subtotal * (parseFloat(i.pct)||0) / 100, 0);
+  const subtotalConInd = subtotal + totalIndirectos;
+  const itbisAmt = subtotalConInd * 0.18;
+  const total = subtotalConInd + itbisAmt;
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const updateProject = (updated) => {
+    setActiveProject(updated);
+    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+  };
+
+  const crearProyecto = () => {
+    if (!newProjectName.trim()) return;
+    const p = { id: Date.now(), nombre: newProjectName.trim(), cliente: newProjectClient.trim(), fecha: new Date().toLocaleDateString('es-DO'), partidas: [] };
+    setProjects(prev => [...prev, p]);
+    setActiveProject(p);
+    setNewProjectName(''); setNewProjectClient('');
+    setShowNewProjectModal(false);
+  };
+
+  const togglePartidaBudget = (id) => {
+    setExpandedPartidasBudget(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Buscar en ana_gral — solo partidas (tipo_fila='partida')
+  const buscarAna = async (term) => {
+    setAnaSearch(term);
+    if (term.length < 2) { setAnaResults([]); return; }
+    setAnaLoading(true);
+    const { data } = await supabase.from('ana_gral')
+      .select('id,codigo,descripcion,unidad,valor_rd,precio_con_itbis,tipo_fila,partida_codigo')
+      .ilike('descripcion', '%' + term + '%').limit(40);
+    setAnaResults(data || []);
+    setAnaLoading(false);
+  };
+
+  // Agregar análisis completo (partida + sus items) desde ana_gral
+  const agregarAnalisis = async (partida) => {
+    if (!activeProject) return;
+    // Cargar items de esta partida
+    const { data: items } = await supabase.from('ana_gral')
+      .select('*').eq('partida_codigo', partida.codigo).eq('tipo_fila', 'item');
+    const nuevaPartida = {
+      id: Date.now() + Math.random(),
+      tipo: 'analisis',
+      codigo: partida.codigo,
+      descripcion: partida.descripcion,
+      unidad: partida.unidad || 'm2',
+      cantidad: 1,
+      precio_unitario: partida.valor_rd || 0,
+      enCotizacion: true,
+      items: (items || []).map(it => ({
+        id: it.id,
+        codigo: it.codigo,
+        descripcion: it.descripcion,
+        tipo: it.tipo,
+        cantidad: it.cantidad,
+        unidad: it.unidad,
+        precio_unitario: it.precio_con_itbis || it.precio_unitario,
+        valor_rd: it.valor_rd,
+      })),
+    };
+    updateProject({ ...activeProject, partidas: [...activeProject.partidas, nuevaPartida] });
+  };
+
+  // Agregar fila libre (insumo, MO, etc.)
+  const agregarPartidaBlanco = (tipo) => {
+    if (!activeProject) return;
+    const labels = { insumo: 'Material / Insumo', mo: 'Mano de Obra', libre: 'Partida Nueva' };
+    const nueva = {
+      id: Date.now() + Math.random(),
+      tipo: tipo,
+      codigo: '',
+      descripcion: labels[tipo] || 'Nueva Partida',
+      unidad: tipo === 'mo' ? 'jornal' : 'u',
+      cantidad: 1,
+      precio_unitario: 0,
+      enCotizacion: true,
+      items: [],
+    };
+    updateProject({ ...activeProject, partidas: [...activeProject.partidas, nueva] });
+  };
+
+  const editarPartida = (rowId, field, value) => {
+    if (!activeProject) return;
+    const partidas = activeProject.partidas.map(p =>
+      p.id === rowId ? { ...p, [field]: (field==='cantidad'||field==='precio_unitario') ? (parseFloat(value)||0) : value } : p
+    );
+    updateProject({ ...activeProject, partidas });
+  };
+
+  // Editar celda de un ITEM dentro de una partida-análisis
+  const toggleCotizacion = (rowId) => {
+    if (!activeProject) return;
+    const partidas = activeProject.partidas.map(p =>
+      p.id === rowId ? { ...p, enCotizacion: !p.enCotizacion } : p
+    );
+    updateProject({ ...activeProject, partidas });
+  };
+
+  const editarItem = (partidaId, itemId, field, value) => {
+    if (!activeProject) return;
+    const partidas = activeProject.partidas.map(p => {
+      if (p.id !== partidaId) return p;
+      const items = p.items.map(it => {
+        if (it.id !== itemId) return it;
+        const numVal = parseFloat(value) || 0;
+        const newIt = { ...it, [field]: (field==='cantidad'||field==='precio_unitario') ? numVal : value };
+        // recalculate valor_rd
+        const cant = field==='cantidad' ? numVal : (parseFloat(it.cantidad)||0);
+        const pu   = field==='precio_unitario' ? numVal : (parseFloat(it.precio_unitario)||0);
+        newIt.valor_rd = cant * pu;
+        return newIt;
+      });
+      // recalculate partida precio_unitario as sum of item valor_rd
+      const newPU = items.reduce((s, it) => s + (parseFloat(it.valor_rd)||0), 0);
+      return { ...p, items, precio_unitario: newPU };
+    });
+    updateProject({ ...activeProject, partidas });
+  };
+
+  const eliminarPartida = (rowId) => {
+    if (!activeProject) return;
+    updateProject({ ...activeProject, partidas: activeProject.partidas.filter(p => p.id !== rowId) });
+  };
+
+  // ── Exportar Excel — cotización A:F formato profesional ──────────────────
+  const exportarExcel = () => {
+    const pr = activeProject;
+    const fmtN = (v) => Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const darkH = '#1E3A5F'; const blueH = '#1D4ED8'; const cyan = '#DBEAFE'; const lightRow = '#EEF4FF';
+    const nro = nroCotizacion || 'S/N';
+    const today = new Date().toLocaleDateString('es-DO');
+    const validUntil = new Date(Date.now()+validezDias*86400000).toLocaleDateString('es-DO');
+    const subtotalCot = (pr.partidas||[]).filter(p=>p.enCotizacion!==false).reduce((s,p)=>(s+(parseFloat(p.cantidad)||0)*(parseFloat(p.precio_unitario)||0)),0);
+    const itbisAmtCot = subtotalCot*0.18;
+    const totalIndCot = indirectos.filter(i=>i.activo).reduce((s,i)=>s+subtotalCot*(parseFloat(i.pct)||0)/100,0);
+    const totalCot = subtotalCot+totalIndCot+itbisAmtCot;
+
+    // colgroup fija A:F
+    const colgroup = `<colgroup>
+      <col style="width:80pt"/>
+      <col style="width:200pt"/>
+      <col style="width:40pt"/>
+      <col style="width:60pt"/>
+      <col style="width:80pt"/>
+      <col style="width:80pt"/>
+    </colgroup>`;
+
+    const td = (val, style='') => `<td style="font-family:Arial;font-size:10pt;border:1px solid #CBD5E1;padding:5px 7px;${style}">${val??''}</td>`;
+    const th = (val, align='left') => `<th style="font-family:Arial;font-size:9pt;font-weight:bold;background:${darkH};color:white;padding:6px 7px;text-align:${align};border:1px solid #334155;">${val}</th>`;
+
+    const partidasCot = (pr.partidas||[]).filter(p => p.enCotizacion !== false);
+
+    let rows = '';
+
+    // ROW 1: Empresa | COTIZACIÓN
+    rows += `<tr>
+      <td colspan="3" style="font-family:Arial;font-size:14pt;font-weight:900;color:${darkH};padding:10px 8px;border-bottom:3px solid ${blueH};">${companyName}</td>
+      <td colspan="3" style="font-family:Arial;font-size:16pt;font-weight:900;color:${blueH};padding:10px 8px;text-align:right;border-bottom:3px solid ${blueH};letter-spacing:0.05em;">COTIZACIÓN</td>
+    </tr>`;
+
+    // ROW 2: Datos empresa izq | No. cot, fecha, validez der
+    rows += `<tr style="background:#F8FAFC;">
+      <td colspan="3" style="font-family:Arial;font-size:9pt;color:#64748B;padding:8px 8px 4px;vertical-align:top;line-height:1.7;border-right:none;">
+        ${companyAddress ? `Dirección: ${companyAddress}<br/>` : ''}${companyPhone ? `Tel: ${companyPhone}<br/>` : ''}${companyEmail ? `Correo: ${companyEmail}` : '&nbsp;'}
+      </td>
+      <td colspan="3" style="font-family:Arial;font-size:9pt;color:#374151;padding:8px 8px 4px;text-align:right;vertical-align:top;line-height:2;">
+        <b style="color:#64748B;">No. Cotización:</b> <b style="color:${blueH};font-size:11pt;">${nro}</b><br/>
+        <b style="color:#64748B;">Fecha:</b> ${today}<br/>
+        <b style="color:#64748B;">Válido hasta:</b> ${validUntil}
+      </td>
+    </tr>`;
+
+    // Spacer
+    rows += `<tr><td colspan="6" style="padding:3px;border:none;">&nbsp;</td></tr>`;
+
+    // Datos del cliente header
+    rows += `<tr><td colspan="6" style="background:${darkH};color:white;font-family:Arial;font-size:9pt;font-weight:bold;padding:5px 8px;text-transform:uppercase;letter-spacing:0.06em;">Datos del Cliente</td></tr>`;
+    rows += `<tr style="background:#F1F5F9;">
+      <td colspan="2" style="font-family:Arial;font-size:9pt;padding:6px 8px;"><b>Cliente:</b> ${pr.cliente||'—'}</td>
+      <td colspan="2" style="font-family:Arial;font-size:9pt;padding:6px 8px;"><b>Proyecto:</b> ${pr.nombre}</td>
+      <td colspan="2" style="padding:6px 8px;"></td>
+    </tr>`;
+
+    // Spacer
+    rows += `<tr><td colspan="6" style="padding:3px;border:none;">&nbsp;</td></tr>`;
+
+    // Table header
+    rows += `<tr>${th('Código')}${th('Descripción')}${th('U.','center')}${th('Cantidad','right')}${th('P. Unitario','right')}${th('Total RD$','right')}</tr>`;
+
+    // Partidas (solo las marcadas en cotización)
+    partidasCot.forEach((p, idx) => {
+      const val = (parseFloat(p.cantidad)||0)*(parseFloat(p.precio_unitario)||0);
+      const bg = idx%2===0 ? '#FFFFFF' : lightRow;
+      rows += `<tr style="background:${cyan};border-top:2px solid #3B82F6;">
+        ${td(p.codigo||'', `font-family:Courier New;font-weight:700;color:#1E40AF;`)}
+        ${td(p.descripcion, `font-weight:700;color:#0F172A;`)}
+        ${td(p.unidad, `text-align:center;font-weight:600;`)}
+        ${td(fmtN(p.cantidad), `text-align:right;font-family:Courier New;font-weight:700;`)}
+        ${td(fmtN(p.precio_unitario), `text-align:right;font-family:Courier New;`)}
+        ${td(fmtN(val), `text-align:right;font-family:Courier New;font-weight:800;color:${darkH};background:#BFDBFE;`)}
+      </tr>`;
+    });
+
+    // Spacer
+    rows += `<tr><td colspan="6" style="padding:4px;border:none;">&nbsp;</td></tr>`;
+
+    // Subtotal
+    const blank4 = `<td colspan="4" style="border:none;"></td>`;
+    const totTd = (label, val, bold=false, bg='#F8FAFC') =>
+      `<tr style="background:${bg};">${blank4}
+        <td style="font-family:Arial;font-size:${bold?'10':'9'}pt;font-weight:${bold?'800':'600'};text-align:right;padding:5px 8px;color:#374151;border:1px solid #E2E8F0;">${label}</td>
+        <td style="font-family:Courier New;font-size:${bold?'11':'10'}pt;font-weight:${bold?'800':'700'};text-align:right;padding:5px 8px;border:1px solid #E2E8F0;">${val}</td>
+      </tr>`;
+
+    rows += totTd('Subtotal', fmtN(subtotalCot), false, '#F8FAFC');
+    indirectos.filter(i=>i.activo&&i.pct>0).forEach(i => {
+      rows += totTd(`${i.label} (${i.pct}%)`, fmtN(subtotalCot*i.pct/100), false, '#FAFAFA');
+    });
+    rows += totTd('ITBIS (18%)', fmtN(itbisAmtCot), false, '#F8FAFC');
+
+    // Total row full blue
+    rows += `<tr style="background:${blueH};">
+      ${blank4}
+      <td style="font-family:Arial;font-size:11pt;font-weight:900;text-align:right;padding:8px 8px;color:white;border:1px solid #1E40AF;">TOTAL CON ITBIS</td>
+      <td style="font-family:Courier New;font-size:12pt;font-weight:900;text-align:right;padding:8px 8px;color:white;border:1px solid #1E40AF;">${fmtN(totalCot)}</td>
+    </tr>`;
+
+    // Términos + firma
+    rows += `<tr><td colspan="6" style="padding:10px 8px 4px;font-family:Arial;font-size:9pt;font-weight:700;color:${darkH};border-top:2px solid #E2E8F0;text-transform:uppercase;letter-spacing:0.05em;">Términos y Condiciones</td></tr>`;
+    rows += `<tr>
+      <td colspan="4" style="font-family:Arial;font-size:9pt;color:#94A3B8;padding:4px 8px 20px;line-height:1.7;vertical-align:top;">
+        La complejidad del cliente (firma a continuación).<br/>
+        Precios sujetos a variaciones del mercado.<br/>
+        Válido por ${validezDias} días desde la fecha de emisión.
+      </td>
+      <td colspan="2" style="font-family:Arial;font-size:9pt;text-align:center;padding:40px 8px 6px;color:#374151;border-top:1px solid #374151;vertical-align:bottom;">
+        Nombre del cliente
+      </td>
+    </tr>`;
+
+    rows += `<tr><td colspan="6" style="font-family:Arial;font-size:8pt;color:#CBD5E1;text-align:center;padding:6px;border-top:1px solid #E5E7EB;">Cotización generada con ProCalc · ${today}</td></tr>`;
+
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>Cotización</x:Name>
+<x:WorksheetOptions><x:Selected/><x:FreezePanes/><x:FrozenNoSplit/><x:SplitHorizontal>9</x:SplitHorizontal><x:TopRowBottomPane>9</x:TopRowBottomPane></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+<style>
+  body { margin:0; padding:0; }
+  table { border-collapse:collapse; width:540pt; }
+  td,th { font-size:10pt; }
+</style>
+</head><body>
+<table>${colgroup}${rows}</table>
+</body></html>`;
+
+    const blob = new Blob(['﻿'+html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = ('COT_'+nro+'_'+(pr.nombre||'presupuesto')).replace(/[^a-zA-Z0-9_\-]/g,'_')+'.xls';
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowExportMenu(false);
+  }
+  // ── Exportar a PDF (print window) ─────────────────────────────────────────
+  const exportarPDF = () => {
+    const pr = activeProject;
+    const fmtRD = (v) => 'RD$ ' + Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const darkH = '#1e3a5f'; const blueH = '#1d4ed8'; const cyan = '#dbeafe';
+    const nro = nroCotizacion || 'S/N';
+    const today = new Date().toLocaleDateString('es-DO');
+    const validUntil = new Date(Date.now()+validezDias*86400000).toLocaleDateString('es-DO');
+
+    const partidasCot = (pr.partidas||[]).filter(p => p.enCotizacion !== false);
+    let itemsHTML = partidasCot.map(p => {
+      const val = (parseFloat(p.cantidad)||0)*(parseFloat(p.precio_unitario)||0);
+      return `
+        <tr style="background:${cyan}; font-weight:700; border-top:2px solid #3b82f6;">
+          <td style="padding:7px 8px; font-family:monospace; color:#1e40af;">${p.codigo||''}</td>
+          <td style="padding:7px 8px; color:#0f172a;">${p.descripcion}</td>
+          <td style="padding:7px 8px; text-align:center;">${p.unidad}</td>
+          <td style="padding:7px 8px; text-align:right;">${p.cantidad}</td>
+          <td style="padding:7px 8px; text-align:right;">${fmtRD(p.precio_unitario)}</td>
+          <td style="padding:7px 8px; text-align:right; color:${darkH}; background:#bfdbfe;">${fmtRD(val)}</td>
+        </tr>`;
+    }).join('');
+
+    let indHTML = indirectos.filter(i=>i.activo&&i.pct>0).map(i=>`
+      <tr><td colspan="5" style="padding:5px 16px; text-align:right; color:#64748b;">${i.label} (${i.pct}%)</td>
+          <td style="padding:5px 16px; text-align:right; font-family:monospace;">${fmtRD(subtotalCot*i.pct/100)}</td></tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><title>Cotización ${nro} - ${pr.nombre}</title>
+    <style>
+      body{font-family:Arial,sans-serif;font-size:12px;margin:0 auto;padding:20px;color:#0f172a;max-width:720px;}
+      table{width:100%;border-collapse:collapse;margin-top:0;}
+      th{background:${darkH};color:white;padding:8px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;}
+      td{border-bottom:1px solid #e2e8f0;vertical-align:top;}
+      .header-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid ${blueH};padding-bottom:12px;margin-bottom:0;}
+      .co-name{font-size:20px;font-weight:900;color:${darkH};}
+      .co-label{font-size:24px;font-weight:900;color:${blueH};letter-spacing:0.06em;}
+      .info-bar{display:flex;background:#f8fafc;border-bottom:1px solid #e2e8f0;margin-bottom:12px;}
+      .info-left{flex:1;padding:10px 14px;font-size:11px;color:#64748b;line-height:1.8;}
+      .info-right{padding:10px 14px;font-size:11px;color:#374151;text-align:right;line-height:1.9;}
+      .client-bar{background:${darkH};color:white;padding:6px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0;}
+      .client-info{background:#f1f5f9;padding:8px 14px;font-size:12px;margin-bottom:12px;display:flex;gap:32px;}
+      @media print{body{padding:0;}.no-print{display:none;}}
+    </style></head><body>
+
+    <div class="header-top">
+      <div class="co-name">${companyName}</div>
+      <div class="co-label">COTIZACIÓN</div>
+    </div>
+    <div class="info-bar">
+      <div class="info-left">
+        ${companyAddress ? '<div><strong>Dirección:</strong> ' + companyAddress + '</div>' : ''}
+        ${companyPhone   ? '<div><strong>Tel:</strong> '       + companyPhone   + '</div>' : ''}
+        ${companyEmail   ? '<div><strong>Correo:</strong> '    + companyEmail   + '</div>' : ''}
+      </div>
+      <div class="info-right">
+        <div><strong style="color:#64748b;">No. Cotización:</strong> <strong style="color:${blueH};font-size:14px;">${nro}</strong></div>
+        <div><strong style="color:#64748b;">Fecha:</strong> ${today}</div>
+        <div><strong style="color:#64748b;">Válido hasta:</strong> ${validUntil}</div>
+      </div>
+    </div>
+
+    <div class="client-bar">Datos del Cliente</div>
+    <div class="client-info">
+      <span><strong>Cliente:</strong> ${pr.cliente||'—'}</span>
+      <span><strong>Proyecto:</strong> ${pr.nombre}</span>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th style="width:8%;">Código</th>
+        <th style="width:36%;">Descripción</th>
+        <th style="width:6%;text-align:center;">U.</th>
+        <th style="width:9%;text-align:right;">Cant.</th>
+        <th style="width:13%;text-align:right;">P. Unit.</th>
+        <th style="width:14%;text-align:right;">Total RD$</th>
+      </tr></thead>
+      <tbody>${itemsHTML}</tbody>
+      <tfoot>
+        <tr><td colspan="5" style="padding:8px 16px;text-align:right;font-weight:700;border-top:2px solid #e2e8f0;">Subtotal</td>
+            <td style="padding:8px 16px;text-align:right;font-family:monospace;font-weight:700;">${fmtRD(subtotalCot)}</td></tr>
+        ${indHTML}
+        <tr><td colspan="5" style="padding:8px 16px;text-align:right;font-weight:700;">ITBIS (18%)</td>
+            <td style="padding:8px 16px;text-align:right;font-family:monospace;font-weight:700;">${fmtRD(itbisAmtCot)}</td></tr>
+        <tr style="background:${blueH};color:white;">
+          <td colspan="5" style="padding:11px 16px;text-align:right;font-weight:800;font-size:14px;">TOTAL CON ITBIS</td>
+          <td style="padding:11px 16px;text-align:right;font-family:monospace;font-weight:800;font-size:15px;">${fmtRD(totalCot)}</td></tr>
+      </tfoot>
+    </table>
+
+    <div style="margin-top:24px;border-top:1px solid #e2e8f0;padding-top:14px;display:flex;justify-content:space-between;align-items:flex-start;">
+      <div style="font-size:11px;color:#94a3b8;max-width:55%;line-height:1.7;">
+        <strong style="color:${darkH};">Términos y Condiciones</strong><br/>
+        La complejidad del cliente (firma a continuación). Precios sujetos a variaciones del mercado. Válido por 30 días desde la fecha de emisión.
+      </div>
+      <div style="text-align:center;font-size:11px;">
+        <div style="height:44px;"></div>
+        <div style="border-top:1px solid #374151;padding-top:5px;color:#374151;">Nombre del cliente</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:9px;color:#cbd5e1;text-align:center;border-top:1px solid #e5e7eb;padding-top:8px;">
+      Cotización generada con ProCalc · ${today}
+    </div>
+    <script>window.onload=()=>{window.print();}</script>
+    </body></html>`;
+
+    const w = window.open('','_blank','width=920,height=720');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    } else {
+      // Fallback: blob URL if popup blocked
+      const blob = new Blob([html], {type:'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    }
+    setShowExportMenu(false);
+  }
+  const handleIndirectoChange = (id, field, value) => {
+    setIndirectos(prev => prev.map(i => i.id === id ? { ...i, [field]: field === 'pct' ? (parseFloat(value)||0) : value } : i));
+  };
+
+  const handleViewChange = (view) => { setCurrentView(view); setMobileMenuOpen(false); };
+
+  return (
+    <div style={{display:'flex', height:'100vh', overflow:'hidden', background:'#f1f5f9'}}>
+      {mobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />}
+
+      <aside style={{
+          flexShrink: 0,
+          width: sidebarOpen ? '220px' : '64px',
+          transition: 'width 0.25s ease',
+          display: 'flex',
+          flexDirection: 'column',
+          background: '#0f172a',
+          color: 'white',
+          borderRight: '1px solid #1e293b',
+          overflow: 'hidden',
+          position: 'relative',
+          zIndex: 40,
+        }}
+        className="hidden md:flex shadow-2xl">
+        <button onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="hidden md:flex absolute -right-3 top-20 bg-white text-slate-800 border border-slate-200 rounded-full p-1 shadow-md hover:bg-slate-100 z-50">
+          {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+        </button>
+        <div style={{padding:'0 16px', height:'64px', display:'flex', alignItems:'center', gap:'12px', borderBottom:'1px solid #1e293b', overflow:'hidden', justifyContent: sidebarOpen ? 'flex-start' : 'center'}}>
+          <div style={{width:'38px', height:'38px', minWidth:'38px', background:'#1d4ed8', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, boxShadow:'0 0 0 2px rgba(96,165,250,0.3)'}}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
+          </div>
+          {sidebarOpen && (
+            <div>
+              <span style={{fontWeight:'900', fontSize:'15px', color:'white', display:'block', lineHeight:1}}>ProCalc</span>
+              <span style={{fontSize:'9px', fontWeight:'700', color:'#60a5fa', letterSpacing:'0.15em', textTransform:'uppercase'}}>Ingeniería de Costos</span>
+            </div>
+          )}
+        </div>
+        <nav style={{flex:1, padding:'12px 10px', overflowY:'auto'}}>
+          <NavItem icon={<Home size={19} />} label="Inicio" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
+          <NavItem icon={<Calculator size={19} />} label="Cotizaciones" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'budget'} onClick={() => handleViewChange('budget')} />
+          <NavItem icon={<Box size={19} />} label="Cálculo de Cuantías" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'calculators'} onClick={() => handleViewChange('calculators')} />
+          <NavItem icon={<Grid size={19} />} label="Base de Datos" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'costAnalysis'} onClick={() => handleViewChange('costAnalysis')} />
+          <NavItem icon={<LayoutTemplate size={19} />} label="Modelos" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'templates'} onClick={() => handleViewChange('templates')} />
+        </nav>
+        <div className="p-4 border-t border-slate-800">
+          <button onClick={onLogout} className={`w-full flex items-center ${(sidebarOpen || mobileMenuOpen) ? 'justify-start px-4' : 'justify-center'} py-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-all`}>
+            <LogOut size={20} />
+            {(sidebarOpen || mobileMenuOpen) && <span className="ml-3 font-medium text-sm">Cerrar Sesión</span>}
+          </button>
+        </div>
+      </aside>
+
+      <main style={{flex:'1 1 0%', minWidth:0, display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden', background:'#f1f5f9', position:'relative'}}>
+        {/* TOPBAR MOBILE */}
+        <div className="md:hidden h-16 bg-slate-900 text-white flex items-center px-4 shadow-md z-30" style={{flexShrink:0}}>
+          <button onClick={() => setMobileMenuOpen(true)} className="p-2 hover:bg-slate-800 rounded-lg"><PanelLeft size={24} /></button>
+          <span className="ml-3 font-bold text-lg">ProCalc</span>
+        </div>
+        {/* TOPBAR DESKTOP */}
+        <div className="hidden md:flex" style={{height:'56px',background:'white',borderBottom:'1px solid #e2e8f0',alignItems:'center',justifyContent:'space-between',padding:'0 20px',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.05)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+            <div style={{width:'3px',height:'20px',background:'#1d4ed8',borderRadius:'2px'}}></div>
+            <span style={{fontWeight:'700',fontSize:'15px',color:'#0f172a'}}>
+              {currentView==='dashboard'&&'Panel Principal'}
+              {currentView==='budget'&&'Cotizaciones'}
+              {currentView==='calculators'&&'Cálculo de Cuantías'}
+              {currentView==='costAnalysis'&&'Base de Datos'}
+              {currentView==='templates'&&'Modelos'}
+            </span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+            <span style={{fontSize:'12px',color:'#94a3b8'}}>República Dominicana</span>
+            <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'#1d4ed8',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:'13px',fontWeight:'700'}}>P</div>
+          </div>
+        </div>
+
+        <div style={{flex:'1 1 0%', minHeight:0, overflow:'hidden', position:'relative', display:'flex', flexDirection:'column'}}>
+          {currentView === 'dashboard' && <DashboardHome goToBudget={() => handleViewChange('budget')} goToCostAnalysis={() => handleViewChange('costAnalysis')} goToTemplates={() => handleViewChange('templates')} goToCalculators={() => handleViewChange('calculators')} />}
+          {currentView === 'costAnalysis' && <CostAnalysisView />}
+          {currentView === 'templates' && <TemplatesView />}
+          {currentView === 'calculators' && <CalculatorsView onAddToPresupuesto={(partida) => {
+            if (!activeProject) { alert('Primero crea o abre un proyecto en el Presupuesto.'); return; }
+            const nueva = {
+              id: Date.now() + Math.random(),
+              tipo: 'analisis',
+              codigo: '',
+              descripcion: partida.descripcion,
+              unidad: partida.unidad || 'u',
+              cantidad: partida.cantidad || 1,
+              precio_unitario: partida.precio_unitario || 0,
+              enCotizacion: true,
+              items: partida.items || [],
+            };
+            updateProject({ ...activeProject, partidas: [...activeProject.partidas, nueva] });
+            handleViewChange('budget');
+          }} />}
+
+          {currentView === 'budget' && (
+            <div style={{display:'flex',flexDirection:'column',height:'100%',background:'#f8fafc'}}>
+
+              {/* HEADER */}
+              <header style={{background:'white',borderBottom:'1px solid #e2e8f0',padding:'10px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <FileText size={20} style={{color:'#2563eb'}} />
+                  <div>
+                    <div style={{fontWeight:'700',fontSize:'15px',color:'#0f172a'}}>{activeProject ? activeProject.nombre : 'Presupuesto'}</div>
+                    {activeProject && <div style={{fontSize:'11px',color:'#64748b'}}>{activeProject.cliente} · {activeProject.fecha}</div>}
+                  </div>
+                  <button onClick={() => setShowProjectList(v => !v)}
+                    style={{marginLeft:'6px',padding:'3px 10px',border:'1px solid #cbd5e1',borderRadius:'6px',fontSize:'12px',background:'#f8fafc',cursor:'pointer',color:'#475569',display:'flex',alignItems:'center',gap:'3px'}}>
+                    <ChevronRight size={11} style={{transform:showProjectList?'rotate(90deg)':'none',transition:'0.2s'}} /> Proyectos
+                  </button>
+                </div>
+                <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                  {activeProject && (
+                    <div style={{display:'flex',gap:'14px',marginRight:'10px',borderRight:'1px solid #e2e8f0',paddingRight:'14px'}}>
+                      <div style={{textAlign:'right'}}>
+                        <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'600',textTransform:'uppercase'}}>Subtotal</div>
+                        <div style={{fontSize:'13px',fontWeight:'700',color:'#1e293b',fontFamily:'monospace'}}>RD$ {subtotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                      </div>
+                      <div style={{textAlign:'right'}}>
+                        <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'600',textTransform:'uppercase'}}>ITBIS 18%</div>
+                        <div style={{fontSize:'13px',fontWeight:'700',color:'#1e293b',fontFamily:'monospace'}}>RD$ {itbisAmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                      </div>
+                      <div style={{textAlign:'right'}}>
+                        <div style={{fontSize:'10px',color:'#2563eb',fontWeight:'700',textTransform:'uppercase'}}>Total</div>
+                        <div style={{fontSize:'17px',fontWeight:'800',color:'#1d4ed8',fontFamily:'monospace'}}>RD$ {total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Export button */}
+                  {activeProject && (
+                    <div style={{position:'relative'}}>
+                      <button onClick={() => setShowExportMenu(v => !v)}
+                        style={{padding:'8px 14px',background:'#0f172a',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'6px'}}>
+                        <Download size={14}/> Exportar Cotización
+                      </button>
+                      {showExportMenu && (
+                        <div style={{position:'absolute',right:0,top:'110%',background:'white',border:'1px solid #e2e8f0',borderRadius:'10px',boxShadow:'0 8px 24px rgba(0,0,0,0.12)',zIndex:200,minWidth:'160px',overflow:'hidden'}}>
+                          <button onClick={exportarPDF} style={{width:'100%',padding:'12px 18px',border:'none',background:'none',textAlign:'left',cursor:'pointer',fontSize:'13px',fontWeight:'600',color:'#0f172a',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:'8px'}}>
+                            <FileText size={14} style={{color:'#ef4444'}}/> PDF / Imprimir
+                          </button>
+                          <button onClick={exportarExcel} style={{width:'100%',padding:'12px 18px',border:'none',background:'none',textAlign:'left',cursor:'pointer',fontSize:'13px',fontWeight:'600',color:'#0f172a',display:'flex',alignItems:'center',gap:'8px'}}>
+                            <Download size={14} style={{color:'#16a34a'}}/> Excel (.csv)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button onClick={() => setShowNewProjectModal(true)}
+                    style={{padding:'8px 14px',background:'#2563eb',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'5px'}}>
+                    <Plus size={14}/> Nuevo Proyecto
+                  </button>
+                </div>
+              </header>
+
+              {/* PROJECT LIST */}
+              {showProjectList && (
+                <div style={{background:'white',borderBottom:'1px solid #e2e8f0',padding:'10px 20px',display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                  {projects.length === 0
+                    ? <span style={{color:'#94a3b8',fontSize:'13px'}}>No hay proyectos. Crea uno nuevo.</span>
+                    : projects.map(p => (
+                      <button key={p.id} onClick={() => { setActiveProject(p); setShowProjectList(false); }}
+                        style={{padding:'5px 14px',border:activeProject?.id===p.id?'2px solid #2563eb':'1px solid #cbd5e1',borderRadius:'20px',fontSize:'12px',fontWeight:'600',background:activeProject?.id===p.id?'#eff6ff':'white',color:activeProject?.id===p.id?'#1d4ed8':'#475569',cursor:'pointer'}}>
+                        {p.nombre}
+                      </button>
+                    ))
+                  }
+                </div>
+              )}
+
+              {!activeProject ? (
+                <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'14px',color:'#94a3b8'}}>
+                  <FileText size={52} style={{opacity:0.15}}/>
+                  <div style={{fontSize:'17px',fontWeight:'600',color:'#64748b'}}>Crea o selecciona un proyecto</div>
+                  <button onClick={() => setShowNewProjectModal(true)} style={{marginTop:'6px',padding:'11px 26px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Nuevo Proyecto</button>
+                </div>
+              ) : (
+                <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+
+                  {/* TOOLBAR */}
+                  <div style={{padding:'8px 20px',background:'#f1f5f9',borderBottom:'1px solid #e2e8f0',display:'flex',gap:'6px',alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
+                    <span style={{fontSize:'11px',fontWeight:'700',color:'#64748b',marginRight:'4px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Agregar:</span>
+                    <button onClick={() => setShowAnaModal(true)} style={{padding:'5px 12px',background:'#2563eb',color:'white',border:'none',borderRadius:'6px',fontSize:'11px',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+                      <Search size={12}/> Análisis de Costo
+                    </button>
+                    <button onClick={() => agregarPartidaBlanco('insumo')} style={{padding:'5px 12px',background:'#0891b2',color:'white',border:'none',borderRadius:'6px',fontSize:'11px',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+                      <Plus size={12}/> Material
+                    </button>
+                    <button onClick={() => agregarPartidaBlanco('mo')} style={{padding:'5px 12px',background:'#7c3aed',color:'white',border:'none',borderRadius:'6px',fontSize:'11px',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+                      <Plus size={12}/> Mano de Obra
+                    </button>
+                    <button onClick={() => agregarPartidaBlanco('libre')} style={{padding:'5px 12px',background:'white',color:'#475569',border:'1px solid #cbd5e1',borderRadius:'6px',fontSize:'11px',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+                      <Plus size={12}/> Fila Libre
+                    </button>
+                    <div style={{flex:1}}/>
+                    <button onClick={() => setShowIndirectos(v => !v)} style={{padding:'5px 12px',background:showIndirectos?'#0f172a':'white',color:showIndirectos?'white':'#475569',border:'1px solid #cbd5e1',borderRadius:'6px',fontSize:'11px',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+                      <Percent size={12}/> Costos Indirectos
+                    </button>
+                  </div>
+
+                  {/* COSTOS INDIRECTOS PANEL */}
+                  {showIndirectos && (
+                    <div style={{background:'#1e293b',color:'white',padding:'12px 20px',borderBottom:'1px solid #334155',flexShrink:0}}>
+                      <div style={{fontSize:'11px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.06em',color:'#94a3b8',marginBottom:'10px'}}>Costos Indirectos — se aplican sobre el subtotal</div>
+                      <div style={{display:'flex',gap:'10px',flexWrap:'wrap',alignItems:'center'}}>
+                        {indirectos.map(ind => (
+                          <IndirectoRow key={ind.id} ind={ind} subtotal={subtotal} onChange={handleIndirectoChange} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TABLA */}
+                  <div style={{flex:1,overflow:'auto'}}>
+                    <table style={{width:'100%',tableLayout:'fixed',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <colgroup>
+                        <col style={{width:'24px'}}/>
+                        <col style={{width:'8%'}}/>
+                        <col style={{width:'33%'}}/>
+                        <col style={{width:'5%'}}/>
+                        <col style={{width:'9%'}}/>
+                        <col style={{width:'12%'}}/>
+                        <col style={{width:'12%'}}/>
+                        <col style={{width:'36px'}}/>
+                        <col style={{width:'28px'}}/>
+                      </colgroup>
+                      <thead style={{position:'sticky',top:0,zIndex:10,background:'#1e293b',color:'white'}}>
+                        <tr>
+                          <th style={{padding:'9px 4px'}}></th>
+                          <th style={{padding:'9px 8px',fontWeight:'700',fontSize:'10px',letterSpacing:'0.06em',textTransform:'uppercase',borderRight:'1px solid #334155'}}>Código</th>
+                          <th style={{padding:'9px 8px',fontWeight:'700',fontSize:'10px',letterSpacing:'0.06em',textTransform:'uppercase',borderRight:'1px solid #334155'}}>Descripción</th>
+                          <th style={{padding:'9px 6px',fontWeight:'700',fontSize:'10px',letterSpacing:'0.06em',textTransform:'uppercase',borderRight:'1px solid #334155',textAlign:'center'}}>U.</th>
+                          <th style={{padding:'9px 8px',fontWeight:'700',fontSize:'10px',letterSpacing:'0.06em',textTransform:'uppercase',borderRight:'1px solid #334155',textAlign:'right'}}>Cantidad</th>
+                          <th style={{padding:'9px 8px',fontWeight:'700',fontSize:'10px',letterSpacing:'0.06em',textTransform:'uppercase',borderRight:'1px solid #334155',textAlign:'right'}}>P. Unitario</th>
+                          <th style={{padding:'9px 8px',fontWeight:'700',fontSize:'10px',letterSpacing:'0.06em',textTransform:'uppercase',borderRight:'1px solid #334155',textAlign:'right'}}>Valor RD$</th>
+                          <th style={{padding:'9px 4px',textAlign:'center',fontSize:'9px',color:'#94a3b8',borderRight:'1px solid #334155'}} title="Incluir en cotización">COT.</th>
+                          <th style={{padding:'9px 4px'}}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {partidas.length === 0 && (
+                          <tr><td colSpan={8} style={{padding:'48px',textAlign:'center',color:'#94a3b8',fontSize:'13px'}}>
+                            Usa los botones de arriba para agregar partidas al presupuesto
+                          </td></tr>
+                        )}
+                        {partidas.map((p, idx) => {
+                          const valor = (parseFloat(p.cantidad)||0) * (parseFloat(p.precio_unitario)||0);
+                          const isExpanded = !!expandedPartidas[p.id];
+                          const hasItems = p.items && p.items.length > 0;
+                          const enCot = p.enCotizacion !== false;
+                          const bg = !enCot ? '#f1f5f9' : idx%2===0?'#ffffff':'#f8fafc';
+                          const textColor = !enCot ? '#94a3b8' : undefined;
+                          const bdr = '1px solid #e2e8f0';
+                          const tdB = {borderBottom:bdr,borderRight:bdr,background:bg};
+                          const isEdit = (f) => editingCell?.rowId===p.id && editingCell?.field===f;
+                          const inp = {width:'100%',border:'2px solid #2563eb',borderRadius:'4px',padding:'2px 5px',fontSize:'12px',outline:'none',background:'#eff6ff',fontFamily:'inherit',boxSizing:'border-box'};
+                          return (
+                            <React.Fragment key={p.id}>
+                              {/* PARTIDA ROW */}
+                              <tr style={{borderBottom:bdr}}>
+                                {/* chevron */}
+                                <td style={{...tdB,textAlign:'center',padding:'6px 2px',cursor:hasItems?'pointer':'default',background:bg}} onClick={() => hasItems && togglePartidaBudget(p.id)}>
+                                  {hasItems && <ChevronRight size={12} style={{color:'#3b82f6',transform:isExpanded?'rotate(90deg)':'none',transition:'0.15s',display:'inline'}}/>}
+                                </td>
+                                {/* codigo */}
+                                <td style={{...tdB,fontFamily:'monospace',color:'#1e40af',fontWeight:'600',padding:'6px 8px',cursor:'text'}} onClick={() => setEditingCell({rowId:p.id,field:'codigo'})}>
+                                  {isEdit('codigo') ? <input autoFocus style={inp} value={p.codigo} onChange={e => editarPartida(p.id,'codigo',e.target.value)} onBlur={() => setEditingCell(null)} onKeyDown={e => e.key==='Enter'&&setEditingCell(null)}/> : <span style={{display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.codigo||<span style={{color:'#cbd5e1'}}>—</span>}</span>}
+                                </td>
+                                {/* descripcion */}
+                                <td style={{...tdB,color:textColor||'#0f172a',fontWeight:'600',padding:'6px 8px',cursor:'text',opacity:enCot?1:0.5}} onClick={() => setEditingCell({rowId:p.id,field:'descripcion'})}>
+                                  {isEdit('descripcion') ? <input autoFocus style={inp} value={p.descripcion} onChange={e => editarPartida(p.id,'descripcion',e.target.value)} onBlur={() => setEditingCell(null)} onKeyDown={e => e.key==='Enter'&&setEditingCell(null)}/> : <span style={{display:'block',wordBreak:'break-word',lineHeight:'1.4'}}>{p.descripcion}</span>}
+                                </td>
+                                {/* unidad */}
+                                <td style={{...tdB,textAlign:'center',padding:'6px 4px',cursor:'text'}} onClick={() => setEditingCell({rowId:p.id,field:'unidad'})}>
+                                  {isEdit('unidad') ? <input autoFocus style={{...inp,textAlign:'center'}} value={p.unidad} onChange={e => editarPartida(p.id,'unidad',e.target.value)} onBlur={() => setEditingCell(null)} onKeyDown={e => e.key==='Enter'&&setEditingCell(null)}/> : <span style={{color:'#1e293b',fontWeight:'500'}}>{p.unidad}</span>}
+                                </td>
+                                {/* cantidad */}
+                                <td style={{...tdB,textAlign:'right',padding:'6px 8px',cursor:'text',fontFamily:'monospace',fontWeight:'600',color:'#1e293b'}} onClick={() => setEditingCell({rowId:p.id,field:'cantidad'})}>
+                                  {isEdit('cantidad') ? <input autoFocus type="number" style={{...inp,textAlign:'right'}} value={p.cantidad} onChange={e => editarPartida(p.id,'cantidad',e.target.value)} onBlur={() => setEditingCell(null)} onKeyDown={e => e.key==='Enter'&&setEditingCell(null)}/> : (parseFloat(p.cantidad)||0).toLocaleString('en-US',{maximumFractionDigits:4})}
+                                </td>
+                                {/* precio unitario */}
+                                <td style={{...tdB,textAlign:'right',padding:'6px 8px',cursor:'text',fontFamily:'monospace',color:'#1e293b'}} onClick={() => setEditingCell({rowId:p.id,field:'precio_unitario'})}>
+                                  {isEdit('precio_unitario') ? <input autoFocus type="number" style={{...inp,textAlign:'right'}} value={p.precio_unitario} onChange={e => editarPartida(p.id,'precio_unitario',e.target.value)} onBlur={() => setEditingCell(null)} onKeyDown={e => e.key==='Enter'&&setEditingCell(null)}/> : 'RD$ '+(parseFloat(p.precio_unitario)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                                </td>
+                                {/* valor */}
+                                <td style={{textAlign:'right',padding:'6px 8px',fontFamily:'monospace',fontWeight:'700',color:'#0f172a',borderBottom:bdr,borderRight:bdr,background:idx%2===0?'#f0f9ff':'#e0f2fe'}}>
+                                  RD$ {valor.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                                </td>
+                                {/* eliminar */}
+                                <td style={{padding:'6px 4px',textAlign:'center',borderBottom:bdr,background:bg}}>
+                                  <button onClick={() => eliminarPartida(p.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#cbd5e1',fontSize:'14px',lineHeight:1,padding:'2px'}}
+                                    onMouseEnter={e => { e.target.style.color='#ef4444'; }} onMouseLeave={e => { e.target.style.color='#cbd5e1'; }}>✕</button>
+                                </td>
+                                {/* en cotizacion checkbox */}
+                                <td style={{padding:'6px 4px',textAlign:'center',borderBottom:bdr,background:bg}}>
+                                  <input type="checkbox" checked={enCot} onChange={() => toggleCotizacion(p.id)}
+                                    title={enCot ? 'Quitar de cotización' : 'Incluir en cotización'}
+                                    style={{cursor:'pointer',accentColor:'#2563eb',width:'14px',height:'14px'}}/>
+                                </td>
+                              </tr>
+                              {/* ITEMS ROWS (expandible y editables) */}
+                              {hasItems && isExpanded && p.items.map((it, ii) => {
+                                const itVal = (parseFloat(it.valor_rd)||((parseFloat(it.cantidad)||0)*(parseFloat(it.precio_unitario)||0)));
+                                const itBg = ii%2===0?'#f8fbff':'#eef4ff';
+                                const bdr2 = '1px solid #e2e8f0';
+                                const isItEdit = (f) => editingCell?.rowId===it.id && editingCell?.field===f;
+                                const itInp = {width:'100%',border:'2px solid #3b82f6',borderRadius:'3px',padding:'2px 4px',fontSize:'11px',outline:'none',background:'#eff6ff',fontFamily:'monospace',textAlign:'right',boxSizing:'border-box'};
+                                return (
+                                  <tr key={it.id||ii} style={{borderBottom:bdr2,background:itBg}}>
+                                    <td style={{borderLeft:'3px solid #93c5fd',background:'#dbeafe',borderBottom:bdr2}}></td>
+                                    <td style={{padding:'4px 8px',fontFamily:'monospace',fontSize:'11px',color:'#60a5fa',borderBottom:bdr2,borderRight:bdr2}}>{it.codigo||'—'}</td>
+                                    <td style={{padding:'4px 8px 4px 14px',fontSize:'11px',color:'#334155',borderBottom:bdr2,borderRight:bdr2,wordBreak:'break-word',lineHeight:'1.4'}}>{it.descripcion}</td>
+                                    <td style={{padding:'4px 6px',fontSize:'11px',textAlign:'center',color:'#64748b',borderBottom:bdr2,borderRight:bdr2}}>{it.unidad||'—'}</td>
+                                    {/* CANTIDAD — editable */}
+                                    <td style={{padding:'3px 6px',fontSize:'11px',textAlign:'right',fontFamily:'monospace',color:'#1e293b',fontWeight:'600',borderBottom:bdr2,borderRight:bdr2,cursor:'text',background:isItEdit('cantidad')?'#eff6ff':itBg}}
+                                      onClick={() => setEditingCell({rowId:it.id,field:'cantidad'})}>
+                                      {isItEdit('cantidad')
+                                        ? <input autoFocus type="number" style={itInp} value={it.cantidad} onChange={e => editarItem(p.id,it.id,'cantidad',e.target.value)} onBlur={() => setEditingCell(null)} onKeyDown={e => e.key==='Enter'&&setEditingCell(null)}/>
+                                        : it.cantidad}
+                                    </td>
+                                    {/* PRECIO UNITARIO — editable */}
+                                    <td style={{padding:'3px 6px',fontSize:'11px',textAlign:'right',fontFamily:'monospace',color:'#1e293b',borderBottom:bdr2,borderRight:bdr2,cursor:'text',background:isItEdit('precio_unitario')?'#eff6ff':itBg}}
+                                      onClick={() => setEditingCell({rowId:it.id,field:'precio_unitario'})}>
+                                      {isItEdit('precio_unitario')
+                                        ? <input autoFocus type="number" style={itInp} value={it.precio_unitario} onChange={e => editarItem(p.id,it.id,'precio_unitario',e.target.value)} onBlur={() => setEditingCell(null)} onKeyDown={e => e.key==='Enter'&&setEditingCell(null)}/>
+                                        : it.precio_unitario ? 'RD$ '+(parseFloat(it.precio_unitario)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}
+                                    </td>
+                                    {/* VALOR = cant × pu (calculado) */}
+                                    <td style={{padding:'4px 8px',fontSize:'11px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#0f172a',borderBottom:bdr2,borderRight:bdr2,background:'#eff6ff'}}>
+                                      RD$ {itVal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                                    </td>
+                                    <td style={{borderBottom:bdr2,background:itBg}}></td>
+                                  </tr>
+                                );
+                              })}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* TOTALES FOOTER */}
+                  {partidas.length > 0 && (
+                    <div style={{borderTop:'2px solid #e2e8f0',background:'white',padding:'14px 20px',flexShrink:0,display:'flex',justifyContent:'flex-end'}}>
+                      <div style={{display:'flex',flexDirection:'column',gap:'5px',minWidth:'340px'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',padding:'5px 12px',background:'#f8fafc',borderRadius:'6px'}}>
+                          <span style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>Subtotal sin indirectos</span>
+                          <span style={{fontFamily:'monospace',fontWeight:'700',color:'#1e293b',fontSize:'13px'}}>RD$ {subtotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                        </div>
+                        {indirectos.filter(i => i.activo && i.pct > 0).map(ind => (
+                          <div key={ind.id} style={{display:'flex',justifyContent:'space-between',padding:'4px 12px',borderRadius:'6px'}}>
+                            <span style={{fontSize:'12px',color:'#64748b'}}>{ind.label} ({ind.pct}%)</span>
+                            <span style={{fontFamily:'monospace',color:'#1e293b',fontSize:'12px'}}>RD$ {(subtotal*ind.pct/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                          </div>
+                        ))}
+                        <div style={{display:'flex',justifyContent:'space-between',padding:'5px 12px',background:'#f8fafc',borderRadius:'6px'}}>
+                          <span style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>ITBIS (18%)</span>
+                          <span style={{fontFamily:'monospace',fontWeight:'700',color:'#1e293b',fontSize:'13px'}}>RD$ {itbisAmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                        </div>
+                        <div style={{display:'flex',justifyContent:'space-between',padding:'10px 12px',background:'#1d4ed8',borderRadius:'8px',marginTop:'2px'}}>
+                          <span style={{fontSize:'13px',color:'white',fontWeight:'700'}}>TOTAL CON ITBIS</span>
+                          <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'15px'}}>RD$ {total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* MODAL: NUEVO PROYECTO */}
+              {showNewProjectModal && (
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{background:'white',borderRadius:'14px',width:'480px',maxHeight:'90vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
+                    <div style={{padding:'22px 24px 0',overflowY:'auto',flex:1}}>
+                    <h3 style={{fontWeight:'800',fontSize:'17px',color:'#0f172a',marginBottom:'4px',marginTop:0}}>Nuevo Proyecto</h3>
+                    <p style={{fontSize:'11px',color:'#94a3b8',marginBottom:'18px',marginTop:0}}>Los datos de empresa se usan en todas las cotizaciones</p>
+
+                    {/* EMPRESA */}
+                    <div style={{background:'#f8fafc',borderRadius:'8px',padding:'14px',marginBottom:'16px',border:'1px solid #e2e8f0'}}>
+                      <div style={{fontSize:'11px',fontWeight:'700',color:'#2563eb',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'10px'}}>Datos de la Empresa</div>
+                      {[
+                        {label:'Nombre de la empresa *', val:companyName, set:setCompanyName, ph:'Ej: ANLUZ Construcciones'},
+                        {label:'Dirección', val:companyAddress, set:setCompanyAddress, ph:'Ej: Av. 27 de Febrero #123'},
+                        {label:'Teléfono', val:companyPhone, set:setCompanyPhone, ph:'Ej: 809-555-0000'},
+                        {label:'Correo', val:companyEmail, set:setCompanyEmail, ph:'Ej: info@empresa.com'},
+                      ].map(f => (
+                        <div key={f.label} style={{marginBottom:'8px'}}>
+                          <label style={{fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:'3px'}}>{f.label}</label>
+                          <input value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.ph}
+                            style={{width:'100%',padding:'8px 10px',border:'1px solid #e2e8f0',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}}/>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* PROYECTO */}
+                    <div style={{background:'#f8fafc',borderRadius:'8px',padding:'14px',marginBottom:'16px',border:'1px solid #e2e8f0'}}>
+                      <div style={{fontSize:'11px',fontWeight:'700',color:'#2563eb',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'10px'}}>Datos del Proyecto</div>
+                      <div style={{marginBottom:'8px'}}>
+                        <label style={{fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:'3px'}}>Nombre del proyecto *</label>
+                        <input autoFocus value={newProjectName} onChange={e => setNewProjectName(e.target.value)} onKeyDown={e => e.key==='Enter'&&crearProyecto()} placeholder="Ej: Residencia Los Pinos"
+                          style={{width:'100%',padding:'8px 10px',border:'1px solid #e2e8f0',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}}/>
+                      </div>
+                      <div style={{marginBottom:'8px'}}>
+                        <label style={{fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:'3px'}}>Cliente</label>
+                        <input value={newProjectClient} onChange={e => setNewProjectClient(e.target.value)} placeholder="Ej: Juan Pérez"
+                          style={{width:'100%',padding:'8px 10px',border:'1px solid #e2e8f0',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}}/>
+                      </div>
+                      <div style={{marginBottom:'8px'}}>
+                        <label style={{fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:'3px'}}>No. Cotización</label>
+                        <input value={nroCotizacion} onChange={e => setNroCotizacion(e.target.value)} placeholder="Ej: AM-2026-001"
+                          style={{width:'100%',padding:'8px 10px',border:'2px solid #2563eb',borderRadius:'6px',fontSize:'13px',fontWeight:'700',color:'#1d4ed8',outline:'none',boxSizing:'border-box'}}/>
+                      </div>
+                      <div>
+                        <label style={{fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:'6px'}}>Validez de la cotización (días)</label>
+                        <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+                          {[15,30,45,60,90].map(d => (
+                            <button key={d} onClick={() => setValidezDias(d)}
+                              style={{padding:'6px 14px',border:validezDias===d?'2px solid #2563eb':'1px solid #e2e8f0',borderRadius:'6px',fontSize:'12px',fontWeight:'700',background:validezDias===d?'#eff6ff':'white',color:validezDias===d?'#1d4ed8':'#64748b',cursor:'pointer'}}>
+                              {d} días
+                            </button>
+                          ))}
+                          <input type="number" value={validezDias} onChange={e => setValidezDias(parseInt(e.target.value)||30)} min="1" max="365"
+                            style={{width:'64px',padding:'6px 8px',border:'1px solid #e2e8f0',borderRadius:'6px',fontSize:'12px',textAlign:'center',outline:'none'}}/>
+                        </div>
+                      </div>
+                    </div>
+                    </div>
+                    <div style={{padding:'14px 24px',display:'flex',gap:'8px',justifyContent:'flex-end',borderTop:'1px solid #e2e8f0',flexShrink:0,background:'white',borderRadius:'0 0 14px 14px'}}>
+                      <button onClick={() => setShowNewProjectModal(false)} style={{padding:'9px 18px',border:'1px solid #e2e8f0',borderRadius:'7px',background:'white',color:'#64748b',fontWeight:'600',cursor:'pointer',fontSize:'12px'}}>Cancelar</button>
+                      <button onClick={crearProyecto} style={{padding:'9px 22px',background:'#2563eb',color:'white',border:'none',borderRadius:'7px',fontWeight:'700',cursor:'pointer',fontSize:'12px'}}>Crear Proyecto</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MODAL: BUSCAR ANÁLISIS */}
+              {showAnaModal && (
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{background:'white',borderRadius:'14px',width:'660px',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
+                    <div style={{padding:'20px 20px 14px',borderBottom:'1px solid #e2e8f0'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+                        <h3 style={{fontWeight:'800',fontSize:'16px',color:'#0f172a',margin:0}}>Agregar Análisis de Costo</h3>
+                        <button onClick={() => { setShowAnaModal(false); setAnaSearch(''); setAnaResults([]); }} style={{background:'none',border:'none',fontSize:'18px',cursor:'pointer',color:'#94a3b8',lineHeight:1}}>✕</button>
+                      </div>
+                      <input autoFocus value={anaSearch} onChange={e => buscarAna(e.target.value)}
+                        placeholder="Buscar análisis... (ej: bloque, hormigón, pintura)"
+                        style={{width:'100%',padding:'9px 12px',border:'2px solid #2563eb',borderRadius:'7px',fontSize:'13px',outline:'none',boxSizing:'border-box'}}/>
+                    </div>
+                    <div style={{flex:1,overflow:'auto',padding:'4px 0'}}>
+                      {anaLoading && <div style={{padding:'24px',textAlign:'center',color:'#94a3b8'}}>Buscando...</div>}
+                      {!anaLoading && anaSearch.length >= 2 && anaResults.filter(r => r.tipo_fila==='partida').length === 0 && (
+                        <div style={{padding:'24px',textAlign:'center',color:'#94a3b8'}}>Sin resultados para "{anaSearch}"</div>
+                      )}
+                      {!anaLoading && anaSearch.length < 2 && (
+                        <div style={{padding:'24px',textAlign:'center',color:'#94a3b8',fontSize:'12px'}}>Escribe al menos 2 caracteres para buscar</div>
+                      )}
+                      {anaResults.filter(r => r.tipo_fila==='partida').map(item => (
+                        <div key={item.codigo}
+                          style={{padding:'9px 20px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',transition:'background 0.1s'}}
+                          onMouseEnter={e => { e.currentTarget.style.background='#eff6ff'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background='white'; }}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:'13px',fontWeight:'600',color:'#0f172a',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.descripcion}</div>
+                            <div style={{fontSize:'11px',color:'#94a3b8',marginTop:'2px',display:'flex',gap:'10px'}}>
+                              <span style={{fontFamily:'monospace'}}>#{item.codigo}</span>
+                              <span>{item.unidad}</span>
+                              <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'0 6px',borderRadius:'10px',fontWeight:'700'}}>Análisis</span>
+                            </div>
+                          </div>
+                          <div style={{textAlign:'right',flexShrink:0,marginLeft:'14px'}}>
+                            <div style={{fontFamily:'monospace',fontWeight:'700',fontSize:'13px',color:'#0f172a'}}>RD$ {(item.valor_rd||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                            <button onClick={() => agregarAnalisis(item)}
+                              style={{marginTop:'3px',padding:'3px 12px',background:'#2563eb',color:'white',border:'none',borderRadius:'4px',fontSize:'11px',fontWeight:'700',cursor:'pointer'}}>
+                              + Agregar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+};
+
+// ==================== EXPORT PRINCIPAL ====================
+// ==================== AUTH CON SUPABASE ====================
+const AuthSystem = () => {
+  const [view, setView]         = useState('login');
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [nombre, setNombre]     = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+  const [msg, setMsg]           = useState('');
+
+  const handleLogin = async (e) => {
+    e.preventDefault(); setLoading(true); setError('');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message === 'Invalid login credentials' ? 'Email o contraseña incorrectos.' : error.message);
+    setLoading(false);
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    if (password.length < 6) { setError('La contraseña debe tener al menos 6 caracteres.'); return; }
+    setLoading(true); setError('');
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { nombre } } });
+    if (error) setError(error.message);
+    else { setMsg('¡Cuenta creada! Revisa tu email para confirmar y luego inicia sesión.'); setView('login'); }
+    setLoading(false);
+  };
+
+  const handleForgot = async (e) => {
+    e.preventDefault(); setLoading(true); setError('');
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) setError(error.message);
+    else setMsg('Te enviamos un enlace para restablecer tu contraseña.');
+    setLoading(false);
+  };
+
+  const BG = BACKGROUNDS.login;
+  const inp = { width:'100%',padding:'11px 12px 11px 38px',border:'1.5px solid #e2e8f0',borderRadius:'10px',fontSize:'13px',fontWeight:'500',color:'#1e293b',outline:'none',boxSizing:'border-box' };
+  const lbl = { fontSize:'10px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em',display:'block',marginBottom:'6px' };
+
+  const FEATURES = [
+    { icon:'📊', text:'Base de datos actualizada mensualmente' },
+    { icon:'🧱', text:'Costos de materiales de construcción' },
+    { icon:'🔧', text:'Herramientas y equipos con precios' },
+    { icon:'📐', text:'Análisis de costos por partida' },
+    { icon:'📏', text:'Cálculo de cuantías estructurales' },
+    { icon:'📋', text:'Modelos de presupuesto profesionales' },
+    { icon:'💰', text:'Genera cotizaciones con la base de datos' },
+    { icon:'🏗️', text:'Crea tu base de datos personalizada' },
+    { icon:'📈', text:'Precios de construcción por m²' },
+  ];
+
+  return (
+    <div style={{minHeight:'100vh',backgroundImage:`url(${BG})`,backgroundSize:'cover',backgroundPosition:'center',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}>
+      <div style={{position:'absolute',inset:0,background:'rgba(10,18,38,0.82)',backdropFilter:'blur(3px)'}}/>
+
+      {/* Contenedor principal — 2 columnas en desktop, 1 en móvil */}
+      <div style={{position:'relative',zIndex:10,width:'100%',maxWidth:'900px',display:'flex',gap:'0',borderRadius:'20px',overflow:'hidden',boxShadow:'0 30px 80px rgba(0,0,0,0.6)'}}>
+
+        {/* ── COLUMNA IZQUIERDA — Features ── */}
+        <div style={{flex:'1',background:'linear-gradient(160deg,#0f172a 0%,#1e3a5f 100%)',padding:'44px 36px',display:'none',flexDirection:'column',justifyContent:'space-between',minWidth:'340px'}}
+          className="login-left">
+          {/* Logo */}
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'36px'}}>
+              <div style={{width:'48px',height:'48px',background:'#1d4ed8',borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 0 2px rgba(96,165,250,0.25)'}}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
+              </div>
+              <div>
+                <div style={{fontSize:'22px',fontWeight:'900',color:'white',letterSpacing:'-0.02em',lineHeight:1}}>ProCalc</div>
+                <div style={{fontSize:'10px',fontWeight:'700',color:'#60a5fa',letterSpacing:'0.14em',textTransform:'uppercase',marginTop:'3px'}}>Ingeniería de Costos</div>
+              </div>
+            </div>
+
+            <h2 style={{fontSize:'17px',fontWeight:'800',color:'white',marginBottom:'6px',lineHeight:1.3}}>
+              Todo lo que necesitas para presupuestar con precisión
+            </h2>
+            <p style={{fontSize:'12px',color:'#94a3b8',marginBottom:'28px',lineHeight:1.6}}>
+              La plataforma de ingeniería de costos para República Dominicana.
+            </p>
+
+            {/* Features */}
+            <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+              {FEATURES.map((f,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                  <span style={{fontSize:'16px',flexShrink:0}}>{f.icon}</span>
+                  <span style={{fontSize:'12px',color:'#cbd5e1',fontWeight:'500',lineHeight:1.4}}>{f.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div style={{marginTop:'32px',paddingTop:'20px',borderTop:'1px solid rgba(255,255,255,0.08)'}}>
+            <div style={{fontSize:'11px',color:'#475569',fontWeight:'600'}}>República Dominicana · 2026</div>
+          </div>
+        </div>
+
+        {/* ── COLUMNA DERECHA — Formulario ── */}
+        <div style={{width:'100%',maxWidth:'400px',background:'white',display:'flex',flexDirection:'column'}}>
+
+          {/* Header móvil (solo aparece en móvil) */}
+          <div style={{background:'#0f172a',padding:'24px 28px',display:'flex',alignItems:'center',gap:'12px'}} className="login-mobile-header">
+            <div style={{width:'42px',height:'42px',background:'#1d4ed8',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 0 0 2px rgba(96,165,250,0.25)'}}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
+            </div>
+            <div>
+              <div style={{fontSize:'20px',fontWeight:'900',color:'white',letterSpacing:'-0.02em',lineHeight:1}}>ProCalc</div>
+              <div style={{fontSize:'9px',fontWeight:'700',color:'#60a5fa',letterSpacing:'0.14em',textTransform:'uppercase',marginTop:'2px'}}>Ingeniería de Costos · RD</div>
+            </div>
+          </div>
+
+          <div style={{padding:'28px',flex:1,overflowY:'auto'}}>
+            {/* Tabs */}
+            {view !== 'forgot' && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'4px',background:'#f1f5f9',borderRadius:'10px',padding:'4px',marginBottom:'22px'}}>
+                {[['login','Entrar'],['register','Registrarse'],['pricing','Planes']].map(([v,l])=>(
+                  <button key={v} onClick={()=>{setView(v);setError('');setMsg('');}}
+                    style={{padding:'9px 4px',border:'none',borderRadius:'7px',fontSize:'11px',fontWeight:'700',cursor:'pointer',
+                      background:view===v?'white':'transparent',color:view===v?'#0f172a':'#64748b',
+                      boxShadow:view===v?'0 1px 4px rgba(0,0,0,0.1)':'none',transition:'all .15s'}}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {error && <div style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:'8px',padding:'10px 12px',marginBottom:'14px',fontSize:'12px',color:'#dc2626',fontWeight:'600'}}>{error}</div>}
+            {msg   && <div style={{background:'#dcfce7',border:'1px solid #86efac',borderRadius:'8px',padding:'10px 12px',marginBottom:'14px',fontSize:'12px',color:'#166534',fontWeight:'600'}}>{msg}</div>}
+
+            {/* LOGIN */}
+            {view === 'login' && (
+              <form onSubmit={handleLogin}>
+                <div style={{marginBottom:'14px'}}>
+                  <label style={lbl}>Correo Electrónico</label>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>
+                    </span>
+                    <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/>
+                  </div>
+                </div>
+                <div style={{marginBottom:'8px'}}>
+                  <label style={lbl}>Contraseña</label>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
+                    <input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" style={inp}/>
+                  </div>
+                </div>
+                <div style={{textAlign:'right',marginBottom:'18px'}}>
+                  <button type="button" onClick={()=>{setView('forgot');setError('');setMsg('');}}
+                    style={{background:'none',border:'none',fontSize:'11px',color:'#1d4ed8',cursor:'pointer',fontWeight:'600'}}>
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+                <button type="submit" disabled={loading}
+                  style={{width:'100%',padding:'13px',background:'#1d4ed8',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer',boxShadow:'0 4px 14px rgba(29,78,216,0.3)',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
+                  {loading?<><div style={{width:'15px',height:'15px',border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>Accediendo...</>:'Iniciar Sesión'}
+                </button>
+                <p style={{textAlign:'center',marginTop:'16px',fontSize:'11px',color:'#94a3b8'}}>
+                  ¿No tienes cuenta? <button type="button" onClick={()=>setView('register')} style={{background:'none',border:'none',color:'#1d4ed8',fontWeight:'700',cursor:'pointer',fontSize:'11px'}}>Regístrate gratis</button>
+                </p>
+              </form>
+            )}
+
+            {/* REGISTRO */}
+            {view === 'register' && (
+              <form onSubmit={handleRegister}>
+                <div style={{marginBottom:'14px'}}>
+                  <label style={lbl}>Nombre Completo</label>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                    </span>
+                    <input required type="text" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ing. Juan Pérez" style={inp}/>
+                  </div>
+                </div>
+                <div style={{marginBottom:'14px'}}>
+                  <label style={lbl}>Correo Electrónico</label>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>
+                    </span>
+                    <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/>
+                  </div>
+                </div>
+                <div style={{marginBottom:'16px'}}>
+                  <label style={lbl}>Contraseña</label>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
+                    <input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" style={inp}/>
+                  </div>
+                </div>
+                <div style={{background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:'10px',padding:'12px',marginBottom:'16px'}}>
+                  <div style={{fontSize:'11px',fontWeight:'800',color:'#0369a1',marginBottom:'3px'}}>✓ Plan Gratuito incluido</div>
+                  <div style={{fontSize:'11px',color:'#0369a1',lineHeight:1.5}}>1 cálculo cada 24 horas · Sin tarjeta requerida</div>
+                </div>
+                <button type="submit" disabled={loading}
+                  style={{width:'100%',padding:'13px',background:'#1d4ed8',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
+                  {loading?<><div style={{width:'15px',height:'15px',border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>Creando...</>:'Crear Cuenta Gratis'}
+                </button>
+                <p style={{textAlign:'center',marginTop:'14px',fontSize:'11px',color:'#94a3b8'}}>
+                  ¿Ya tienes cuenta? <button type="button" onClick={()=>setView('login')} style={{background:'none',border:'none',color:'#1d4ed8',fontWeight:'700',cursor:'pointer',fontSize:'11px'}}>Inicia sesión</button>
+                </p>
+              </form>
+            )}
+
+            {/* PLANES */}
+            {view === 'pricing' && (
+              <div>
+                <div style={{border:'1px solid #e2e8f0',borderRadius:'12px',padding:'16px',marginBottom:'10px'}}>
+                  <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a',marginBottom:'2px'}}>Plan Gratuito</div>
+                  <div style={{fontSize:'22px',fontWeight:'900',color:'#0f172a',marginBottom:'10px'}}>$0 <span style={{fontSize:'12px',fontWeight:'500',color:'#64748b'}}>/siempre</span></div>
+                  {['1 cálculo cada 24 horas','Vista de todas las calculadoras','Sin cotizaciones','Sin base de datos completa'].map(f=>(
+                    <div key={f} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:'#94a3b8'}}>
+                      <span style={{marginTop:'1px',flexShrink:0}}>○</span>{f}
+                    </div>
+                  ))}
+                  <button onClick={()=>setView('register')} style={{width:'100%',padding:'10px',background:'#f1f5f9',color:'#475569',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',marginTop:'12px'}}>
+                    Empezar Gratis
+                  </button>
+                </div>
+                <div style={{border:'2px solid #1d4ed8',borderRadius:'12px',padding:'16px',position:'relative',background:'#f0f7ff'}}>
+                  <div style={{position:'absolute',top:'-10px',left:'50%',transform:'translateX(-50%)',background:'#1d4ed8',color:'white',fontSize:'10px',fontWeight:'800',padding:'3px 14px',borderRadius:'20px',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>MÁS POPULAR</div>
+                  <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a',marginBottom:'2px'}}>Plan Pro</div>
+                  <div style={{fontSize:'26px',fontWeight:'900',color:'#1d4ed8',marginBottom:'10px'}}>$40 <span style={{fontSize:'12px',fontWeight:'500',color:'#64748b'}}>/año</span></div>
+                  {['Cálculos ilimitados','Todas las calculadoras','Cotizaciones profesionales','Base de datos completa actualizada','Modelos de presupuesto','Precios de construcción por m²','Nuevas funciones incluidas'].map(f=>(
+                    <div key={f} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:'#1e3a5f',fontWeight:'600'}}>
+                      <span style={{color:'#1d4ed8',marginTop:'1px',flexShrink:0}}>✓</span>{f}
+                    </div>
+                  ))}
+                  <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')}
+                    style={{width:'100%',padding:'12px',background:'#1d4ed8',color:'white',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'13px',cursor:'pointer',marginTop:'12px',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788.06-.26.76-4.852.816-5.09a.932.932 0 0 1 .923-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.471z"/></svg>
+                    Suscribirse — $40/año
+                  </button>
+                </div>
+                <p style={{textAlign:'center',marginTop:'10px',fontSize:'10px',color:'#94a3b8',lineHeight:1.5}}>
+                  Después del pago envía tu email de registro para activar.
+                </p>
+              </div>
+            )}
+
+            {/* OLVIDÉ CONTRASEÑA */}
+            {view === 'forgot' && (
+              <form onSubmit={handleForgot}>
+                <button type="button" onClick={()=>setView('login')} style={{background:'none',border:'none',fontSize:'12px',color:'#64748b',cursor:'pointer',fontWeight:'600',marginBottom:'16px',display:'flex',alignItems:'center',gap:'4px'}}>
+                  ← Volver
+                </button>
+                <h3 style={{fontWeight:'800',fontSize:'16px',color:'#0f172a',marginBottom:'6px'}}>Restablecer contraseña</h3>
+                <p style={{fontSize:'12px',color:'#64748b',marginBottom:'18px',lineHeight:1.5}}>Te enviaremos un enlace para crear una nueva contraseña.</p>
+                <div style={{marginBottom:'16px'}}>
+                  <label style={lbl}>Correo Electrónico</label>
+                  <div style={{position:'relative'}}>
+                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>
+                    </span>
+                    <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/>
+                  </div>
+                </div>
+                <button type="submit" disabled={loading}
+                  style={{width:'100%',padding:'13px',background:'#1d4ed8',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer'}}>
+                  {loading?'Enviando...':'Enviar Enlace'}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg);}}
+        @media(min-width:700px){
+          .login-left{display:flex !important;}
+          .login-mobile-header{display:none !important;}
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// ==================== EXPORT PRINCIPAL ====================
+export default function ProCalcApp() {
+  const [session, setSession]         = useState(null);
+  const [profile, setProfile]         = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) loadProfile(session.user.id);
+      else setLoadingAuth(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) loadProfile(session.user.id);
+      else { setProfile(null); setLoadingAuth(false); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadProfile = async (userId) => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    setProfile(data);
+    setLoadingAuth(false);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  if (loadingAuth) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#0f172a'}}>
+      <div style={{textAlign:'center'}}>
+        <div style={{width:'48px',height:'48px',border:'3px solid rgba(255,255,255,0.2)',borderTopColor:'#3b82f6',borderRadius:'50%',animation:'spin 0.8s linear infinite',margin:'0 auto 16px'}}/>
+        <div style={{fontSize:'13px',color:'#94a3b8',fontWeight:'600'}}>Cargando ProCalc...</div>
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
+    </div>
+  );
+
+  if (!session) return <AuthSystem />;
+
+  return <Dashboard onLogout={handleLogout} userProfile={profile} userId={session.user.id} userEmail={session.user.email} />;
+}
