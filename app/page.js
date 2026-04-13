@@ -2122,66 +2122,104 @@ const TipoBadge = ({ tipo }) => {
   return <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border}`}>{tipo}</span>;
 };
 
+// ==================== COMPONENTE CORREGIDO: CostAnalysisView ====================
+// Reemplaza desde "const CostAnalysisView = () => {" hasta el "};  // fin de CostAnalysisView"
+
 const CostAnalysisView = () => {
   const TABS = [
     { key: 'materiales',    label: 'Materiales',       color: '#3b82f6', table: 'materiales' },
     { key: 'herramientas',  label: 'Herramientas',     color: '#f97316', table: 'herramientas' },
     { key: 'rendimientos',  label: 'Rendimientos',     color: '#10b981', table: 'rendimientos' },
+    { key: 'mov_equipos',   label: 'Mov. Equipos',     color: '#06b6d4', table: 'movimientos_equipos' },
     { key: 'mo_cuadrillas', label: 'MO Cuadrillas',    color: '#8b5cf6', table: 'mo_cuadrillas' },
     { key: 'mo_jornales',   label: 'MO Jornales',      color: '#ec4899', table: 'mo_jornales' },
     { key: 'analisis_costo',label: 'Análisis de Costo',color: '#0891b2', table: 'analisis_costo' },
   ];
 
   const COL_DEFS = {
+    // Sin columna Ref - las categorías son filas separadoras
     materiales: [
-      { key: 'referencia',      label: 'Ref.',        w: '80px' },
-      { key: 'codigo',          label: 'Código',      w: '90px' },
       { key: 'descripcion',     label: 'Descripción', w: 'auto', flex: true },
-      { key: 'unidad',          label: 'U.',          w: '50px', center: true },
-      { key: 'precio_base',     label: 'P. Base',     w: '90px', num: true },
-      { key: 'precio_con_itbis',label: 'P.U.+ITBIS',  w: '100px', num: true, bold: true },
+      { key: 'unidad',          label: 'U.',          w: '60px', center: true },
+      { key: 'precio_base',     label: 'P. UNIT.',    w: '100px', num: true },
+      { key: 'precio_con_itbis',label: 'P.U. + ITBIS',w: '120px', num: true, bold: true },
     ],
+    
     herramientas: [
-      { key: 'referencia',      label: 'Ref.',        w: '80px' },
-      { key: 'codigo',          label: 'Código',      w: '90px' },
       { key: 'descripcion',     label: 'Descripción', w: 'auto', flex: true },
-      { key: 'unidad',          label: 'U.',          w: '50px', center: true },
-      { key: 'precio_base',     label: 'P. Base',     w: '90px', num: true },
-      { key: 'precio_con_itbis',label: 'P.U.+ITBIS',  w: '100px', num: true, bold: true },
+      { key: 'unidad',          label: 'U.',          w: '60px', center: true },
+      { key: 'precio_base',     label: 'P. UNIT.',    w: '100px', num: true },
+      { key: 'precio_con_itbis',label: 'P.U. + ITBIS',w: '120px', num: true, bold: true },
     ],
+    
     rendimientos: [
-      { key: 'referencia',  label: 'Ref.',        w: '80px' },
-      { key: 'codigo',      label: 'Código',      w: '90px' },
       { key: 'descripcion', label: 'Descripción', w: 'auto', flex: true },
-      { key: 'unidad',      label: 'U.',          w: '50px', center: true },
-      { key: 'cantidad',    label: 'Cant.',       w: '80px', num: true },
-      { key: 'rendimiento', label: 'Rendimiento', w: '100px', num: true, bold: true },
+      { key: 'unidad',      label: 'U.',          w: '80px', center: true },
+      { key: 'rendimiento', label: 'REND.',       w: '100px', num: true, bold: true },
     ],
-    mo_cuadrillas: [
-      { key: 'referencia',      label: 'Ref.',        w: '80px' },
-      { key: 'codigo',          label: 'Código',      w: '90px' },
-      { key: 'descripcion',     label: 'Descripción', w: 'auto', flex: true },
+    
+    // ============ MOVIMIENTOS EQUIPOS ============
+    // PARTIDAS: Solo columnas con valores
+    mov_equipos: [
+      { key: 'codigo',          label: 'CÓDIGO',      w: '90px' },
+      { key: 'descripcion',     label: 'DESCRIPCIÓN', w: 'auto', flex: true },
+      { key: 'unidad',          label: 'U.',          w: '60px', center: true },
+      { key: 'precio_total',    label: 'TOTAL RD$',   w: '120px', num: true, bold: true },
+    ],
+    
+    // ITEMS: Todas las columnas
+    mov_equipos_items: [
+      { key: 'descripcion',     label: 'DESCRIPCIÓN', w: 'auto', flex: true },
+      { key: 'cantidad',        label: 'CANT.',       w: '70px', num: true, center: true },
       { key: 'unidad',          label: 'U.',          w: '50px', center: true },
-      { key: 'rend_dia',        label: 'Rend/Día',    w: '80px', num: true },
-      { key: 'precio_unitario', label: 'P. Unit.',    w: '90px', num: true, bold: true },
+      { key: 'precio_unitario', label: 'P. UNIT.',    w: '90px', num: true },
+      { key: 'precio_con_itbis',label: 'P.UNIT + ITBIS', w: '110px', num: true },
+      { key: 'subtotal',        label: 'VALOR RD$',   w: '100px', num: true },
+      { key: 'precio_total',    label: 'TOTAL RD$',   w: '110px', num: true, bold: true },
     ],
+    
+    mo_cuadrillas: [
+      { key: 'descripcion',     label: 'Descripción', w: 'auto', flex: true },
+      { key: 'precio_unitario', label: 'P. UNIT.',    w: '90px', num: true },
+      { key: 'unidad',          label: 'U.',          w: '50px', center: true },
+      { key: 'rend_dia',        label: 'REND./DÍA',   w: '80px', num: true },
+      { key: 'ma',              label: 'MA',          w: '50px', num: true, center: true },
+      { key: 'op1',             label: 'OP1',         w: '50px', num: true, center: true },
+      { key: 'op2',             label: 'OP2',         w: '50px', num: true, center: true },
+      { key: 'op3',             label: 'OP3',         w: '50px', num: true, center: true },
+      { key: 'ay',              label: 'AY',          w: '50px', num: true, center: true },
+      { key: 'tc',              label: 'TC',          w: '50px', num: true, center: true },
+      { key: 'tnc',             label: 'TNC',         w: '50px', num: true, center: true },
+    ],
+    
     mo_jornales: [
-      { key: 'referencia',    label: 'Ref.',          w: '80px' },
-      { key: 'codigo',        label: 'Código',        w: '90px' },
+      { key: 'referencia',    label: 'Ref.',          w: '60px', center: true },
       { key: 'descripcion',   label: 'Descripción',   w: 'auto', flex: true },
-      { key: 'jornal_diario', label: 'Jornal Diario', w: '110px', num: true },
-      { key: 'jornal_hora',   label: 'x Hora',        w: '80px', num: true },
-      { key: 'jornal_mensual',label: 'Mensual',       w: '100px', num: true, bold: true },
+      { key: 'jornal_diario', label: 'JORNAL DIARIO', w: '110px', num: true },
+      { key: 'unidad',        label: 'U.',            w: '50px', center: true },
+      { key: 'jornal_hora',   label: 'JORNAL X HORA', w: '110px', num: true },
+      { key: 'jornal_mensual',label: 'JORNAL MENSUAL',w: '120px', num: true, bold: true },
     ],
+    
+    // ============ ANÁLISIS DE COSTO ============
+    // PARTIDAS: Solo columnas con valores
     analisis_costo: [
-      { key: 'referencia',      label: 'Ref.',       w: '80px' },
-      { key: 'codigo',          label: 'Código',     w: '90px' },
-      { key: 'descripcion',     label: 'Descripción',w: 'auto', flex: true },
-      { key: 'unidad',          label: 'U.',         w: '50px', center: true },
-      { key: 'cantidad',        label: 'Cant.',      w: '70px', num: true },
-      { key: 'precio_unitario', label: 'P. Unit.',   w: '90px', num: true },
-      { key: 'subtotal',        label: 'Subtotal',   w: '100px', num: true },
-      { key: 'precio_total',    label: 'Total RD$',  w: '110px', num: true, bold: true },
+      { key: 'codigo',          label: 'CÓDIGO',      w: '80px' },
+      { key: 'descripcion',     label: 'DESCRIPCIÓN', w: 'auto', flex: true },
+      { key: 'unidad',          label: 'U.',          w: '50px', center: true },
+      { key: 'precio_total',    label: 'TOTAL RD$',   w: '110px', num: true, bold: true },
+    ],
+    
+    // ITEMS: Todas las columnas
+    analisis_costo_items: [
+      { key: 'codigo',          label: '#',           w: '50px', center: true },
+      { key: 'descripcion',     label: 'DESCRIPCIÓN', w: 'auto', flex: true },
+      { key: 'cantidad',        label: 'CANT.',       w: '70px', num: true, center: true },
+      { key: 'unidad',          label: 'U.',          w: '50px', center: true },
+      { key: 'precio_unitario', label: 'P. UNIT.',    w: '90px', num: true },
+      { key: 'precio_con_itbis',label: 'P.UNIT + ITBIS', w: '110px', num: true },
+      { key: 'subtotal',        label: 'VALOR RD$',   w: '100px', num: true },
+      { key: 'precio_total',    label: 'TOTAL RD$',   w: '110px', num: true, bold: true },
     ],
   };
 
@@ -2201,42 +2239,44 @@ const CostAnalysisView = () => {
   // ── Cargar datos ────────────────────────────────────────────────────────────
   const loadData = async (tab, searchVal, pageNum) => {
     setLoading(true);
+    setExpandedIds({});
+    setItemsMap({});
+    
     try {
       const tableName = TABS.find(t => t.key === tab)?.table || tab;
 
-      // Para analisis_costo cargamos TODAS las partidas de una vez
-      if (tab === 'analisis_costo' && !searchVal.trim()) {
-        let allRows = [];
-        let from = 0;
-        const batch = 1000;
-        while (true) {
-          let q = supabase.from(tableName).select('*').eq('tipo_fila', 'partida').order('id', { ascending: true }).range(from, from + batch - 1);
-          const { data: rows, error } = await q;
-          if (error) throw error;
-          if (!rows || rows.length === 0) break;
-          allRows = allRows.concat(rows);
-          if (rows.length < batch) break;
-          from += batch;
-        }
-        setData(allRows);
-        setTotalCount(allRows.length);
-        setExpandedIds({});
-        setItemsMap({});
-        setLoading(false);
-        return;
+      // Para tabs con acordeón: cargar solo partidas
+      if (tab === 'analisis_costo') {
+        let q = supabase.from(tableName).select('*', { count: 'exact' })
+          .eq('tipo_fila', 'partida');
+        if (searchVal.trim()) q = q.ilike('descripcion', `%${searchVal.trim()}%`);
+        const from = pageNum * PAGE_SIZE;
+        q = q.range(from, from + PAGE_SIZE - 1).order('id', { ascending: true });
+        const { data: rows, count, error } = await q;
+        if (error) throw error;
+        setData(rows || []);
+        setTotalCount(count || 0);
+      } else if (tab === 'mov_equipos') {
+        let q = supabase.from(tableName).select('*', { count: 'exact' })
+          .not('codigo', 'is', null);  // Solo partidas
+        if (searchVal.trim()) q = q.ilike('descripcion', `%${searchVal.trim()}%`);
+        const from = pageNum * PAGE_SIZE;
+        q = q.range(from, from + PAGE_SIZE - 1).order('id', { ascending: true });
+        const { data: rows, count, error } = await q;
+        if (error) throw error;
+        setData(rows || []);
+        setTotalCount(count || 0);
+      } else {
+        // Tabs normales
+        let q = supabase.from(tableName).select('*', { count: 'exact' });
+        if (searchVal.trim()) q = q.ilike('descripcion', `%${searchVal.trim()}%`);
+        const from = pageNum * PAGE_SIZE;
+        q = q.range(from, from + PAGE_SIZE - 1).order('id', { ascending: true });
+        const { data: rows, count, error } = await q;
+        if (error) throw error;
+        setData(rows || []);
+        setTotalCount(count || 0);
       }
-
-      let q = supabase.from(tableName).select('*', { count: 'exact' });
-      if (tab === 'analisis_costo') q = q.eq('tipo_fila', 'partida');
-      if (searchVal.trim()) q = q.ilike('descripcion', `%${searchVal.trim()}%`);
-      const from = pageNum * PAGE_SIZE;
-      q = q.range(from, from + PAGE_SIZE - 1).order('id', { ascending: true });
-      const { data: rows, count, error } = await q;
-      if (error) throw error;
-      setData(rows || []);
-      setTotalCount(count || 0);
-      setExpandedIds({});
-      setItemsMap({});
     } catch (e) {
       console.error(e);
       setData([]);
@@ -2249,7 +2289,6 @@ const CostAnalysisView = () => {
     loadData(activeTab, search, 0);
   }, [activeTab]);
 
-  // Búsqueda con debounce
   useEffect(() => {
     const t = setTimeout(() => { setPage(0); loadData(activeTab, search, 0); }, 400);
     return () => clearTimeout(t);
@@ -2257,24 +2296,45 @@ const CostAnalysisView = () => {
 
   useEffect(() => { loadData(activeTab, search, page); }, [page]);
 
-  // ── Expandir items de ana_gral ──────────────────────────────────────────────
+  // ── Expandir partidas ──────────────────────────────────────────────
   const toggleExpand = async (row) => {
-    if (activeTab !== 'analisis_costo') return;
     const id = row.id;
+    
+    // Si ya está expandido, colapsar
     if (expandedIds[id]) {
-      setExpandedIds(p => ({ ...p, [id]: false }));
+      setExpandedIds(prev => {
+        const newState = { ...prev };
+        delete newState[id];
+        return newState;
+      });
       return;
     }
+    
+    // Cargar items si no existen
     if (!itemsMap[id]) {
-      const { data: items } = await supabase
-        .from('analisis_costo')
-        .select('*')
-        .in('tipo_fila', ['item', 'total'])
-        .eq('partida_codigo', row.codigo)
-        .order('id', { ascending: true });
-      setItemsMap(p => ({ ...p, [id]: items || [] }));
+      if (activeTab === 'analisis_costo') {
+        const { data: items } = await supabase
+          .from('analisis_costo')
+          .select('*')
+          .eq('tipo_fila', 'item')
+          .eq('partida_codigo', row.codigo)
+          .eq('partida_descripcion', row.descripcion)  // ⭐ Filtrar por descripción de partida
+          .order('id', { ascending: true });
+        setItemsMap(prev => ({ ...prev, [id]: items || [] }));
+      } else if (activeTab === 'mov_equipos') {
+        const { data: items } = await supabase
+          .from('movimientos_equipos')
+          .select('*')
+          .is('codigo', null)
+          .eq('tipo_equipo', row.tipo_equipo)
+          .eq('partida_descripcion', row.descripcion)  // ⭐ Filtrar por descripción de partida
+          .order('id', { ascending: true });
+        setItemsMap(prev => ({ ...prev, [id]: items || [] }));
+      }
     }
-    setExpandedIds(p => ({ ...p, [id]: true }));
+    
+    // Expandir SOLO esta partida
+    setExpandedIds({ [id]: true });
   };
 
   // ── Format ──────────────────────────────────────────────────────────────────
@@ -2285,6 +2345,38 @@ const CostAnalysisView = () => {
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
+  // Agrupar datos por referencia (para tabs con categorías)
+  const groupByRef = (rows) => {
+    if (!rows || rows.length === 0) return [];
+    
+    const groups = [];
+    let currentRef = null;
+    let currentItems = [];
+    
+    rows.forEach(row => {
+      if (row.referencia && row.referencia !== currentRef) {
+        if (currentItems.length > 0) {
+          groups.push({ type: 'items', ref: currentRef, items: currentItems });
+        }
+        groups.push({ type: 'header', ref: row.referencia });
+        currentRef = row.referencia;
+        currentItems = [row];
+      } else {
+        currentItems.push(row);
+      }
+    });
+    
+    if (currentItems.length > 0) {
+      groups.push({ type: 'items', ref: currentRef, items: currentItems });
+    }
+    
+    return groups;
+  };
+
+  const hasCategories = ['materiales', 'herramientas', 'rendimientos', 'mo_cuadrillas'].includes(activeTab);
+  const hasAccordion = ['analisis_costo', 'mov_equipos'].includes(activeTab);
+  const grouped = hasCategories ? groupByRef(data) : [];
+  
   const cols = COL_DEFS[activeTab] || COL_DEFS.materiales;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -2297,10 +2389,9 @@ const CostAnalysisView = () => {
           <div>
             <h2 style={{ fontWeight:'800', fontSize:'16px', color:'#0f172a', margin:0 }}>Base de Datos</h2>
             <span style={{ fontSize:'11px', color:'#94a3b8' }}>
-              {activeTab === 'analisis_costo' ? `${totalCount.toLocaleString()} partidas` : `${totalCount.toLocaleString()} registros`}
+              {hasAccordion ? `${totalCount.toLocaleString()} partidas` : `${totalCount.toLocaleString()} registros`}
             </span>
           </div>
-          {/* Búsqueda */}
           <div style={{ position:'relative' }}>
             <input
               value={search}
@@ -2344,7 +2435,7 @@ const CostAnalysisView = () => {
             {/* Cabecera */}
             <thead>
               <tr style={{ background: color, position:'sticky', top:0, zIndex:10 }}>
-                {activeTab === 'analisis_costo' && <th style={{ width:'28px', padding:'8px 4px', color:'white' }}></th>}
+                {hasAccordion && <th style={{ width:'28px', padding:'8px 4px', color:'white' }}></th>}
                 {cols.map(col => (
                   <th key={col.key} style={{
                     padding:'8px 10px', color:'white', fontWeight:'700', fontSize:'10px',
@@ -2361,66 +2452,155 @@ const CostAnalysisView = () => {
                 <tr><td colSpan={cols.length + 2} style={{ textAlign:'center', padding:'40px', color:'#94a3b8' }}>
                   Sin resultados
                 </td></tr>
-              ) : data.map((row, i) => (
-                <React.Fragment key={row.id}>
-                  {/* Fila principal */}
-                  <tr
-                    onClick={() => toggleExpand(row)}
-                    style={{
-                      background: i % 2 === 0 ? 'white' : '#f8fafc',
-                      cursor: activeTab === 'analisis_costo' ? 'pointer' : 'default',
-                      borderBottom:'1px solid #f1f5f9',
-                      transition:'background 0.1s',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = `${color}12`; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = i%2===0?'white':'#f8fafc'; }}
-                  >
-                    {/* Chevron ana_gral */}
-                    {activeTab === 'analisis_costo' && (
-                      <td style={{ width:'28px', textAlign:'center', color: color, fontWeight:'700', fontSize:'11px' }}>
+              ) : hasCategories ? (
+                // TABS CON CATEGORÍAS
+                grouped.map((group, gi) => (
+                  group.type === 'header' ? (
+                    <tr key={`header-${gi}`}>
+                      <td colSpan={cols.length} style={{
+                        background: `${color}15`,
+                        padding: '10px 16px',
+                        fontWeight: '700',
+                        fontSize: '13px',
+                        color: color,
+                        borderTop: '2px solid #e2e8f0',
+                        borderBottom: '2px solid #e2e8f0',
+                      }}>
+                        {group.ref}
+                      </td>
+                    </tr>
+                  ) : (
+                    group.items.map((row, i) => (
+                      <tr key={row.id} style={{
+                        background: i % 2 === 0 ? 'white' : '#f8fafc',
+                        borderBottom:'1px solid #f1f5f9',
+                      }}>
+                        {cols.map(col => (
+                          <td key={col.key} style={{
+                            padding:'7px 10px',
+                            textAlign: col.center || col.num ? 'center' : 'left',
+                            fontWeight: col.bold ? '800' : '400',
+                            color: col.bold ? color : col.num ? '#374151' : '#1e293b',
+                            fontFamily: col.num ? 'monospace' : 'inherit',
+                            fontSize: col.key === 'descripcion' ? '12px' : '11px',
+                            whiteSpace: col.key === 'descripcion' ? 'normal' : 'nowrap',
+                          }}>
+                            {col.num ? fmtNum(row[col.key]) : (row[col.key] ?? '—')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )
+                ))
+              ) : hasAccordion ? (
+                // TABS CON ACORDEÓN
+                data.map((row, i) => (
+                  <React.Fragment key={row.id}>
+                    {/* Línea separadora antes de cada partida */}
+                    {i > 0 && (
+                      <tr>
+                        <td colSpan={cols.length + 1} style={{
+                          height: '8px',
+                          background: '#f1f5f9',
+                          borderTop: '1px solid #e2e8f0',
+                          borderBottom: '1px solid #e2e8f0',
+                        }}></td>
+                      </tr>
+                    )}
+                    
+                    {/* Partida */}
+                    <tr
+                      onClick={() => toggleExpand(row)}
+                      style={{
+                        background: '#f8fafc',
+                        cursor: 'pointer',
+                        borderBottom:'1px solid #e2e8f0',
+                      }}
+                    >
+                      <td style={{ width:'28px', textAlign:'center', color: color, fontWeight:'700', fontSize:'11px', padding:'10px 4px' }}>
                         {expandedIds[row.id] ? '▼' : '▶'}
                       </td>
+                      {cols.map(col => (
+                        <td key={col.key} style={{
+                          padding:'10px',
+                          textAlign: col.center || col.num ? 'center' : 'left',
+                          fontWeight: col.bold ? '700' : '500',
+                          color: col.bold ? color : '#1e293b',
+                          fontFamily: col.num ? 'monospace' : 'inherit',
+                          fontSize: '12px',
+                          whiteSpace: col.key === 'descripcion' ? 'normal' : 'nowrap',
+                        }}>
+                          {col.num ? fmtNum(row[col.key]) : (row[col.key] ?? '—')}
+                        </td>
+                      ))}
+                    </tr>
+
+                    {/* Items expandidos */}
+                    {expandedIds[row.id] && (itemsMap[row.id] || []).length > 0 && (
+                      <>
+                        {/* Cabecera de items */}
+                        <tr style={{ background: `${color}20` }}>
+                          <td></td>
+                          {(activeTab === 'analisis_costo' ? COL_DEFS.analisis_costo_items : COL_DEFS.mov_equipos_items).map(col => (
+                            <th key={col.key} style={{
+                              padding:'6px 10px',
+                              fontSize:'9px',
+                              fontWeight:'600',
+                              textTransform:'uppercase',
+                              color: color,
+                              textAlign: col.center || col.num ? 'center' : 'left',
+                            }}>{col.label}</th>
+                          ))}
+                        </tr>
+                        
+                        {/* Items */}
+                        {(itemsMap[row.id] || []).map((item, j) => (
+                          <tr key={`item-${item.id}`} style={{
+                            background: '#f0f9ff',
+                            borderBottom: '1px solid #e0f2fe'
+                          }}>
+                            <td></td>
+                            {(activeTab === 'analisis_costo' ? COL_DEFS.analisis_costo_items : COL_DEFS.mov_equipos_items).map(col => (
+                              <td key={col.key} style={{
+                                padding:'6px 10px',
+                                textAlign: col.center || col.num ? 'center' : 'left',
+                                fontFamily: col.num ? 'monospace' : 'inherit',
+                                fontSize:'11px',
+                                color: col.bold ? '#0891b2' : '#374151',
+                                fontWeight: col.bold ? '600' : '400',
+                              }}>
+                                {col.num ? fmtNum(item[col.key]) : (item[col.key] ?? '—')}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </>
                     )}
+                  </React.Fragment>
+                ))
+              ) : (
+                // TABS NORMALES (MO Jornales)
+                data.map((row, i) => (
+                  <tr key={row.id} style={{
+                    background: i % 2 === 0 ? 'white' : '#f8fafc',
+                    borderBottom:'1px solid #f1f5f9',
+                  }}>
                     {cols.map(col => (
                       <td key={col.key} style={{
                         padding:'7px 10px',
                         textAlign: col.center || col.num ? 'center' : 'left',
                         fontWeight: col.bold ? '800' : '400',
-                        color: col.key === 'precio_total' && row[col.key] ? color
-                             : col.bold ? color
-                             : col.num ? '#374151' : '#1e293b',
+                        color: col.bold ? color : col.num ? '#374151' : '#1e293b',
                         fontFamily: col.num ? 'monospace' : 'inherit',
-                        fontSize: col.key === 'descripcion' ? '12px' : col.key === 'precio_total' && row[col.key] ? '13px' : '11px',
+                        fontSize: col.key === 'descripcion' ? '12px' : '11px',
                         whiteSpace: col.key === 'descripcion' ? 'normal' : 'nowrap',
-                        background: col.key === 'precio_total' && row[col.key] ? `${color}10` : 'transparent',
-                        borderRadius: col.key === 'precio_total' ? '6px' : '0',
                       }}>
-                        {col.key === 'precio_total' && row[col.key]
-                          ? 'RD$ ' + Number(row[col.key]).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
-                          : col.num ? fmtNum(row[col.key]) : (row[col.key] ?? '—')}
+                        {col.num ? fmtNum(row[col.key]) : (row[col.key] ?? '—')}
                       </td>
                     ))}
                   </tr>
-
-                  {/* Items expandidos (analisis_costo) */}
-                  {activeTab === 'analisis_costo' && expandedIds[row.id] && (itemsMap[row.id] || []).map((item, j) => {
-                    const isTotal = item.tipo_fila === 'total';
-                    return (
-                      <tr key={`item-${item.id}`} style={{ background: isTotal ? '#0891b2' : '#f0f9ff', borderBottom: isTotal ? 'none' : '1px solid #e0f2fe' }}>
-                        <td style={{ width:'28px' }}></td>
-                        <td style={{ padding:'5px 10px 5px 24px', color: isTotal ? 'rgba(255,255,255,0.7)' : '#64748b', fontSize:'10px' }}>{isTotal ? '' : (item.referencia || '')}</td>
-                        <td style={{ padding:'5px 10px', color: isTotal ? 'rgba(255,255,255,0.7)' : '#64748b', fontSize:'10px', fontFamily:'monospace' }}>{isTotal ? '' : (item.codigo || '')}</td>
-                        <td style={{ padding:'6px 10px', color: isTotal ? 'white' : '#374151', fontSize: isTotal ? '12px' : '11px', fontWeight: isTotal ? '800' : '400' }}>{isTotal ? '' : item.descripcion}</td>
-                        <td style={{ padding:'6px 10px', textAlign:'center', color: isTotal ? 'white' : '#64748b', fontSize:'11px', fontWeight: isTotal ? '800' : '400' }}>{item.unidad || '—'}</td>
-                        <td style={{ padding:'6px 10px', textAlign:'center', fontFamily:'monospace', fontSize:'11px', color: isTotal ? 'rgba(255,255,255,0.8)' : '#374151' }}>{isTotal ? '' : fmtNum(item.cantidad)}</td>
-                        <td style={{ padding:'6px 10px', textAlign:'center', fontFamily:'monospace', fontSize:'11px', color: isTotal ? 'rgba(255,255,255,0.8)' : '#374151' }}>{isTotal ? '' : fmtNum(item.precio_unitario)}</td>
-                        <td style={{ padding:'6px 10px', textAlign:'center', fontFamily:'monospace', fontSize: isTotal ? '13px' : '11px', fontWeight: isTotal ? '800' : '400', color: isTotal ? 'white' : '#374151' }}>{fmtNum(item.subtotal)}</td>
-                        <td style={{ padding:'6px 10px', textAlign:'center', fontFamily:'monospace', fontSize: isTotal ? '13px' : '11px', fontWeight:'800', color: isTotal ? '#ffffff' : '#0891b2' }}>{fmtNum(item.precio_con_itbis)}</td>
-                      </tr>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         )}
@@ -2448,7 +2628,6 @@ const CostAnalysisView = () => {
     </div>
   );
 };
-
 
 // ==================== VISTA: PLANTILLAS ====================
 const TemplatesView = () => {
