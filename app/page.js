@@ -2713,14 +2713,13 @@ const PresupuestoObraView = () => {
 
   const uid = () => '_' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
   const fmtN = (v,d=2) => Number(v||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
-  const fmtMon = (v,mon,d=2) => {
-    const n=fmtN(v,d);
-    return (mon||'RD$')+' '+n;
-  };
+  const fmtMon = (v,mon,d=2) => (mon||'RD$')+' '+fmtN(v,d);
 
   const evalConVars = (expr, vars={}) => {
     if(!expr||typeof expr!=='string') return parseFloat(expr)||0;
-    const s=expr.trim(); if(!s) return 0;
+    let s=expr.trim();
+    if(s.startsWith('=')) s=s.slice(1);
+    if(!s) return 0;
     try {
       let e=s
         .replace(/\ba\b/gi,String(parseFloat(vars.a)||0))
@@ -2735,48 +2734,76 @@ const PresupuestoObraView = () => {
   };
 
   const calcMedParcial = (m) => {
-    const vars={a:m.a||'',b:m.b||'',c:m.c||'',d:m.d||''};
-    if(m.formula&&m.formula.trim()) return evalConVars(m.formula,vars);
-    const va=m.a&&m.a.trim()?evalConVars(m.a):null;
-    const vb=m.b&&m.b.trim()?evalConVars(m.b):null;
-    const vc=m.c&&m.c.trim()?evalConVars(m.c):null;
-    const vd=m.d&&m.d.trim()?evalConVars(m.d):null;
-    const vals=[va,vb,vc,vd].filter(x=>x!==null);
+    const va = parseFloat(m.a)||0;
+    const vb = parseFloat(m.b)||0;
+    const vc = parseFloat(m.c)||0;
+    const vd = parseFloat(m.d)||0;
+    const f = (m.formula||'').trim();
+    // Si hay fórmula, evaluarla usando a,b,c,d como variables numéricas
+    if(f) return evalConVars(f, {a:va, b:vb, c:vc, d:vd});
+    // Sin fórmula: multiplicar los que tengan valor (ignorar vacíos)
+    const vals=[m.a,m.b,m.c,m.d].map(x=>x&&String(x).trim()?parseFloat(x)||0:null).filter(x=>x!==null);
     return vals.length===0?0:vals.reduce((p,v)=>p*v,1);
   };
 
-  const mkMed     = (concepto) => ({id:uid(),concepto:concepto||'',a:'',b:'',c:'',d:'',formula:''});
-  const mkComp    = ()         => ({id:uid(),naturaleza:'M',desc:'',cantidad:'',unidad:'ud',pu:''});
+  const mkMed     = ()      => ({id:uid(),concepto:'',a:'',b:'',c:'',d:'',formula:''});
+  const mkComp    = ()      => ({id:uid(),naturaleza:'M',desc:'',cantidad:'',unidad:'ud',pu:'',itbis:0,rendimiento:1});
   const mkPartida = (desc,unidad,puManual,codigo) => ({
     id:uid(), codigo:codigo||'', desc:desc||'Nueva partida', unidad:unidad||'ud', puManual:puManual||0,
     mediciones:[mkMed()], componentes:[], temporal:true, showMed:false, showComp:false,
   });
-  const mkSubcap  = (nombre) => ({id:uid(),nombre:nombre||'Nuevo Subcapitulo',abierto:true,partidas:[]});
-  const mkCap     = (nombre,color) => ({id:uid(),nombre:nombre||'Nuevo Capitulo',color:color||'#6366f1',abierto:true,subcapitulos:[mkSubcap()]});
+  const mkSubcap = (nombre) => ({id:uid(),nombre:nombre||'Nuevo Subcapitulo',abierto:true,partidas:[]});
+  const mkCap    = (nombre,color) => ({id:uid(),nombre:nombre||'Nuevo Capitulo',color:color||'#6366f1',abierto:true,subcapitulos:[mkSubcap()]});
 
-  const CAP_BG    = '#1f2937';
-  const SUBCAP_BG = '#374151';
-  const CAP_COLORS= ['#6366f1','#ef4444','#10b981','#f59e0b','#0ea5e9','#8b5cf6','#f97316','#14b8a6','#ec4899','#64748b'];
-  const MONEDAS   = ['RD$','USD','EUR','HTG'];
+  const CAP_BG     = '#1f2937';
+  const SUBCAP_BG  = '#374151';
+  const CAP_COLORS = ['#6366f1','#ef4444','#10b981','#f59e0b','#0ea5e9','#8b5cf6','#f97316','#14b8a6','#ec4899','#64748b'];
+  const MONEDAS    = ['RD$','USD','EUR','HTG'];
+
+  // customNAT debe declararse ANTES de NAT/getAllNAT para evitar ReferenceError
+  const [customNAT,setCustomNAT] = React.useState(()=>{
+    try{return JSON.parse(localStorage.getItem('procalc_custom_nat')||'[]');}catch{return [];}
+  });
 
   const NAT = {
-    'M': {label:'Material',    bg:'#dbeafe',tx:'#1e40af',short:'MAT'},
-    'O': {label:'Mano de Obra',bg:'#dcfce7',tx:'#166534',short:'M.O.'},
-    'E': {label:'Equipo',      bg:'#fce7f3',tx:'#9d174d',short:'EQP'},
-    'T': {label:'Transporte',  bg:'#fef9c3',tx:'#854d0e',short:'TRP'},
-    'V': {label:'Varios',      bg:'#f3f4f6',tx:'#374151',short:'VAR'},
+    'M':{label:'Material',    bg:'#dbeafe',tx:'#1e40af',short:'MAT'},
+    'O':{label:'Mano de Obra',bg:'#dcfce7',tx:'#166534',short:'M.O.'},
+    'H':{label:'Herramienta', bg:'#ffedd5',tx:'#9a3412',short:'HER'},
+    'E':{label:'Equipo',      bg:'#fce7f3',tx:'#9d174d',short:'EQP'},
+    'T':{label:'Transporte',  bg:'#fef9c3',tx:'#854d0e',short:'TRP'},
+    'S':{label:'Subcontrato', bg:'#f0fdf4',tx:'#14532d',short:'SUB'},
+    'V':{label:'Varios',      bg:'#f3f4f6',tx:'#374151',short:'VAR'},
+  };
+  // Combinar NAT base con personalizadas — customNAT ya está inicializado arriba
+  const getAllNAT = () => {
+    const base={...NAT};
+    (customNAT||[]).forEach(c=>{ if(c.key) base[c.key]={label:c.label,bg:c.bg,tx:c.tx,short:c.short||c.label.slice(0,3).toUpperCase()}; });
+    return base;
+  };
+  const ALL_NAT = getAllNAT();
+  const saveCustomNAT = (list) => { setCustomNAT(list); try{localStorage.setItem('procalc_custom_nat',JSON.stringify(list));}catch(e){} };
+  const addCustomNAT = (label,color) => {
+    if(!label.trim()) return;
+    const key='C_'+label.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6)+'_'+(Date.now()%10000);
+    const tx=color; const bg=color+'22';
+    const short=label.trim().slice(0,4).toUpperCase();
+    const list=[...(customNAT||[]),{key,label:label.trim(),bg,tx,short}];
+    saveCustomNAT(list);
+    return key;
   };
 
   const calcPU  = p => p.componentes&&p.componentes.length>0
-    ? p.componentes.reduce((s,c)=>s+(parseFloat(c.cantidad)||0)*(parseFloat(c.pu)||0),0)
+    ? p.componentes.reduce((s,c)=>s+(parseFloat(c.cantidad)||0)*(parseFloat(c.pu)||0)*(1+(parseFloat(c.itbis)||0)/100)*(parseFloat(c.rendimiento)||1),0)
     : parseFloat(p.puManual)||0;
   const calcCant= p => (p.mediciones||[]).reduce((s,m)=>s+calcMedParcial(m),0);
   const getPT   = p => calcCant(p)*calcPU(p);
-  const getSCT  = sc => (sc.partidas||[]).reduce((s,p)=>s+getPT(p),0);
-  const getCT   = c  => (c.subcapitulos||[]).reduce((s,sc)=>s+getSCT(sc),0);
+  const getSCT  = sc=> (sc.partidas||[]).reduce((s,p)=>s+getPT(p),0);
+  const getCT   = c => (c.subcapitulos||[]).reduce((s,sc)=>s+getSCT(sc),0);
 
   const emptyObra = () => ({
-    id:uid(),nombre:'Nueva Obra',fecha:new Date().toLocaleDateString('es-DO'),moneda:'RD$',capitulos:[],
+    id:uid(), nombre:'Nueva Obra', fecha:new Date().toLocaleDateString('es-DO'),
+    moneda:'RD$', tasaUSD:60, tasaEUR:65,
+    capitulos:[],
     indirectos:[
       {id:uid(),label:'Direccion Tecnica',pct:10,activo:true},
       {id:uid(),label:'Administracion',pct:3,activo:true},
@@ -2787,22 +2814,113 @@ const PresupuestoObraView = () => {
     iva:18,
   });
 
-  const [pantalla,setPantalla]       = React.useState('inicio');
-  const [obras,setObras]             = React.useState([]);
-  const [obra,setObra]               = React.useState(null);
-  const [vista,setVista]             = React.useState('presupuesto');
-  const [arbolFoco,setArbolFoco]     = React.useState({capId:null,subcapId:null});
-  const [editCell,setEditCell]       = React.useState(null);
-  const [editCellVal,setEditCellVal] = React.useState('');
-  const [showExport,setShowExport]   = React.useState(false);
-  const [editNombre,setEditNombre]   = React.useState(false);
-  const [showBC3,setShowBC3]         = React.useState(false);
-  const [bc3Text,setBc3Text]         = React.useState('');
-  const [pasteNotif,setPasteNotif]   = React.useState('');
-  const [showMoneda,setShowMoneda]   = React.useState(false);
-  const exportRef = React.useRef(null);
-  const fileRef   = React.useRef(null);
-  const monedaRef = React.useRef(null);
+  // ─── State ────────────────────────────────────────────────────────────────
+  const [pantalla,setPantalla]         = React.useState('inicio');
+  const [obras,setObras]               = React.useState([]);
+  const [obra,setObra]                 = React.useState(null);
+  const [vista,setVista]               = React.useState('presupuesto');
+  const [arbolFoco,setArbolFoco]       = React.useState({capId:null,subcapId:null});
+  const [editCell,setEditCell]         = React.useState(null);
+  const [editCellVal,setEditCellVal]   = React.useState('');
+  const [showExport,setShowExport]     = React.useState(false);
+  const [editNombre,setEditNombre]     = React.useState(false);
+  const [showBC3,setShowBC3]           = React.useState(false);
+  const [bc3Text,setBc3Text]           = React.useState('');
+  const [pasteNotif,setPasteNotif]     = React.useState('');
+  const [showMoneda,setShowMoneda]     = React.useState(false);
+  const [showTasas,setShowTasas]       = React.useState(false);
+  // apuOpen: id de la partida que tiene el acordeón APU desplegado inline
+  const [apuOpen,setApuOpen] = React.useState(null);
+  const [natMenuAddMode,setNatMenuAddMode] = React.useState(false);
+  const [natMenuNewLabel,setNatMenuNewLabel] = React.useState('');
+  const [natMenuNewColor,setNatMenuNewColor] = React.useState('#6366f1');
+  // natMenu: menú contextual de naturaleza {compId,capId,scId,pId,x,y}
+  const [natMenu,setNatMenu] = React.useState(null);
+  // apuPaste: panel para pegar desde Excel
+  const [apuPaste,setApuPaste] = React.useState(null); // {capId,scId,pId}
+  const [apuPasteText,setApuPasteText] = React.useState('');
+  // insumosDB: base de datos de insumos global (cod → {desc, naturaleza, unidad, pu})
+  const [insumosDB,setInsumosDB] = React.useState(()=>{
+    try{ return JSON.parse(localStorage.getItem('procalc_insumos_db')||'{}'); }catch{return {};}
+  });
+  const [codSugest,setCodSugest] = React.useState(null); // {compId, resultados[]}
+
+  const saveInsumosDB = (db) => {
+    setInsumosDB(db);
+    try{ localStorage.setItem('procalc_insumos_db', JSON.stringify(db)); }catch(e){}
+  };
+
+  // Cuando se cambia el código de un insumo: busca en DB y autocompleta
+  const handleCodChange = (capId,scId,pId,compId,cod) => {
+    updComp(capId,scId,pId,compId,{cod});
+    if(!cod||cod.length<2){ setCodSugest(null); return; }
+    const matches=Object.entries(insumosDB)
+      .filter(([k])=>k.toLowerCase().startsWith(cod.toLowerCase()))
+      .slice(0,6).map(([k,v])=>({cod:k,...v}));
+    setCodSugest(matches.length>0?{compId,matches}:null);
+  };
+
+  // Cuando se aplica un insumo de la DB al componente
+  const applyInsumoFromDB = (capId,scId,pId,compId,insumo) => {
+    updComp(capId,scId,pId,compId,{cod:insumo.cod,desc:insumo.desc,naturaleza:insumo.naturaleza,unidad:insumo.unidad,pu:insumo.pu,itbis:insumo.itbis||0,rendimiento:insumo.rendimiento||1});
+    setCodSugest(null);
+  };
+
+  // Guardar insumo en DB cuando se sale del campo PU (persiste para reutilizar)
+  const saveCompToDB = (comp) => {
+    if(!comp.cod||!comp.cod.trim()||!comp.desc) return;
+    const db={...insumosDB,[comp.cod.trim()]:{desc:comp.desc,naturaleza:comp.naturaleza||'M',unidad:comp.unidad||'ud',pu:parseFloat(comp.pu)||0,itbis:parseFloat(comp.itbis)||0,rendimiento:parseFloat(comp.rendimiento)||1}};
+    saveInsumosDB(db);
+  };
+
+  // Pegar análisis desde Excel — detecta: cod, descripcion, cantidad, ud, pu/costo
+  const handleApuExcelPaste = (capId, scId, pId, text) => {
+    if(!text||!text.trim()) return;
+    const cleanNum = s => { const n=parseFloat((s||'').toString().replace(/,/g,'.').replace(/[^\d.\-]/g,'')); return isNaN(n)?null:n; };
+    const isNum = s => cleanNum(s)!==null && (s||'').toString().trim()!=='';
+    const isCodStr = s => /^[A-Za-z]{1,5}[\.\-]\d+/i.test((s||'').trim()) || /^\d{4,}$/.test((s||'').trim());
+    const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim());
+    const newComps=[];
+    for(const line of lines){
+      const cols=line.split('\t').map(c=>(c||'').replace(/^"|"$/g,'').trim());
+      if(!cols.some(c=>c)) continue;
+      let cod='', desc='', cantidad='', unidad='ud', pu='', itbis=0, rendimiento=1;
+      let i=0;
+      // ¿Col 0 es código?
+      if(isCodStr(cols[0])){ cod=cols[0]; i=1; }
+      // Saltar naturaleza si es una sola letra o abreviatura conocida
+      const natAbrevs=['M','O','H','E','T','S','V','MAT','M.O.','HER','EQP','TRP','SUB','VAR','MO','MOB'];
+      if(i<cols.length && natAbrevs.includes((cols[i]||'').toUpperCase().replace(/[.\s]/g,''))) i++;
+      // Siguiente texto largo = descripción
+      if(i<cols.length && !isNum(cols[i])){ desc=cols[i]; i++; }
+      // Recoger números en orden: cantidad, ud (si no es número), pu
+      const nums=[];
+      while(i<cols.length){
+        if(isNum(cols[i])){ nums.push({val:cleanNum(cols[i]),idx:i}); }
+        i++;
+      }
+      // Asignar: primer número = cantidad, segundo = pu (salteando unidad)
+      if(nums.length>=1) cantidad=String(nums[0].val);
+      if(nums.length>=2) pu=String(nums[nums.length-1].val); // último número = pu/costo
+      // Unidad: columna entre cantidad y pu que sea texto corto
+      if(nums.length>=2){
+        for(let j=nums[0].idx+1;j<nums[nums.length-1].idx;j++){
+          if(!isNum(cols[j])&&cols[j]&&cols[j].length<=6){ unidad=cols[j]; break; }
+        }
+      }
+      if(desc||cod) newComps.push({id:uid(),cod,naturaleza:'M',desc,cantidad,unidad,pu,itbis,rendimiento});
+    }
+    if(newComps.length>0){
+      const p=getPart(capId,scId,pId);
+      const existing=(p.componentes||[]).filter(c=>c.desc||c.cod||parseFloat(c.pu)>0);
+      updatePart(capId,scId,pId,{componentes:[...existing,...newComps]});
+    }
+    setApuPaste(null); setApuPasteText('');
+  };
+  const exportRef  = React.useRef(null);
+  const fileRef    = React.useRef(null);
+  const monedaRef  = React.useRef(null);
+  const tasasRef   = React.useRef(null);
 
   React.useEffect(()=>{
     try{
@@ -2820,9 +2938,19 @@ const PresupuestoObraView = () => {
     const h=e=>{if(monedaRef.current&&!monedaRef.current.contains(e.target))setShowMoneda(false);};
     document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);
   },[]);
+  React.useEffect(()=>{
+    const h=e=>{if(tasasRef.current&&!tasasRef.current.contains(e.target))setShowTasas(false);};
+    document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);
+  },[]);
+  React.useEffect(()=>{
+    if(!natMenu) return;
+    const h=()=>setNatMenu(null);
+    document.addEventListener('click',h);
+    return()=>document.removeEventListener('click',h);
+  },[natMenu]);
 
   const guardarObra = (o) => {
-    if(!o)return;
+    if(!o) return;
     setObras(prev=>{const i=prev.findIndex(x=>x.id===o.id);if(i>=0){const n=[...prev];n[i]={...o};return n;}return[...prev,{...o}];});
     setObra({...o});
     try{
@@ -2834,7 +2962,27 @@ const PresupuestoObraView = () => {
 
   const fmt = (v,d=2) => fmtMon(v, obra&&obra.moneda?obra.moneda:'RD$', d);
 
-  // ── PASTE GLOBAL ──────────────────────────────────────────────────────────
+  // Convierte valor a moneda local usando tasas de cambio
+  const toLocal = (v,monComp) => {
+    if(!obra) return parseFloat(v)||0;
+    const val=parseFloat(v)||0;
+    const mon=obra.moneda||'RD$';
+    const tUSD=parseFloat(obra.tasaUSD)||60;
+    const tEUR=parseFloat(obra.tasaEUR)||65;
+    if(monComp===mon) return val;
+    // Convertir monComp → RD$, luego RD$ → mon
+    let enRD=val;
+    if(monComp==='USD') enRD=val*tUSD;
+    else if(monComp==='EUR') enRD=val*tEUR;
+    else if(monComp==='HTG') enRD=val*0.5;
+    if(mon==='RD$') return enRD;
+    if(mon==='USD') return enRD/tUSD;
+    if(mon==='EUR') return enRD/tEUR;
+    if(mon==='HTG') return enRD/0.5;
+    return enRD;
+  };
+
+  // ─── PASTE GLOBAL ────────────────────────────────────────────────────────
   React.useEffect(()=>{
     if(pantalla!=='editor') return;
     const handler=(e)=>{
@@ -2849,101 +2997,128 @@ const PresupuestoObraView = () => {
     return()=>window.removeEventListener('paste',handler);
   },[pantalla,obra]);
 
+  // ─── SMART PASTE — detecta estructura jerárquica desde Excel ───────────────
   const handleSmartPaste = (txt) => {
     if(!txt||!txt.trim()||!obra) return;
     const lines=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
-    const newCaps=[]; let capActual=null, scActual=null;
-    let plainRows=[]; let isHier=false;
+    const newCaps=[], newIndirectos=[];
+    let capActual=null, scActual=null;
+    let plainRows=[], isHier=false;
+
+    const cleanNum=(s)=>{ const n=parseFloat((s||'').replace(/[,\s$RD€]/g,'').replace(/[^\d.\-]/g,'')); return isNaN(n)?0:n; };
+    const isNumeric=(s)=>{ const n=cleanNum(s); return n!==0||/^\s*0+\.?0*\s*$/.test(s||''); };
+    // Niveles de código: "01"=1, "01.02"=2, "01.02.003"=3
+    const nivelCod=(s)=>{ const t=(s||'').trim(); if(!/^\d/.test(t)) return 0; return t.split('.').length; };
+    const esSoloCod=(s)=>/^\s*\d+(\.\d+)*\s*$/.test(s||'');
+    // Texto todo mayúsculas ≥ 4 chars = probable nombre de capítulo
+    const esTituloMAY=(s)=>s&&s.length>=4&&s===s.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]/.test(s)&&!/^\d/.test(s);
 
     for(let li=0;li<lines.length;li++){
       const raw=lines[li]; if(!raw.trim()) continue;
-      const cols=raw.split('\t').map(c=>c.replace(/"/g,'').trim());
+      const cols=raw.split('\t').map(c=>c.replace(/^"|"$/g,'').trim());
       const c0=cols[0]||'', c1=cols[1]||'', c2=cols[2]||'';
-      const puntos=c0.split('.').filter(x=>x!=='').length;
-      const esNumCod=/^\d+(\.\d+)*$/.test(c0.trim());
-      const hayPrecio=cols.slice(1).some(c=>{const v=parseFloat(c.replace(/[,\s]/g,''));return !isNaN(v)&&v>0;});
+      const nivel=nivelCod(c0);
+      const hayNumeral=cols.slice(1).some(c=>isNumeric(c)&&cleanNum(c)>0);
+      const soloTexto=!hayNumeral&&cols.filter(c=>c).length<=3;
 
-      // Capítulo
-      if(esNumCod&&puntos===1&&!hayPrecio&&(c1.length>1||c0.length<=3)){
+      // ── Detectar INDIRECTOS ──
+      const pctCol=cols.find(c=>/^\d+(\.\d+)?%$/.test(c.trim()));
+      if(pctCol){ const pv=parseFloat(pctCol)||0; const lbl=cols.filter(c=>c&&!/^\d+(\.\d+)?%?$/.test(c.trim())&&c.length>2)[0]||'Indirecto'; if(pv>0) newIndirectos.push({id:uid(),label:lbl,pct:pv,activo:true}); continue; }
+
+      // ── CAPÍTULO: código de 1 nivel sin números, o texto en MAYÚSCULAS ──
+      if((nivel===1&&soloTexto)||esTituloMAY(c0)||(nivel===0&&esTituloMAY(c0)&&soloTexto)){
         isHier=true;
-        capActual={...mkCap((c1||c0),CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
+        const nombre=(nivel===1?c1||c0:c0)||'Capítulo';
+        capActual={...mkCap(nombre.trim(),CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
         newCaps.push(capActual); scActual=null; continue;
       }
-      // Subcapítulo 2 niveles
-      if(esNumCod&&puntos===2&&!hayPrecio){
+      // ── SUBCAPÍTULO: código de 2 niveles sin precio, o texto normal sin números ──
+      if((nivel===2&&soloTexto)||(nivel===0&&soloTexto&&capActual&&!hayNumeral&&c0.length>3)){
         isHier=true;
-        if(!capActual){capActual={...mkCap('Cap '+c0.split('.')[0],CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
-        scActual={...mkSubcap(c1||c0),partidas:[]};
+        if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
+        const nombre=(nivel===2?c1||c0:c0)||'Subcapítulo';
+        scActual={...mkSubcap(nombre.trim()),partidas:[]};
         capActual.subcapitulos.push(scActual); continue;
       }
-      // Solo texto sin código → cap o subcap
-      if(!esNumCod&&!hayPrecio&&cols.filter(c=>c).length<=2&&c0.length>2){
-        isHier=true;
-        if(!capActual){capActual={...mkCap(c0,CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);scActual=null;}
-        else{scActual={...mkSubcap(c0),partidas:[]};capActual.subcapitulos.push(scActual);}
-        continue;
-      }
 
-      // Partida
+      // ── PARTIDA: cualquier fila con precio/cantidad o código de ≥3 niveles ──
       let codigo='',desc='',unidad='ud',cantidad=0,puVal=0;
-      if(esNumCod&&puntos>=2){
-        isHier=true;
-        codigo=c0;desc=c1;unidad=c2||'ud';
-        const nums=cols.slice(3).map(c=>parseFloat(c.replace(/[,\s]/g,''))).filter(n=>!isNaN(n)&&n>=0);
-        if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];}
-      } else {
-        const parece_cod=c0.length<=10&&/[A-Z0-9]/.test(c0)&&c1.length>4;
-        if(parece_cod){
-          codigo=c0;desc=c1;unidad=c2||'ud';
-          const nums=cols.slice(3).map(c=>parseFloat(c.replace(/[,\s]/g,''))).filter(n=>!isNaN(n)&&n>=0);
-          if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];}
-        } else {
-          desc=c0;unidad=c1||'ud';
-          const nums=cols.slice(1).map(c=>parseFloat(c.replace(/[,\s]/g,''))).filter(n=>!isNaN(n)&&n>0);
-          if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];}
-        }
+
+      // A) Código jerárquico numérico (01.02.003)
+      if(nivel>=3){
+        isHier=true; codigo=c0;
+        // Detectar descripción: primer texto largo no numérico
+        let dI=cols.findIndex((c,i)=>i>0&&c.length>2&&!isNumeric(c));
+        desc=dI>0?cols[dI]:c1;
+        // Detectar unidad: string corto no numérico
+        let uI=cols.findIndex((c,i)=>i>0&&c.length>=1&&c.length<=6&&!isNumeric(c)&&i!==(dI>0?dI:1));
+        unidad=uI>0?cols[uI]:'ud';
+        const nums=cols.map(c=>cleanNum(c)).filter(n=>n>0);
+        if(nums.length>=3){cantidad=nums[0];puVal=nums[nums.length-2];}
+        else if(nums.length===2){cantidad=nums[0];puVal=nums[1];}
+        else if(nums.length===1){puVal=nums[0];cantidad=1;}
       }
+      // B) Código alfanumérico tipo SV.0028, MO.0053
+      else if(/^[A-Z]{1,4}[\.\-]\d+$/i.test(c0)){
+        isHier=true; codigo=c0; desc=c1||c2||''; unidad=c2&&!isNumeric(c2)?c2:'ud';
+        const nums=cols.slice(3).map(c=>cleanNum(c)).filter(n=>n>0);
+        if(nums.length>=2){cantidad=nums[0];puVal=nums[nums.length-1]/Math.max(nums[0],1);}
+        else if(nums.length===1){puVal=nums[0];cantidad=1;}
+      }
+      // C) Sin código claro — buscar desc y números por posición
+      else if(hayNumeral||c0.length>2){
+        const esCodCorto=c0.length<=14&&/[A-Z0-9.]/i.test(c0)&&c1.length>3;
+        if(esCodCorto){codigo=c0;desc=c1;unidad=c2&&!isNumeric(c2)?c2:'ud';const nums=cols.slice(2).map(c=>cleanNum(c)).filter(n=>n>0);if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];cantidad=1;}}
+        else{desc=c0;unidad=c1&&!isNumeric(c1)&&c1.length<=8?c1:'ud';const nums=cols.filter(c=>isNumeric(c)&&cleanNum(c)>0).map(c=>cleanNum(c));if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];cantidad=1;}}
+      } else continue;
+
       if(!desc&&!codigo) continue;
-      const nuevaPartida={...mkPartida(desc,unidad,puVal,codigo),temporal:puVal===0,mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]};
+      const np={...mkPartida(desc.trim(),unidad,puVal,codigo),temporal:puVal===0,mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]};
       if(isHier){
         if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
         if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos.push(scActual);}
-        scActual.partidas.push(nuevaPartida);
-      } else { plainRows.push(nuevaPartida); }
+        scActual.partidas.push(np);
+      } else { plainRows.push(np); }
     }
 
     newCaps.forEach(c=>{if(!c.subcapitulos||c.subcapitulos.length===0)c.subcapitulos=[{...mkSubcap('Partidas'),partidas:[]}];});
 
+    let notif='';
     if(isHier&&newCaps.length>0){
       const tp=newCaps.reduce((s,c)=>s+c.subcapitulos.reduce((ss,sc)=>ss+sc.partidas.length,0),0);
       setCaps(prev=>[...prev,...newCaps]);
-      setPasteNotif('Pegado: '+newCaps.length+' capitulo(s), '+tp+' partida(s) en orden');
-      setTimeout(()=>setPasteNotif(''),4000);
+      notif='✓ Pegado: '+newCaps.length+' capítulo(s) · '+tp+' partida(s)';
     } else if(plainRows.length>0){
       const caps2=[...(obra.capitulos||[])];
       if(caps2.length===0){const cap=mkCap('Importado',CAP_COLORS[0]);cap.subcapitulos[0].partidas=plainRows;setCaps(()=>[cap]);}
       else{const lc=caps2[caps2.length-1];const ls=lc.subcapitulos[lc.subcapitulos.length-1];ls.partidas=[...ls.partidas,...plainRows];setCaps(()=>caps2);}
-      setPasteNotif('Pegadas '+plainRows.length+' partida(s) en orden');
-      setTimeout(()=>setPasteNotif(''),4000);
+      notif='✓ Pegadas '+plainRows.length+' partida(s)';
     }
+    if(newIndirectos.length>0){
+      updateObra({indirectos:[...(obra.indirectos||[]),...newIndirectos]});
+      notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';
+    }
+    if(notif){setPasteNotif(notif);setTimeout(()=>setPasteNotif(''),5000);}
   };
 
+  // ─── Totales ─────────────────────────────────────────────────────────────
   const grandTotal = obra?(obra.capitulos||[]).reduce((s,c)=>s+getCT(c),0):0;
   const totalInd   = obra?(obra.indirectos||[]).filter(i=>i.activo).reduce((s,i)=>s+grandTotal*(parseFloat(i.pct)||0)/100,0):0;
   const subtConInd = grandTotal+totalInd;
   const ivaAmt     = obra?subtConInd*(parseFloat(obra.iva)||0)/100:0;
   const totalFinal = subtConInd+ivaAmt;
 
+  // ─── Mutaciones ──────────────────────────────────────────────────────────
   const updateObra = chg => { const o2={...obra,...chg}; setObra(o2); };
   const setCaps    = fn  => updateObra({capitulos:fn(obra.capitulos||[])});
   const getPart    = (ci,si,pi) => (obra.capitulos||[]).find(c=>c.id===ci)?.subcapitulos?.find(s=>s.id===si)?.partidas?.find(p=>p.id===pi);
   const updatePart = (ci,si,pi,chg) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:sc.partidas.map(p=>p.id!==pi?p:{...p,...chg})})}));
-  const updateMedFn= (ci,si,pi,mid,chg)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:(p.mediciones||[]).map(m=>m.id!==mid?m:{...m,...chg})});};
-  const addMedFn   = (ci,si,pi)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:[...(p.mediciones||[]),mkMed()]});};
-  const delMedFn   = (ci,si,pi,mid)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:(p.mediciones||[]).filter(m=>m.id!==mid)});};
-  const addCompFn  = (ci,si,pi,nat)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:[...(p.componentes||[]),{...mkComp(),naturaleza:nat||'M'}]});};
-  const updCompFn  = (ci,si,pi,cid,chg)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:(p.componentes||[]).map(c=>c.id!==cid?c:{...c,...chg})});};
-  const delCompFn  = (ci,si,pi,cid)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:(p.componentes||[]).filter(c=>c.id!==cid)});};
+  const updMed     = (ci,si,pi,mid,chg)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:(p.mediciones||[]).map(m=>m.id!==mid?m:{...m,...chg})});};
+  const addMed     = (ci,si,pi)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:[...(p.mediciones||[]),mkMed()]});};
+  const delMed     = (ci,si,pi,mid)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:(p.mediciones||[]).filter(m=>m.id!==mid)});};
+  const addComp    = (ci,si,pi,nat)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:[...(p.componentes||[]),{...mkComp(),naturaleza:nat||'M'}]});};
+  const updComp    = (ci,si,pi,cid,chg)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:(p.componentes||[]).map(c=>c.id!==cid?c:{...c,...chg})});};
+  const delComp    = (ci,si,pi,cid)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:(p.componentes||[]).filter(c=>c.id!==cid)});};
   const addPart    = (ci,si)=>setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:[...sc.partidas,mkPartida()]})}));
   const delPart    = (ci,si,pi)=>setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:sc.partidas.filter(p=>p.id!==pi)})}));
   const addSC      = ci=>setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:[...c.subcapitulos,mkSubcap()]}));
@@ -2960,43 +3135,29 @@ const PresupuestoObraView = () => {
   const startEdit  = (ci,si,pi,f,v)=>{setEditCell({ci,si,pi,f});setEditCellVal(String(v));};
   const commitEdit = ()=>{if(!editCell)return;const{ci,si,pi,f}=editCell;updatePart(ci,si,pi,{[f]:editCellVal});setEditCell(null);};
   const isEd       = (ci,si,pi,f)=>editCell?.ci===ci&&editCell?.si===si&&editCell?.pi===pi&&editCell?.f===f;
-  const cInp       = {width:'100%',border:'2px solid #6366f1',borderRadius:'3px',padding:'1px 4px',fontSize:'12px',outline:'none',background:'#eef2ff',fontFamily:'inherit',boxSizing:'border-box'};
+  const cInp       = {width:'100%',border:'2px solid #6366f1',borderRadius:'3px',padding:'2px 5px',fontSize:'12px',outline:'none',background:'#eef2ff',fontFamily:'inherit',boxSizing:'border-box'};
 
-  const importarBC3 = () => {
-    const lines=bc3Text.trim().split('\n'); let capActual=null,scActual=null;const nC=[];
-    lines.forEach(line=>{const l=line.trim();if(!l)return;
-      if(l.startsWith('~C')){const p=l.split('|');capActual={...mkCap(p[3]||p[2]||p[1]||'Cap','#374151'),subcapitulos:[]};scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];nC.push(capActual);}
-      else if(l.startsWith('~V')){
-        if(!capActual){capActual={...mkCap('Importado','#374151'),subcapitulos:[]};scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];nC.push(capActual);}
-        if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];}
-        const p=l.split('|');scActual.partidas.push({...mkPartida(p[3]||p[1]||'Partida',p[2]||'ud',parseFloat(p[4])||0,p[1]||''),temporal:false});
-      }
-    });
-    if(nC.length>0){setCaps(prev=>[...prev,...nC]);alert('BC3 importado: '+nC.length+' capitulo(s).');}
-    else alert('No se detectaron datos BC3 validos.');
-    setShowBC3(false);setBc3Text('');
-  };
-
+  // ─── Exports ─────────────────────────────────────────────────────────────
   const descargarObra=()=>{const blob=new Blob([JSON.stringify(obra,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.obra.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
-  const abrirArchivo=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const o=JSON.parse(ev.target.result);if(o&&o.capitulos){if(!o.indirectos)o.indirectos=[{id:uid(),label:'Dir Tecnica',pct:10,activo:true}];if(o.iva===undefined)o.iva=18;if(!o.moneda)o.moneda='RD$';setObra(o);guardarObra(o);setPantalla('editor');}else alert('Archivo no valido.');}catch{alert('Error al leer.');}};reader.readAsText(file);e.target.value='';};
-
+  const abrirArchivo=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const o=JSON.parse(ev.target.result);if(o&&o.capitulos){if(!o.indirectos)o.indirectos=[];if(o.iva===undefined)o.iva=18;if(!o.moneda)o.moneda='RD$';if(!o.tasaUSD)o.tasaUSD=60;if(!o.tasaEUR)o.tasaEUR=65;setObra(o);guardarObra(o);setPantalla('editor');}else alert('Archivo no valido.');}catch{alert('Error al leer.');}};reader.readAsText(file);e.target.value='';};
   const exportarBC3=()=>{const hoy=new Date().toISOString().slice(0,10).replace(/-/g,'');let bc3='~V|PROCALC||'+obra.nombre+'|||'+hoy+'\n';(obra.capitulos||[]).forEach(c=>{bc3+='~C|'+c.nombre.replace(/\s/g,'_')+'|Ud|'+c.nombre+'|0|\n';(c.subcapitulos||[]).forEach(sc=>(sc.partidas||[]).forEach(p=>{bc3+='~V|'+(p.codigo||p.id)+'|'+p.unidad+'|'+p.desc+'|'+calcPU(p).toFixed(2)+'||\n';bc3+='~D|'+(p.codigo||p.id)+'|||'+calcCant(p).toFixed(4)+'|\n';}));});const blob=new Blob([bc3],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.bc3';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
-
+  const importarBC3=()=>{const lines=bc3Text.trim().split('\n');let capActual=null,scActual=null;const nC=[];lines.forEach(line=>{const l=line.trim();if(!l)return;if(l.startsWith('~C')){const p=l.split('|');capActual={...mkCap(p[3]||p[1]||'Cap','#374151'),subcapitulos:[]};scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];nC.push(capActual);}else if(l.startsWith('~V')){if(!capActual){capActual={...mkCap('Importado','#374151'),subcapitulos:[]};scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];nC.push(capActual);}if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];}const p=l.split('|');scActual.partidas.push({...mkPartida(p[3]||p[1]||'Partida',p[2]||'ud',parseFloat(p[4])||0,p[1]||''),temporal:false});}});if(nC.length>0){setCaps(prev=>[...prev,...nC]);alert('BC3 importado: '+nC.length+' cap.');}else alert('No se detectaron datos BC3.');setShowBC3(false);setBc3Text('');};
   const exportarCSV=()=>{const mon=obra.moneda||'RD$';let csv='Codigo,Descripcion,Unidad,Cantidad,P.Unitario,Total,Moneda\n';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');csv+='"'+cod+'","'+c.nombre+'","","","","","'+mon+'"\n';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');csv+=',"'+scod+' '+sc.nombre+'","","","","",""\n';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p);csv+='"'+pcod+'","'+p.desc+'","'+p.unidad+'","'+fmtN(cant,4)+'","'+fmtN(pu)+'","'+fmtN(cant*pu)+'","'+mon+'"\n';});});});const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
+  const exportarPDF=()=>{const mon=obra.moneda||'RD$';const fmP=v=>fmtMon(v,mon);let rows='';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');rows+='<tr style="background:#1f2937;color:white;"><td style="padding:8px 14px;font-weight:800;border-left:4px solid '+c.color+'">'+cod+' '+c.nombre+'</td><td colspan="4"></td><td style="padding:8px 14px;text-align:right;font-weight:800;font-family:monospace;">'+fmP(getCT(c))+'</td></tr>';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');rows+='<tr style="background:#374151;color:#d1d5db;"><td colspan="6" style="padding:5px 14px 5px 22px;font-weight:700;font-size:10px;">'+scod+' '+sc.nombre+'</td></tr>';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;rows+='<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 8px;font-size:10px;color:#6b7280;font-family:monospace;">'+pcod+'</td><td style="padding:5px 8px;" colspan="2">'+p.desc+'</td><td style="padding:5px 8px;text-align:center;">'+p.unidad+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;">'+fmtN(cant,4)+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:700;">'+fmP(tot)+'</td></tr>';});});});let indRows='';(obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).forEach(i=>{indRows+='<tr><td colspan="4" style="padding:5px 14px;text-align:right;color:#6b7280;">'+i.label+' ('+i.pct+'%)</td><td style="padding:5px 14px;text-align:right;font-family:monospace;">'+fmP(grandTotal*i.pct/100)+'</td></tr>';});const html='<!DOCTYPE html><html><head><title>'+obra.nombre+'</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px auto;max-width:920px;}table{width:100%;border-collapse:collapse;}th{background:#1f2937;color:#9ca3af;padding:8px 10px;font-size:10px;text-transform:uppercase;text-align:left;}@media print{body{margin:0;}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #6366f1;padding-bottom:10px;margin-bottom:16px;"><div><div style="font-size:20px;font-weight:900;">PRESUPUESTO DE OBRA</div><div style="font-size:15px;font-weight:700;margin-top:2px;">'+obra.nombre+'</div><div style="font-size:11px;color:#9ca3af;">Moneda: '+mon+'</div></div><div style="font-size:10px;color:#9ca3af;">ProCalc - '+new Date().toLocaleDateString('es-DO')+'</div></div><table><thead><tr><th>Codigo</th><th colspan="2">Descripcion</th><th style="text-align:center">Ud.</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Total '+mon+'</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid #e5e7eb;">COSTO DIRECTO</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:800;font-size:14px;">'+fmP(grandTotal)+'</td></tr>'+indRows+'<tr style="background:#374151;color:white;"><td colspan="4" style="padding:7px 14px;text-align:right;font-weight:700;">ITBIS ('+obra.iva+'%)</td><td style="padding:7px 14px;text-align:right;font-family:monospace;">'+fmP(ivaAmt)+'</td></tr><tr style="background:#1f2937;color:white;"><td colspan="4" style="padding:10px;text-align:right;font-weight:800;">TOTAL GENERAL</td><td style="padding:10px;text-align:right;font-family:monospace;font-weight:800;font-size:15px;">'+fmP(totalFinal)+'</td></tr></tfoot></table><script>window.onload=()=>{window.print();}<\/script></body></html>';const w=window.open('','_blank','width=960,height=720');if(w){w.document.write(html);w.document.close();}};
 
-  const exportarPDF=()=>{const mon=obra.moneda||'RD$';const fmP=v=>fmtMon(v,mon);let rows='';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');rows+='<tr style="background:#1f2937;color:white;"><td style="padding:8px 14px;font-weight:800;font-size:11px;text-transform:uppercase;border-left:4px solid '+c.color+'">'+cod+' '+c.nombre+'</td><td colspan="4"></td><td style="padding:8px 14px;text-align:right;font-weight:800;font-family:monospace;">'+fmP(getCT(c))+'</td></tr>';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');rows+='<tr style="background:#374151;color:#d1d5db;"><td colspan="6" style="padding:5px 14px 5px 22px;font-weight:700;font-size:10px;">'+scod+' '+sc.nombre+'</td></tr>';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;rows+='<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 8px;font-size:10px;color:#6b7280;font-family:monospace;">'+pcod+'</td><td style="padding:5px 8px;padding-left:16px;" colspan="2">'+p.desc+'</td><td style="padding:5px 8px;text-align:center;">'+p.unidad+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;">'+fmtN(cant,4)+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:700;">'+fmP(tot)+'</td></tr>';});});});let indRows='';(obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).forEach(i=>{indRows+='<tr><td colspan="4" style="padding:5px 14px;text-align:right;color:#6b7280;">'+i.label+' ('+i.pct+'%)</td><td style="padding:5px 14px;text-align:right;font-family:monospace;">'+fmP(grandTotal*i.pct/100)+'</td></tr>';});const html='<!DOCTYPE html><html><head><title>'+obra.nombre+'</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px auto;max-width:920px;color:#111827;}table{width:100%;border-collapse:collapse;}th{background:#1f2937;color:#9ca3af;padding:8px 10px;font-size:10px;text-transform:uppercase;text-align:left;}@media print{body{margin:0;}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #6366f1;padding-bottom:10px;margin-bottom:16px;"><div><div style="font-size:20px;font-weight:900;">PRESUPUESTO DE OBRA</div><div style="font-size:15px;font-weight:700;color:#374151;margin-top:2px;">'+obra.nombre+'</div><div style="font-size:11px;color:#9ca3af;margin-top:2px;">Moneda: '+mon+'</div></div><div style="font-size:10px;color:#9ca3af;">ProCalc - '+new Date().toLocaleDateString('es-DO')+'</div></div><table><thead><tr><th style="width:9%">Codigo</th><th style="width:35%" colspan="2">Descripcion</th><th style="width:6%;text-align:center">Ud.</th><th style="width:10%;text-align:right">Cantidad</th><th style="width:14%;text-align:right">Total '+mon+'</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid #e5e7eb;">COSTO DIRECTO</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:800;font-size:14px;">'+fmP(grandTotal)+'</td></tr>'+indRows+'<tr style="background:#374151;color:white;"><td colspan="4" style="padding:7px 14px;text-align:right;font-weight:700;">ITBIS ('+obra.iva+'%)</td><td style="padding:7px 14px;text-align:right;font-family:monospace;font-weight:700;">'+fmP(ivaAmt)+'</td></tr><tr style="background:#1f2937;color:white;"><td colspan="4" style="padding:10px;text-align:right;font-weight:800;font-size:13px;">TOTAL GENERAL</td><td style="padding:10px;text-align:right;font-family:monospace;font-weight:800;font-size:15px;">'+fmP(totalFinal)+'</td></tr></tfoot></table><script>window.onload=()=>{window.print();}<\/script></body></html>';const w=window.open('','_blank','width=960,height=720');if(w){w.document.write(html);w.document.close();}};
-
-  // ══════════════════════ PANTALLA INICIO ════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // PANTALLA INICIO
+  // ══════════════════════════════════════════════════════════════════════════
   if(pantalla==='inicio') return (
     <div style={{display:'flex',height:'100%',background:'#f0f2f5',overflow:'hidden'}}>
       <div style={{width:'220px',flexShrink:0,background:'white',borderRight:'1px solid #e5e7eb',display:'flex',flexDirection:'column',boxShadow:'2px 0 8px rgba(0,0,0,0.05)'}}>
         <div style={{padding:'18px 16px',borderBottom:'1px solid #f3f4f6',display:'flex',alignItems:'center',gap:'10px'}}>
-          <div style={{width:'32px',height:'32px',background:'#1f2937',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><ClipboardList size={18} color="white"/></div>
+          <div style={{width:'32px',height:'32px',background:'#1f2937',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center'}}><ClipboardList size={18} color="white"/></div>
           <div><div style={{fontWeight:'800',fontSize:'13px',color:'#111827',lineHeight:1}}>Presupuesto</div><div style={{fontSize:'9px',fontWeight:'700',color:'#6366f1',letterSpacing:'0.1em',textTransform:'uppercase'}}>de Obra</div></div>
         </div>
         {[{icon:'≡',label:'Obras',active:true,action:()=>{}},{icon:'+',label:'Nuevo',active:false,action:()=>{const o=emptyObra();setObra(o);guardarObra(o);setPantalla('editor');}},{icon:'↑',label:'Abrir',active:false,action:()=>fileRef.current&&fileRef.current.click()}].map(item=>(
           <div key={item.label} onClick={item.action} style={{padding:'11px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',background:item.active?'#eef2ff':'transparent',borderLeft:item.active?'3px solid #6366f1':'3px solid transparent'}} onMouseEnter={e=>{if(!item.active)e.currentTarget.style.background='#f9fafb';}} onMouseLeave={e=>{if(!item.active)e.currentTarget.style.background='transparent';}}>
-            <span style={{fontWeight:'700',fontSize:'16px',color:item.active?'#6366f1':'#6b7280',width:'18px',textAlign:'center',lineHeight:1}}>{item.icon}</span>
+            <span style={{fontWeight:'700',fontSize:'16px',color:item.active?'#6366f1':'#6b7280',width:'18px',textAlign:'center'}}>{item.icon}</span>
             <span style={{fontWeight:item.active?'700':'600',fontSize:'13px',color:item.active?'#6366f1':'#374151'}}>{item.label}</span>
           </div>
         ))}
@@ -3027,8 +3188,8 @@ const PresupuestoObraView = () => {
                   <div style={{fontSize:'11px',color:'#6b7280',marginTop:'2px'}}>{(o.capitulos||[]).length} cap. · {(o.capitulos||[]).reduce((s,c)=>s+(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).length,0),0)} partidas</div>
                 </div>
                 <div style={{position:'absolute',top:'12px',right:'12px',display:'flex',gap:'4px'}}>
-                  <button title="Descargar" onClick={e=>{e.stopPropagation();const blob=new Blob([JSON.stringify(o,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(o.nombre||'obra').replace(/\s/g,'_')+'.obra.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}} style={{background:'#f3f4f6',border:'none',borderRadius:'6px',padding:'4px 7px',cursor:'pointer',color:'#6b7280',fontSize:'13px'}}>↓</button>
-                  <button title="Eliminar" onClick={e=>{e.stopPropagation();if(!window.confirm('Eliminar esta obra?'))return;setObras(prev=>prev.filter(x=>x.id!==o.id));try{localStorage.removeItem('obra_'+o.id);const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');localStorage.setItem('obras_index',JSON.stringify(idx.filter(x=>x!==o.id)));}catch(er){}}} style={{background:'#fef2f2',border:'none',borderRadius:'6px',padding:'4px 7px',cursor:'pointer',color:'#ef4444',fontSize:'13px'}}>x</button>
+                  <button onClick={e=>{e.stopPropagation();const blob=new Blob([JSON.stringify(o,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(o.nombre||'obra').replace(/\s/g,'_')+'.obra.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}} style={{background:'#f3f4f6',border:'none',borderRadius:'6px',padding:'4px 7px',cursor:'pointer',color:'#6b7280',fontSize:'13px'}}>↓</button>
+                  <button onClick={e=>{e.stopPropagation();if(!window.confirm('Eliminar?'))return;setObras(prev=>prev.filter(x=>x.id!==o.id));try{localStorage.removeItem('obra_'+o.id);const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');localStorage.setItem('obras_index',JSON.stringify(idx.filter(x=>x!==o.id)));}catch(er){}}} style={{background:'#fef2f2',border:'none',borderRadius:'6px',padding:'4px 7px',cursor:'pointer',color:'#ef4444',fontSize:'13px'}}>✕</button>
                 </div>
               </div>
             ))}
@@ -3041,34 +3202,35 @@ const PresupuestoObraView = () => {
   if(!obra) return null;
   const caps=obra.capitulos||[];
 
-  // ══════════════════════ VISTA PRESUPUESTO ══════════════════════════════════
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // VISTA PRESUPUESTO — tabla principal
+  // ══════════════════════════════════════════════════════════════════════════
   const VPresupuesto = () => (
-    <div style={{flex:1,overflow:'auto'}}>
-      {/* Nombre del proyecto sobre la tabla */}
-      <div style={{background:'#111827',padding:'8px 16px 8px',display:'flex',alignItems:'center',gap:'12px',borderBottom:'2px solid #1f2937'}}>
+    <div style={{flex:1,overflow:'auto',overflowAnchor:'none'}}>
+      <div style={{background:'#111827',padding:'8px 16px',display:'flex',alignItems:'center',gap:'12px',borderBottom:'2px solid #1f2937',flexShrink:0}}>
         <div style={{flex:1}}>
           <div style={{fontSize:'9px',fontWeight:'700',color:'#4b5563',textTransform:'uppercase',letterSpacing:'0.08em'}}>Proyecto</div>
           <div style={{fontWeight:'800',fontSize:'14px',color:'white'}}>{obra.nombre}</div>
         </div>
         <div style={{fontSize:'10px',color:'#4b5563'}}>{obra.fecha}</div>
       </div>
-
-      <table style={{width:'100%',tableLayout:'fixed',borderCollapse:'collapse',fontSize:'12px',minWidth:'860px'}}>
+      <table style={{width:'100%',tableLayout:'fixed',borderCollapse:'collapse',fontSize:'12px',minWidth:'820px',overflowAnchor:'none'}}>
         <colgroup>
-          <col style={{width:'90px'}}/><col/><col style={{width:'52px'}}/><col style={{width:'88px'}}/><col style={{width:'110px'}}/><col style={{width:'110px'}}/><col style={{width:'26px'}}/>
+          <col style={{width:'88px'}}/><col/><col style={{width:'50px'}}/><col style={{width:'85px'}}/><col style={{width:'108px'}}/><col style={{width:'108px'}}/><col style={{width:'28px'}}/>
         </colgroup>
         <thead style={{position:'sticky',top:0,zIndex:10}}>
           <tr style={{background:'#1f2937',color:'#9ca3af'}}>
-            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'left',borderRight:'1px solid #374151'}}>Codigo</th>
-            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'left',borderRight:'1px solid #374151'}}>Descripcion</th>
-            <th style={{padding:'8px 6px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',borderRight:'1px solid #374151'}}>Ud.</th>
-            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'right',borderRight:'1px solid #374151'}}>Cantidad</th>
-            <th style={{padding:'8px 10px',textAlign:'right',borderRight:'1px solid #374151'}}>
-              <div style={{fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em'}}>P. Unitario</div>
+            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',textAlign:'left',borderRight:'1px solid #374151'}}>Código</th>
+            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',textAlign:'left',borderRight:'1px solid #374151'}}>Descripción <span style={{fontSize:'9px',color:'#4b5563',fontWeight:'500',textTransform:'none'}}>(clic en código → APU)</span></th>
+            <th style={{padding:'8px 6px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',textAlign:'center',borderRight:'1px solid #374151'}}>Ud.</th>
+            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',textAlign:'right',borderRight:'1px solid #374151'}}>Cantidad</th>
+            <th style={{padding:'6px 10px',textAlign:'right',borderRight:'1px solid #374151'}}>
+              <div style={{fontWeight:'700',fontSize:'10px',textTransform:'uppercase',color:'#9ca3af'}}>P. Unitario</div>
               <div style={{fontSize:'9px',color:'#6b7280',fontWeight:'600'}}>{obra.moneda||'RD$'}</div>
             </th>
-            <th style={{padding:'8px 10px',textAlign:'right',borderRight:'1px solid #374151'}}>
-              <div style={{fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Total</div>
+            <th style={{padding:'6px 10px',textAlign:'right',borderRight:'1px solid #374151'}}>
+              <div style={{fontWeight:'700',fontSize:'10px',textTransform:'uppercase',color:'#9ca3af'}}>Total</div>
               <div style={{fontSize:'9px',color:'#6b7280',fontWeight:'600'}}>{obra.moneda||'RD$'}</div>
             </th>
             <th style={{padding:'8px 4px'}}></th>
@@ -3080,15 +3242,15 @@ const PresupuestoObraView = () => {
             const capCode=String(ci+1).padStart(2,'0');
             return (
               <React.Fragment key={cap.id}>
-                {/* CAPÍTULO — gris muy oscuro */}
+                {/* CAPÍTULO */}
                 <tr style={{background:CAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color}} onClick={()=>togCap(cap.id)}>
                   <td style={{padding:'9px 10px',fontFamily:'monospace',color:cap.color,fontWeight:'800',fontSize:'12px',borderRight:'1px solid #374151'}}>{capCode}</td>
                   <td colSpan={4} style={{padding:'9px 10px',fontWeight:'800',fontSize:'12px',color:'white',textTransform:'uppercase',letterSpacing:'0.06em'}}>
-                    <span style={{marginRight:'6px',color:'#6b7280',fontSize:'10px'}}>{cap.abierto?'v':'>'}</span>{cap.nombre}
+                    <span style={{marginRight:'6px',color:'#6b7280',fontSize:'10px'}}>{cap.abierto?'▼':'▶'}</span>{cap.nombre}
                   </td>
                   <td style={{padding:'9px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:cap.color,borderLeft:'1px solid #374151',borderRight:'1px solid #374151'}}>{fmt(ct)}</td>
                   <td style={{background:CAP_BG,textAlign:'center',padding:'4px'}}>
-                    <button onClick={e=>{e.stopPropagation();delCap(cap.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#4b5563',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#4b5563'}>x</button>
+                    <button onClick={e=>{e.stopPropagation();delCap(cap.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#4b5563',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#4b5563'}>✕</button>
                   </td>
                 </tr>
                 {cap.abierto&&(cap.subcapitulos||[]).map((sc,si)=>{
@@ -3096,15 +3258,15 @@ const PresupuestoObraView = () => {
                   const scCode=capCode+'.'+String(si+1).padStart(2,'0');
                   return (
                     <React.Fragment key={sc.id}>
-                      {/* SUBCAPÍTULO — gris medio */}
+                      {/* SUBCAPÍTULO */}
                       <tr style={{background:SUBCAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color+'88'}} onClick={()=>togSC(cap.id,sc.id)}>
                         <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#9ca3af',fontWeight:'700',fontSize:'11px',borderRight:'1px solid #4b5563'}}>{scCode}</td>
                         <td colSpan={4} style={{padding:'7px 10px',fontWeight:'700',fontSize:'11px',color:'#d1d5db'}}>
-                          <span style={{marginRight:'6px',color:'#6b7280',fontSize:'9px'}}>{sc.abierto?'v':'>'}</span>{sc.nombre}
+                          <span style={{marginRight:'6px',color:'#6b7280',fontSize:'9px'}}>{sc.abierto?'▼':'▶'}</span>{sc.nombre}
                         </td>
                         <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#9ca3af',fontSize:'11px',borderLeft:'1px solid #4b5563',borderRight:'1px solid #4b5563'}}>{fmt(sct)}</td>
                         <td style={{background:SUBCAP_BG,textAlign:'center',padding:'4px'}}>
-                          <button onClick={e=>{e.stopPropagation();delSC(cap.id,sc.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#4b5563',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#4b5563'}>x</button>
+                          <button onClick={e=>{e.stopPropagation();delSC(cap.id,sc.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#4b5563',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#4b5563'}>✕</button>
                         </td>
                       </tr>
                       {sc.abierto&&(sc.partidas||[]).map((p,pi)=>{
@@ -3115,146 +3277,274 @@ const PresupuestoObraView = () => {
                         const hasComps=p.componentes&&p.componentes.length>0;
                         return (
                           <React.Fragment key={p.id}>
-                            {/* PARTIDA — blanco/gris muy claro */}
                             <tr style={{borderBottom:bdr,borderLeft:'4px solid '+cap.color+'33',background:bg}}>
-                              <td style={{borderRight:bdr,background:bg,padding:'5px 8px',fontFamily:'monospace',color:'#4b5563',fontWeight:'600',fontSize:'11px'}}>{pCode}</td>
-                              <td style={{borderRight:bdr,background:bg,fontWeight:'600',color:'#111827',padding:'5px 8px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'desc',p.desc)}>
-                                {isEd(cap.id,sc.id,p.id,'desc')?<input autoFocus style={cInp} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:
-                                  <span style={{display:'flex',alignItems:'center',gap:'5px',wordBreak:'break-word'}}>
+                              {/* Código — 1 clic abre/cierra APU acordeón */}
+                              <td style={{borderRight:bdr,background:apuOpen===p.id?'#fef3c7':bg,padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',fontSize:'11px',cursor:'pointer',color:apuOpen===p.id?'#b45309':'#4b5563',textDecoration:'underline',textDecorationStyle:'dotted',userSelect:'none'}}
+                                onClick={e=>{
+                                  e.stopPropagation();
+                                  const willOpen=apuOpen!==p.id;
+                                  setApuOpen(willOpen?p.id:null);
+                                  setCodSugest(null);
+                                  if(willOpen&&(!p.componentes||p.componentes.length===0)){
+                                    updatePart(cap.id,sc.id,p.id,{componentes:Array.from({length:10},()=>({...mkComp()}))});
+                                  }
+                                }}>
+                                {pCode}
+                              </td>
+                              {/* Desc — solo editar */}
+                              <td style={{borderRight:bdr,background:bg,fontWeight:'600',color:'#111827',padding:'5px 8px',cursor:'text'}}
+                                onClick={()=>startEdit(cap.id,sc.id,p.id,'desc',p.desc)}>
+                                {isEd(cap.id,sc.id,p.id,'desc')
+                                  ?<input autoFocus style={cInp} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>
+                                  :<span style={{display:'flex',alignItems:'center',gap:'5px',wordBreak:'break-word'}}>
                                     {p.temporal&&<span style={{fontSize:'8px',background:'#fef3c7',color:'#b45309',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>TEMP</span>}
                                     {hasComps&&<span style={{fontSize:'8px',background:'#e0e7ff',color:'#3730a3',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>APU</span>}
                                     {p.desc}
                                   </span>}
                               </td>
+                              {/* Unidad */}
                               <td style={{borderRight:bdr,background:bg,textAlign:'center',padding:'5px 6px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'unidad',p.unidad||'')}>
-                                {isEd(cap.id,sc.id,p.id,'unidad')?<input autoFocus style={{...cInp,textAlign:'center'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:<span style={{color:'#374151',fontWeight:'500'}}>{p.unidad}</span>}
+                                {isEd(cap.id,sc.id,p.id,'unidad')?<input autoFocus style={{...cInp,textAlign:'center'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:<span style={{color:'#374151'}}>{p.unidad}</span>}
                               </td>
-                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:'pointer',fontFamily:'monospace',fontWeight:'700',color:p.showMed?'#6366f1':'#111827'}} onClick={()=>togP(cap.id,sc.id,p.id,'showMed')} title="Clic: Mediciones">
+                              {/* Cantidad → mediciones */}
+                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:'pointer',fontFamily:'monospace',fontWeight:'700',color:p.showMed?'#6366f1':'#111827'}} onClick={()=>togP(cap.id,sc.id,p.id,'showMed')} title="Ver mediciones">
                                 <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
                                   <span>{fmtN(cant,4)}</span>
                                   <span style={{fontSize:'9px',color:p.showMed?'#6366f1':'#9ca3af',fontWeight:'600'}}>{(p.mediciones||[]).length} med.</span>
                                 </div>
                               </td>
-                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:hasComps?'pointer':'text',fontFamily:'monospace',color:hasComps?'#b45309':'#111827',fontWeight:hasComps?'700':'400'}}
-                                onClick={()=>{if(hasComps)togP(cap.id,sc.id,p.id,'showComp');else startEdit(cap.id,sc.id,p.id,'puManual',p.puManual||0);}} title={hasComps?'Clic: APU':'Editar P.U.'}>
-                                {isEd(cap.id,sc.id,p.id,'puManual')&&!hasComps?<input autoFocus type="number" style={{...cInp,textAlign:'right'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:fmt(pu)}
+                              {/* P.U. → editar o ver APU badge */}
+                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:'text',fontFamily:'monospace',color:'#111827'}}
+                                onClick={()=>startEdit(cap.id,sc.id,p.id,'puManual',p.puManual||0)}>
+                                {isEd(cap.id,sc.id,p.id,'puManual')
+                                  ?<input autoFocus type="number" style={{...cInp,textAlign:'right'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>
+                                  :<span style={{color:hasComps?'#b45309':'#111827',fontWeight:hasComps?'700':'400'}}>{fmt(pu)}</span>}
                               </td>
+                              {/* Total */}
                               <td style={{textAlign:'right',padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',color:'#111827',borderRight:bdr,background:pi%2===0?'#eef2ff':'#e0e7ff'}}>{fmt(tot)}</td>
-                              <td style={{borderBottom:bdr,background:bg,padding:'4px',textAlign:'center'}}>
-                                <button onClick={()=>delPart(cap.id,sc.id,p.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>x</button>
+                              {/* Borrar */}
+                              <td style={{borderBottom:bdr,background:bg,padding:'3px 4px',textAlign:'center'}}>
+                                <button onClick={()=>delPart(cap.id,sc.id,p.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'11px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>✕</button>
                               </td>
                             </tr>
+
+                            {/* APU ACORDEÓN — 1 clic en código abre, 1 clic en cabecera cierra */}
+                            {apuOpen===p.id&&(
+                              <tr><td colSpan={7} style={{padding:'0',borderBottom:'2px solid #d97706',borderLeft:'4px solid #d97706'}}>
+                                {/* Cabecera — clic cierra */}
+                                <div onClick={()=>{setApuOpen(null);setCodSugest(null);}}
+                                  style={{padding:'6px 12px',fontSize:'11px',fontWeight:'700',color:'#92400e',display:'flex',alignItems:'center',gap:'8px',background:'#fef3c7',borderBottom:'1px solid #fde68a',cursor:'pointer',userSelect:'none'}}>
+                                  <span style={{fontSize:'13px',color:'#d97706'}}>▼</span>
+                                  <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309',fontSize:'12px'}}>{pCode}</span>
+                                  <span style={{flex:1,color:'#78350f',fontWeight:'700'}}>{p.desc}</span>
+                                  <span style={{fontSize:'10px',color:'#d97706',fontWeight:'400',marginRight:'8px'}}>↑ clic para cerrar</span>
+                                  <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309'}}>P.U. = {fmt(pu)}</span>
+                                  <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',background:'#d97706',borderRadius:'4px',padding:'2px 8px'}}>{fmt(tot)}</span>
+                                </div>
+                                {/* Tabla insumos */}
+                                <div style={{overflowX:'auto'}}>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',tableLayout:'fixed',minWidth:'820px'}}>
+                                  <colgroup>
+                                    <col style={{width:'92px'}}/>
+                                    <col style={{width:'52px'}}/>
+                                    <col/>
+                                    <col style={{width:'68px'}}/>
+                                    <col style={{width:'38px'}}/>
+                                    <col style={{width:'80px'}}/>
+                                    <col style={{width:'52px'}}/>
+                                    <col style={{width:'70px'}}/>
+                                    <col style={{width:'95px'}}/>
+                                    <col style={{width:'22px'}}/>
+                                  </colgroup>
+                                  <thead>
+                                    <tr style={{background:'#1f2937',color:'#9ca3af'}}>
+                                      <th style={{padding:'4px 6px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'left',borderRight:'1px solid #374151'}}>COD. Insumo</th>
+                                      <th style={{padding:'4px 4px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'center',borderRight:'1px solid #374151',color:'#93c5fd'}}>NAT.</th>
+                                      <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'left',borderRight:'1px solid #374151'}}>DESCRIPCION</th>
+                                      <th style={{padding:'4px 6px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'right',borderRight:'1px solid #374151'}}>CANTIDAD</th>
+                                      <th style={{padding:'4px 4px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'center',borderRight:'1px solid #374151'}}>UD</th>
+                                      <th style={{padding:'4px 6px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'right',borderRight:'1px solid #374151'}}>COSTO</th>
+                                      <th style={{padding:'4px 4px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'center',borderRight:'1px solid #374151',color:'#fbbf24'}}>ITBIS</th>
+                                      <th style={{padding:'4px 4px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'right',borderRight:'1px solid #374151',color:'#34d399'}}>RENDTO.</th>
+                                      <th style={{padding:'4px 6px',fontWeight:'700',fontSize:'9px',textTransform:'uppercase',textAlign:'right',borderRight:'1px solid #374151'}}>VALOR</th>
+                                      <th></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(p.componentes||[]).length===0&&(
+                                      <tr><td colSpan={8} style={{padding:'10px 14px',textAlign:'center',color:'#9ca3af',fontSize:'11px',fontStyle:'italic',background:'#fafafa'}}>
+                                        Sin insumos — usa los botones de abajo para agregar por rubro
+                                      </td></tr>
+                                    )}
+                                    {(p.componentes||[]).map((comp,ci2)=>{
+                                      const nI=ALL_NAT[comp.naturaleza]||ALL_NAT['M'];
+                                      const compTot=(parseFloat(comp.cantidad)||0)*(parseFloat(comp.pu)||0)*(1+(parseFloat(comp.itbis)||0)/100)*(parseFloat(comp.rendimiento)||1);
+                                      const rowBg=ci2%2===0?'#ffffff':'#fffbeb';
+                                      const iX={width:'100%',border:'none',padding:'3px 5px',fontSize:'11px',outline:'none',background:'transparent',fontFamily:'inherit',boxSizing:'border-box'};
+                                      const showSug=codSugest&&codSugest.compId===comp.id&&codSugest.matches&&codSugest.matches.length>0;
+                                      return (
+                                        <React.Fragment key={comp.id}>
+                                        <tr style={{borderBottom:'1px solid #f0f0f0',background:rowBg,borderLeft:'3px solid '+nI.tx}}>
+                                          <td style={{padding:'0',borderRight:'1px solid #f0f0f0',position:'relative'}}>
+                                            <input
+                                              value={comp.cod||''}
+                                              onChange={e=>handleCodChange(cap.id,sc.id,p.id,comp.id,e.target.value)}
+                                              onBlur={()=>{saveCompToDB(comp);setTimeout(()=>setCodSugest(null),200);}}
+                                              style={{...iX,fontFamily:'monospace',fontSize:'10px',color:'#1e40af',fontWeight:'700'}}
+                                              placeholder="SV.0001"/>
+                                            {showSug&&(
+                                              <div style={{position:'absolute',top:'100%',left:0,zIndex:200,background:'white',border:'1px solid #e5e7eb',borderRadius:'6px',boxShadow:'0 4px 16px rgba(0,0,0,0.15)',minWidth:'300px',maxHeight:'200px',overflowY:'auto'}}>
+                                                {codSugest.matches.map(ins=>(
+                                                  <div key={ins.cod} onMouseDown={e=>{e.preventDefault();applyInsumoFromDB(cap.id,sc.id,p.id,comp.id,ins);}}
+                                                    style={{padding:'6px 10px',cursor:'pointer',borderBottom:'1px solid #f3f4f6',display:'flex',gap:'8px',alignItems:'center'}}
+                                                    onMouseEnter={e=>e.currentTarget.style.background='#f0f7ff'}
+                                                    onMouseLeave={e=>e.currentTarget.style.background='white'}>
+                                                    <span style={{fontFamily:'monospace',fontSize:'10px',color:'#1e40af',fontWeight:'700',minWidth:'70px'}}>{ins.cod}</span>
+                                                    <span style={{fontSize:'8px',fontWeight:'800',background:ALL_NAT[ins.naturaleza]&&ALL_NAT[ins.naturaleza].bg||'#f3f4f6',color:ALL_NAT[ins.naturaleza]&&ALL_NAT[ins.naturaleza].tx||'#374151',padding:'1px 4px',borderRadius:'3px',flexShrink:0}}>{ALL_NAT[ins.naturaleza]&&ALL_NAT[ins.naturaleza].short||'VAR'}</span>
+                                                    <span style={{flex:1,fontSize:'11px',color:'#374151'}}>{ins.desc}</span>
+                                                    <span style={{fontFamily:'monospace',fontSize:'11px',color:'#059669',fontWeight:'700',flexShrink:0}}>{fmtN(ins.pu)}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </td>
+                                          {/* NAT — clic abre menú estilo Win11 */}
+                                          <td style={{padding:'3px 2px',borderRight:'1px solid #f0f0f0',textAlign:'center',background:nI.bg+'66',cursor:'pointer',userSelect:'none',verticalAlign:'middle'}}
+                                            onClick={e=>{e.stopPropagation();setNatMenuAddMode(false);setNatMenuNewLabel('');const r=e.currentTarget.getBoundingClientRect();setNatMenu({compId:comp.id,capId:cap.id,scId:sc.id,pId:p.id,x:r.left,y:r.bottom+2});}}>
+                                            <div style={{fontSize:'8px',fontWeight:'800',color:nI.tx,lineHeight:1.2,whiteSpace:'nowrap'}}>{nI.short}</div>
+                                            <div style={{fontSize:'6px',color:nI.tx+'aa',lineHeight:1,marginTop:'1px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>▾</div>
+                                          </td>
+                                          <td style={{padding:'0',borderRight:'1px solid #f0f0f0'}}>
+                                            <input value={comp.desc||''} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{desc:e.target.value})}
+                                              style={{...iX,fontStyle:comp.naturaleza==='O'?'italic':'normal'}} placeholder="Descripción del insumo..."/>
+                                          </td>
+                                          <td style={{padding:'0',borderRight:'1px solid #f0f0f0'}}>
+                                            <input type="number" value={comp.cantidad||''} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{cantidad:e.target.value})}
+                                              style={{...iX,textAlign:'right',fontFamily:'monospace'}} placeholder="0"/>
+                                          </td>
+                                          <td style={{padding:'0',borderRight:'1px solid #f0f0f0'}}>
+                                            <input value={comp.unidad||''} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{unidad:e.target.value})}
+                                              style={{...iX,textAlign:'center'}} placeholder="ud"/>
+                                          </td>
+                                          <td style={{padding:'0',borderRight:'1px solid #f0f0f0'}}>
+                                            <input type="number" value={comp.pu||''} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{pu:e.target.value})}
+                                              onBlur={()=>saveCompToDB({...comp})}
+                                              style={{...iX,textAlign:'right',fontFamily:'monospace'}} placeholder="0.00"/>
+                                          </td>
+                                          <td style={{padding:'2px 4px',borderRight:'1px solid #f0f0f0',background:'#fffbf0',textAlign:'center'}}>
+                                            <button
+                                              onClick={()=>{const nv=(parseFloat(comp.itbis)||0)>0?0:18;updComp(cap.id,sc.id,p.id,comp.id,{itbis:nv});saveCompToDB({...comp,itbis:nv});}}
+                                              style={{border:'none',borderRadius:'4px',padding:'3px 6px',fontSize:'9px',fontWeight:'800',cursor:'pointer',background:(parseFloat(comp.itbis)||0)>0?'#fef3c7':'#f3f4f6',color:(parseFloat(comp.itbis)||0)>0?'#b45309':'#9ca3af',width:'100%'}}
+                                              title="Clic para aplicar/quitar ITBIS 18%"
+                                            >{(parseFloat(comp.itbis)||0)>0?'✓ 18%':'NO'}</button>
+                                          </td>
+                                          <td style={{padding:'0',borderRight:'1px solid #f0f0f0',background:'#f0fdf4'}}>
+                                            <input type="number" value={comp.rendimiento===undefined?1:comp.rendimiento} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{rendimiento:e.target.value})}
+                                              onBlur={()=>saveCompToDB({...comp})}
+                                              style={{...iX,textAlign:'right',fontFamily:'monospace',color:'#166534'}} placeholder="1.00" step="0.0001"/>
+                                          </td>
+                                          <td style={{padding:'3px 6px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#111827',borderRight:'1px solid #f0f0f0',background:ci2%2===0?'#f9fafb':'#fef9c3'}}>{fmtN(compTot,2)}</td>
+                                          <td style={{textAlign:'center',padding:'1px'}}>
+                                            <button onClick={()=>delComp(cap.id,sc.id,p.id,comp.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'11px',lineHeight:1,padding:'2px'}}
+                                              onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>✕</button>
+                                          </td>
+                                        </tr>
+                                        </React.Fragment>
+                                      );
+                                    })}
+                                  </tbody>
+                                  {p.componentes&&p.componentes.length>0&&(
+                                    <tfoot>
+                                      <tr style={{background:'#1f2937'}}>
+                                        <td colSpan={5} style={{padding:'5px 8px',fontSize:'10px',color:'#9ca3af'}}>
+                                          {Object.entries(ALL_NAT).map(([k,v])=>{
+                                            const st=(p.componentes||[]).filter(c=>c.naturaleza===k).reduce((s,c)=>s+(parseFloat(c.cantidad)||0)*(parseFloat(c.pu)||0)*(1+(parseFloat(c.itbis)||0)/100)*(parseFloat(c.rendimiento)||1),0);
+                                            if(!st) return null;
+                                            return <span key={k} style={{display:'inline-flex',alignItems:'center',gap:'3px',marginRight:'7px',background:v.bg,borderRadius:'3px',padding:'1px 5px'}}>
+                                              <span style={{fontSize:'8px',color:v.tx,fontWeight:'800'}}>{v.short}</span>
+                                              <span style={{fontFamily:'monospace',color:v.tx,fontWeight:'700',fontSize:'10px'}}>{fmtN(st,2)}</span>
+                                            </span>;
+                                          })}
+                                        </td>
+                                        <td colSpan={3} style={{padding:'5px 6px',textAlign:'right',fontWeight:'800',color:'#fbbf24',fontSize:'11px',borderRight:'1px solid #374151'}}>P.U. = {fmt(pu)}</td>
+                                        <td style={{padding:'5px 6px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'12px',background:'#374151'}}>{fmt(tot)}</td>
+                                        <td style={{background:'#374151'}}></td>
+                                      </tr>
+                                    </tfoot>
+                                  )}
+                                </table>
+                                </div>
+                                <div
+                                  style={{padding:'5px 10px',display:'flex',gap:'4px',alignItems:'center',background:'#f9fafb',borderTop:'1px solid #e5e7eb',flexWrap:'wrap'}}
+                                  onPaste={e=>{
+                                    const txt=e.clipboardData&&e.clipboardData.getData('text');
+                                    if(!txt||!txt.trim()) return;
+                                    e.preventDefault();
+                                    handleApuExcelPaste(cap.id,sc.id,p.id,txt);
+                                  }}
+                                >
+                                  <span style={{fontSize:'10px',color:'#6b7280',fontWeight:'700',marginRight:'4px'}}>+ Insumo:</span>
+                                  {Object.entries(ALL_NAT).map(([k,v])=>(
+                                    <button key={k} onClick={()=>addComp(cap.id,sc.id,p.id,k)} style={{background:v.bg,border:'1px solid '+v.tx+'44',borderRadius:'4px',padding:'2px 8px',cursor:'pointer',fontSize:'10px',color:v.tx,fontWeight:'800'}}>{v.short}</button>
+                                  ))}
+                                  <span style={{marginLeft:'auto',fontSize:'9px',color:'#9ca3af'}}>
+                                    <span style={{color:'#6366f1',fontWeight:'700'}}>Ctrl+V</span> pega desde Excel · DB: <strong style={{color:'#6366f1'}}>{Object.keys(insumosDB).length}</strong>
+                                  </span>
+                                </div>
+                              </td></tr>
+                            )}
 
                             {/* MEDICIONES inline */}
                             {p.showMed&&(
                               <tr><td colSpan={7} style={{padding:'0',background:'#f5f3ff',borderBottom:'1px solid #e2e8f0',borderLeft:'4px solid #6366f1'}}>
                                 <div style={{padding:'6px 14px 3px',fontSize:'10px',fontWeight:'800',color:'#6366f1',textTransform:'uppercase',letterSpacing:'0.06em',display:'flex',alignItems:'center',gap:'8px',background:'#ede9fe',borderBottom:'1px solid #ddd6fe'}}>
-                                  Mediciones · Parcial = A x B x C x D
-                                  <span style={{marginLeft:'auto',fontSize:'11px',color:'#6366f1',fontFamily:'monospace',fontWeight:'800',textTransform:'none'}}>Suma = {fmtN(cant,4)} {p.unidad}</span>
+                                  Mediciones · Parcial = A × B × C × D
+                                  <span style={{marginLeft:'auto',fontSize:'11px',color:'#6366f1',fontFamily:'monospace',fontWeight:'800',textTransform:'none'}}>Σ = {fmtN(cant,4)} {p.unidad}</span>
                                 </div>
                                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
-                                  <colgroup><col style={{width:'24%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'24%'}}/><col style={{width:'8%'}}/></colgroup>
+                                  <colgroup><col style={{width:'22%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'28%'}}/><col style={{width:'10%'}}/></colgroup>
                                   <thead><tr style={{background:'#ede9fe'}}>
-                                    <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'left',letterSpacing:'0.05em'}}>Concepto</th>
+                                    <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'left'}}>Concepto</th>
                                     {['A','B','C','D'].map(k=><th key={k} style={{padding:'4px 8px',fontWeight:'800',fontSize:'11px',color:'#6366f1',textAlign:'right'}}>{k}</th>)}
-                                    <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'right',letterSpacing:'0.05em'}}>Formula/Parcial</th>
+                                    <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'center'}}>= Fórmula / Parcial</th>
                                     <th></th>
                                   </tr></thead>
                                   <tbody>
                                     {(p.mediciones||[]).map((m,mi)=>{
-                                      const parcial=calcMedParcial(m);const isF=m.formula&&m.formula.trim();
+                                      const parcial=calcMedParcial(m);
                                       const iM={width:'100%',border:'1px solid #ddd6fe',borderRadius:'3px',padding:'3px 5px',fontSize:'11px',outline:'none',background:'white',fontFamily:'monospace',textAlign:'right',boxSizing:'border-box'};
+                                      const hasF=(m.formula||'').trim();
                                       return (
                                         <tr key={m.id} style={{borderBottom:'1px solid #ede9fe',background:mi%2===0?'white':'#faf5ff'}}>
-                                          <td style={{padding:'3px 8px'}}><input value={m.concepto||''} onChange={e=>updateMedFn(cap.id,sc.id,p.id,m.id,{concepto:e.target.value})} style={{...iM,textAlign:'left'}} placeholder="Concepto..."/></td>
-                                          {['a','b','c','d'].map(k=><td key={k} style={{padding:'3px 4px'}}><input value={m[k]||''} onChange={e=>updateMedFn(cap.id,sc.id,p.id,m.id,{[k]:e.target.value})} disabled={!!isF} style={{...iM,opacity:isF?.4:1,color:'#1e40af'}} placeholder="0"/></td>)}
-                                          <td style={{padding:'3px 4px'}}>
-                                            <input value={m.formula||''} onChange={e=>updateMedFn(cap.id,sc.id,p.id,m.id,{formula:e.target.value})} style={{...iM,color:'#6366f1',fontSize:'10px'}} placeholder="=a*b+c..."/>
-                                            <div style={{textAlign:'right',fontSize:'10px',color:isF?'#6366f1':'#059669',fontFamily:'monospace',fontWeight:'700'}}>{fmtN(parcial,4)}</div>
+                                          <td style={{padding:'3px 8px'}}><input value={m.concepto||''} onChange={e=>updMed(cap.id,sc.id,p.id,m.id,{concepto:e.target.value})} style={{...iM,textAlign:'left'}} placeholder="Concepto..."/></td>
+                                          {['a','b','c','d'].map(k=>(
+                                            <td key={k} style={{padding:'3px 4px'}}>
+                                              <input value={m[k]||''} onChange={e=>updMed(cap.id,sc.id,p.id,m.id,{[k]:e.target.value})} disabled={!!hasF} style={{...iM,opacity:hasF?.4:1,color:'#1e40af'}} placeholder="0"/>
+                                            </td>
+                                          ))}
+                                          <td style={{padding:'3px 6px'}}>
+                                            {/* Campo fórmula — siempre con = prefijado */}
+                                            <div style={{display:'flex',alignItems:'center',gap:'3px'}}>
+                                              <span style={{fontFamily:'monospace',fontWeight:'800',color:'#6366f1',fontSize:'13px'}}>= </span>
+                                              <input
+                                                value={(m.formula||'').replace(/^=/,'')}
+                                                onChange={e=>{const v=e.target.value.replace(/^=/,'');updMed(cap.id,sc.id,p.id,m.id,{formula:v?v:'',a:m.a,b:m.b,c:m.c,d:m.d});}}
+                                                style={{...iM,color:'#6366f1',fontSize:'11px',flex:1}}
+                                                placeholder="a*b+c..."/>
+                                            </div>
+                                            <div style={{textAlign:'right',fontSize:'11px',color:hasF?'#6366f1':'#059669',fontFamily:'monospace',fontWeight:'700',marginTop:'1px'}}>{fmtN(parcial,4)}</div>
                                           </td>
-                                          <td style={{textAlign:'center',padding:'3px'}}><button onClick={()=>delMedFn(cap.id,sc.id,p.id,m.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>x</button></td>
+                                          <td style={{textAlign:'center',padding:'3px'}}>
+                                            <button onClick={()=>delMed(cap.id,sc.id,p.id,m.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>✕</button>
+                                          </td>
                                         </tr>
                                       );
                                     })}
                                   </tbody>
                                 </table>
                                 <div style={{padding:'5px 12px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#ede9fe',borderTop:'1px solid #ddd6fe'}}>
-                                  <button onClick={()=>addMedFn(cap.id,sc.id,p.id)} style={{background:'none',border:'1px dashed #a5b4fc',borderRadius:'5px',padding:'3px 10px',cursor:'pointer',fontSize:'10px',color:'#6366f1',fontWeight:'700'}}>+ Fila</button>
-                                  <span style={{fontSize:'10px',color:'#6366f1',fontWeight:'800',fontFamily:'monospace'}}>Suma = {fmtN(cant,4)} {p.unidad}</span>
-                                </div>
-                              </td></tr>
-                            )}
-
-                            {/* APU ANÁLISIS DE COSTO inline */}
-                            {p.showComp&&(
-                              <tr><td colSpan={7} style={{padding:'0',background:'#fffbeb',borderBottom:'2px solid #d97706',borderLeft:'4px solid #d97706'}}>
-                                <div style={{padding:'6px 14px 3px',fontSize:'10px',fontWeight:'800',color:'#92400e',textTransform:'uppercase',letterSpacing:'0.06em',display:'flex',alignItems:'center',gap:'8px',background:'#fef3c7',borderBottom:'1px solid #fde68a'}}>
-                                  Analisis de Precio Unitario — {pCode}
-                                  <span style={{marginLeft:'auto',fontSize:'10px',color:'#b45309',fontWeight:'700',textTransform:'none',letterSpacing:'0'}}>P.U. = <strong style={{fontFamily:'monospace'}}>{fmt(pu)}</strong></span>
-                                </div>
-                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
-                                  <colgroup><col style={{width:'11%'}}/><col style={{width:'33%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'13%'}}/><col style={{width:'17%'}}/><col style={{width:'8%'}}/></colgroup>
-                                  <thead><tr style={{background:'#fde68a'}}>
-                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',letterSpacing:'0.05em'}}>Naturaleza</th>
-                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',letterSpacing:'0.05em'}}>Descripcion</th>
-                                    <th style={{padding:'5px 6px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',textAlign:'center'}}>Und</th>
-                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',textAlign:'right'}}>Cantidad</th>
-                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',textAlign:'right'}}>P.U.</th>
-                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',textAlign:'right'}}>Total</th>
-                                    <th></th>
-                                  </tr></thead>
-                                  <tbody>
-                                    {(p.componentes||[]).length===0&&(<tr><td colSpan={7} style={{padding:'14px',textAlign:'center',color:'#d97706',fontSize:'11px',fontStyle:'italic'}}>Sin componentes. Usa los botones de abajo para agregar por rubro.</td></tr>)}
-                                    {(p.componentes||[]).map((comp,ci2)=>{
-                                      const tot=(parseFloat(comp.cantidad)||0)*(parseFloat(comp.pu)||0);
-                                      const nI=NAT[comp.naturaleza]||NAT['M'];
-                                      const iC={width:'100%',border:'1px solid #fde68a',borderRadius:'3px',padding:'3px 5px',fontSize:'11px',outline:'none',background:'white',fontFamily:'inherit',boxSizing:'border-box'};
-                                      return (
-                                        <tr key={comp.id} style={{borderBottom:'1px solid #fef3c7',background:ci2%2===0?'white':'#fffbeb'}}>
-                                          <td style={{padding:'3px 6px'}}>
-                                            <select value={comp.naturaleza||'M'} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{naturaleza:e.target.value})}
-                                              style={{width:'100%',border:'1px solid #fde68a',borderRadius:'4px',padding:'3px 4px',fontSize:'9px',fontWeight:'800',background:nI.bg,color:nI.tx,outline:'none',cursor:'pointer'}}>
-                                              {Object.entries(NAT).map(([k,v])=><option key={k} value={k}>{v.short}</option>)}
-                                            </select>
-                                            <div style={{textAlign:'center',fontSize:'8px',color:nI.tx,fontWeight:'700',marginTop:'1px'}}>{nI.label}</div>
-                                          </td>
-                                          <td style={{padding:'3px 8px'}}><input value={comp.desc||''} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{desc:e.target.value})} style={iC} placeholder="Descripcion..."/></td>
-                                          <td style={{padding:'3px 4px'}}><input value={comp.unidad||''} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{unidad:e.target.value})} style={{...iC,textAlign:'center'}} placeholder="ud"/></td>
-                                          <td style={{padding:'3px 4px'}}><input type="number" value={comp.cantidad||''} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{cantidad:e.target.value})} style={{...iC,textAlign:'right',fontFamily:'monospace'}} placeholder="0"/></td>
-                                          <td style={{padding:'3px 4px'}}><input type="number" value={comp.pu||''} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{pu:e.target.value})} style={{...iC,textAlign:'right',fontFamily:'monospace'}} placeholder="0.00"/></td>
-                                          <td style={{padding:'3px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#b45309'}}>{fmt(tot)}</td>
-                                          <td style={{textAlign:'center',padding:'3px'}}><button onClick={()=>delCompFn(cap.id,sc.id,p.id,comp.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#fde68a',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#fde68a'}>x</button></td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                                {/* Subtotales por naturaleza */}
-                                {p.componentes&&p.componentes.length>0&&(()=>{
-                                  const subs=Object.entries(NAT).map(([k,v])=>{const st=(p.componentes||[]).filter(c=>c.naturaleza===k).reduce((s,c)=>s+(parseFloat(c.cantidad)||0)*(parseFloat(c.pu)||0),0);return{k,v,st};}).filter(x=>x.st>0);
-                                  if(!subs.length) return null;
-                                  return (
-                                    <div style={{display:'flex',gap:'6px',padding:'5px 14px',background:'#fef9c3',borderTop:'1px solid #fde68a',flexWrap:'wrap',alignItems:'center'}}>
-                                      {subs.map(({k,v,st})=>(
-                                        <div key={k} style={{display:'flex',alignItems:'center',gap:'4px',background:v.bg,borderRadius:'5px',padding:'3px 8px'}}>
-                                          <span style={{fontSize:'8px',fontWeight:'800',color:v.tx,textTransform:'uppercase'}}>{v.short}</span>
-                                          <span style={{fontSize:'11px',fontFamily:'monospace',fontWeight:'700',color:v.tx}}>{fmt(st)}</span>
-                                        </div>
-                                      ))}
-                                      <div style={{marginLeft:'auto',display:'flex',gap:'12px',alignItems:'center'}}>
-                                        <span style={{fontSize:'11px',color:'#92400e',fontWeight:'800'}}>P.U. = <strong style={{fontFamily:'monospace'}}>{fmt(pu)}</strong></span>
-                                        <span style={{fontSize:'12px',color:'#78350f',fontWeight:'800',fontFamily:'monospace'}}>Partida = {fmt(tot)}</span>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                                <div style={{padding:'5px 12px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fef3c7',borderTop:'1px solid #fde68a'}}>
-                                  <div style={{display:'flex',gap:'5px',flexWrap:'wrap'}}>
-                                    {Object.entries(NAT).map(([k,v])=>(
-                                      <button key={k} onClick={()=>addCompFn(cap.id,sc.id,p.id,k)} style={{background:v.bg,border:'1px solid '+v.tx+'44',borderRadius:'5px',padding:'3px 8px',cursor:'pointer',fontSize:'9px',color:v.tx,fontWeight:'800'}}>+ {v.short}</button>
-                                    ))}
-                                  </div>
-                                  <span style={{fontSize:'10px',color:'#b45309',fontWeight:'800',fontFamily:'monospace'}}>Total: {fmt(tot)}</span>
+                                  <button onClick={()=>addMed(cap.id,sc.id,p.id)} style={{background:'none',border:'1px dashed #a5b4fc',borderRadius:'5px',padding:'3px 10px',cursor:'pointer',fontSize:'10px',color:'#6366f1',fontWeight:'700'}}>+ Fila</button>
+                                  <span style={{fontSize:'11px',color:'#6366f1',fontWeight:'800',fontFamily:'monospace'}}>Σ = {fmtN(cant,4)} {p.unidad}</span>
                                 </div>
                               </td></tr>
                             )}
@@ -3274,7 +3564,7 @@ const PresupuestoObraView = () => {
                 {cap.abierto&&(
                   <tr style={{background:CAP_BG,borderBottom:'1px solid #374151',borderLeft:'4px solid '+cap.color}}>
                     <td colSpan={7} style={{padding:'4px 10px 4px 20px'}}>
-                      <button onClick={()=>addSC(cap.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'11px',color:'#4b5563',fontWeight:'700',padding:'2px 0'}} onMouseEnter={e=>e.currentTarget.style.color='#9ca3af'} onMouseLeave={e=>e.currentTarget.style.color='#4b5563'}>+ Agregar subcapitulo</button>
+                      <button onClick={()=>addSC(cap.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'11px',color:'#4b5563',fontWeight:'700',padding:'2px 0'}} onMouseEnter={e=>e.currentTarget.style.color='#9ca3af'} onMouseLeave={e=>e.currentTarget.style.color='#4b5563'}>+ Agregar subcapítulo</button>
                     </td>
                   </tr>
                 )}
@@ -3290,16 +3580,16 @@ const PresupuestoObraView = () => {
           <div style={{flex:1,minWidth:'300px'}}>
             <div style={{fontSize:'11px',fontWeight:'800',color:'#374151',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'10px'}}>Costos Indirectos</div>
             {(obra.indirectos||[]).map(ind=>(
-              <div key={ind.id} style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px',background:'#f9fafb',borderRadius:'7px',padding:'7px 10px',border:ind.activo?'1px solid #c7d2fe':'1px solid #f1f5f9'}}>
+              <div key={ind.id} style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'5px',background:'#f9fafb',borderRadius:'7px',padding:'6px 10px',border:ind.activo?'1px solid #c7d2fe':'1px solid #f1f5f9'}}>
                 <input type="checkbox" checked={!!ind.activo} onChange={e=>updInd(ind.id,'activo',e.target.checked)} style={{cursor:'pointer',accentColor:'#6366f1'}}/>
                 <input value={ind.label||''} onChange={e=>updInd(ind.id,'label',e.target.value)} style={{background:'none',border:'none',color:ind.activo?'#111827':'#9ca3af',fontSize:'12px',fontWeight:'600',flex:1,outline:'none'}}/>
                 <input type="number" value={ind.pct||0} min="0" max="100" step="0.5" onChange={e=>updInd(ind.id,'pct',e.target.value)} style={{width:'48px',background:'white',border:'1px solid #e5e7eb',borderRadius:'4px',color:'#6366f1',fontSize:'13px',fontWeight:'700',padding:'2px 4px',textAlign:'right',outline:'none'}}/>
                 <span style={{color:'#9ca3af',fontSize:'12px',width:'14px'}}>%</span>
                 {ind.activo&&(ind.pct>0)&&<span style={{fontSize:'11px',fontFamily:'monospace',color:'#6366f1',minWidth:'90px',textAlign:'right'}}>{fmt(grandTotal*(parseFloat(ind.pct)||0)/100)}</span>}
-                <button onClick={()=>delInd(ind.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>x</button>
+                <button onClick={()=>delInd(ind.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>✕</button>
               </div>
             ))}
-            <button onClick={addInd} style={{background:'none',border:'1px dashed #e5e7eb',borderRadius:'6px',padding:'5px 12px',cursor:'pointer',fontSize:'11px',color:'#9ca3af',fontWeight:'700',marginTop:'4px'}} onMouseEnter={e=>{e.currentTarget.style.borderColor='#6366f1';e.currentTarget.style.color='#6366f1';}} onMouseLeave={e=>{e.currentTarget.style.borderColor='#e5e7eb';e.currentTarget.style.color='#9ca3af';}}>+ Agregar indirecto</button>
+            <button onClick={addInd} style={{background:'none',border:'1px dashed #e5e7eb',borderRadius:'6px',padding:'4px 12px',cursor:'pointer',fontSize:'11px',color:'#9ca3af',fontWeight:'700',marginTop:'4px'}} onMouseEnter={e=>{e.currentTarget.style.borderColor='#6366f1';e.currentTarget.style.color='#6366f1';}} onMouseLeave={e=>{e.currentTarget.style.borderColor='#e5e7eb';e.currentTarget.style.color='#9ca3af';}}>+ Agregar indirecto</button>
           </div>
           <div style={{minWidth:'320px'}}>
             <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
@@ -3308,7 +3598,7 @@ const PresupuestoObraView = () => {
                 <span style={{fontFamily:'monospace',fontWeight:'700',color:'#111827'}}>{fmt(grandTotal)}</span>
               </div>
               {(obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).map(i=>(
-                <div key={i.id} style={{display:'flex',justifyContent:'space-between',padding:'5px 10px',borderRadius:'5px'}}>
+                <div key={i.id} style={{display:'flex',justifyContent:'space-between',padding:'4px 10px',borderRadius:'5px'}}>
                   <span style={{fontSize:'11px',color:'#6b7280'}}>{i.label} ({i.pct}%)</span>
                   <span style={{fontFamily:'monospace',color:'#374151',fontSize:'11px'}}>{fmt(grandTotal*(parseFloat(i.pct)||0)/100)}</span>
                 </div>
@@ -3322,7 +3612,7 @@ const PresupuestoObraView = () => {
                 </div>
               </div>
               <div style={{display:'flex',justifyContent:'space-between',padding:'10px 12px',background:'#1f2937',borderRadius:'8px',marginTop:'2px'}}>
-                <span style={{fontSize:'13px',color:'white',fontWeight:'700'}}>TOTAL <span style={{color:'#6b7280',fontSize:'11px',fontWeight:'600'}}>({obra.moneda||'RD$'})</span></span>
+                <span style={{fontSize:'13px',color:'white',fontWeight:'700'}}>TOTAL <span style={{color:'#6b7280',fontSize:'11px'}}>({obra.moneda||'RD$'})</span></span>
                 <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'15px'}}>{fmt(totalFinal)}</span>
               </div>
             </div>
@@ -3332,7 +3622,7 @@ const PresupuestoObraView = () => {
     </div>
   );
 
-  // ══════════════════════ VISTA ARBOL ════════════════════════════════════════
+  // VISTA ÁRBOL
   const VArbol = () => {
     const selCap=caps.find(c=>c.id===arbolFoco.capId);
     const selSc=selCap&&(selCap.subcapitulos||[]).find(s=>s.id===arbolFoco.subcapId);
@@ -3341,32 +3631,28 @@ const PresupuestoObraView = () => {
         <div style={{width:'280px',flexShrink:0,background:'#111827',borderRight:'1px solid #1f2937',overflowY:'auto'}}>
           <div style={{padding:'10px 14px',borderBottom:'1px solid #1f2937',fontSize:'10px',fontWeight:'800',color:'#4b5563',textTransform:'uppercase',letterSpacing:'0.08em'}}>{obra.nombre}</div>
           {caps.map((c,ci)=>{
-            const cSel=arbolFoco.capId===c.id;const cod=String(ci+1).padStart(2,'0');
-            return (
-              <div key={c.id}>
-                <div onClick={()=>setArbolFoco({capId:c.id,subcapId:null})} style={{display:'flex',alignItems:'center',padding:'8px 14px',cursor:'pointer',background:cSel&&!arbolFoco.subcapId?'#1f2937':'transparent',borderLeft:'3px solid '+(cSel?c.color:'transparent'),gap:'6px'}}>
-                  <span onClick={e=>{e.stopPropagation();togCap(c.id);}} style={{color:'#4b5563',fontSize:'10px',cursor:'pointer'}}>{c.abierto?'v':'>'}</span>
-                  <span style={{fontSize:'11px',fontFamily:'monospace',color:cSel?c.color:'#6b7280',fontWeight:'800',marginRight:'4px',flexShrink:0}}>{cod}</span>
-                  <span style={{fontSize:'12px',fontWeight:'700',color:cSel?'white':'#9ca3af',flex:1,lineHeight:'1.3'}}>{c.nombre}</span>
-                  <span style={{fontSize:'10px',fontFamily:'monospace',color:cSel?c.color:'#4b5563',fontWeight:'700',flexShrink:0}}>{fmt(getCT(c))}</span>
-                </div>
-                {c.abierto&&(c.subcapitulos||[]).map((sc,si)=>{
-                  const scSel=arbolFoco.capId===c.id&&arbolFoco.subcapId===sc.id;
-                  const scod=cod+'.'+String(si+1).padStart(2,'0');
-                  return (
-                    <div key={sc.id} onClick={()=>setArbolFoco({capId:c.id,subcapId:sc.id})} style={{display:'flex',alignItems:'center',padding:'5px 14px 5px 28px',cursor:'pointer',background:scSel?'#1e3a5f':'transparent',borderLeft:'3px solid '+(scSel?'#6366f1':'transparent'),gap:'5px'}}>
-                      <span style={{fontSize:'10px',fontFamily:'monospace',color:scSel?'#93c5fd':'#4b5563',fontWeight:'700',marginRight:'3px',flexShrink:0}}>{scod}</span>
-                      <span style={{fontSize:'11px',fontWeight:'600',color:scSel?'#93c5fd':'#6b7280',flex:1,lineHeight:'1.3'}}>{sc.nombre}</span>
-                      <span style={{fontSize:'10px',fontFamily:'monospace',color:scSel?'#93c5fd':'#374151',flexShrink:0}}>{fmt(getSCT(sc))}</span>
-                    </div>
-                  );
-                })}
+            const cSel=arbolFoco.capId===c.id; const cod=String(ci+1).padStart(2,'0');
+            return (<div key={c.id}>
+              <div onClick={()=>setArbolFoco({capId:c.id,subcapId:null})} style={{display:'flex',alignItems:'center',padding:'8px 14px',cursor:'pointer',background:cSel&&!arbolFoco.subcapId?'#1f2937':'transparent',borderLeft:'3px solid '+(cSel?c.color:'transparent'),gap:'6px'}}>
+                <span onClick={e=>{e.stopPropagation();togCap(c.id);}} style={{color:'#4b5563',fontSize:'10px',cursor:'pointer'}}>{c.abierto?'▼':'▶'}</span>
+                <span style={{fontSize:'11px',fontFamily:'monospace',color:cSel?c.color:'#6b7280',fontWeight:'800',flexShrink:0}}>{cod}</span>
+                <span style={{fontSize:'12px',fontWeight:'700',color:cSel?'white':'#9ca3af',flex:1,lineHeight:'1.3'}}>{c.nombre}</span>
+                <span style={{fontSize:'10px',fontFamily:'monospace',color:cSel?c.color:'#4b5563',fontWeight:'700',flexShrink:0}}>{fmt(getCT(c))}</span>
               </div>
-            );
+              {c.abierto&&(c.subcapitulos||[]).map((sc,si)=>{
+                const scSel=arbolFoco.capId===c.id&&arbolFoco.subcapId===sc.id;
+                const scod=cod+'.'+String(si+1).padStart(2,'0');
+                return (<div key={sc.id} onClick={()=>setArbolFoco({capId:c.id,subcapId:sc.id})} style={{display:'flex',alignItems:'center',padding:'5px 14px 5px 28px',cursor:'pointer',background:scSel?'#1e3a5f':'transparent',borderLeft:'3px solid '+(scSel?'#6366f1':'transparent'),gap:'5px'}}>
+                  <span style={{fontSize:'10px',fontFamily:'monospace',color:scSel?'#93c5fd':'#4b5563',fontWeight:'700',flexShrink:0}}>{scod}</span>
+                  <span style={{fontSize:'11px',fontWeight:'600',color:scSel?'#93c5fd':'#6b7280',flex:1}}>{sc.nombre}</span>
+                  <span style={{fontSize:'10px',fontFamily:'monospace',color:scSel?'#93c5fd':'#374151',flexShrink:0}}>{fmt(getSCT(sc))}</span>
+                </div>);
+              })}
+            </div>);
           })}
         </div>
         <div style={{flex:1,overflowY:'auto',background:'#f9fafb',display:'flex',flexDirection:'column'}}>
-          {!arbolFoco.capId&&(<div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'#9ca3af',gap:'10px'}}><Folder size={44} style={{opacity:0.15}}/><div style={{fontSize:'14px',fontWeight:'600',color:'#6b7280'}}>Selecciona un elemento</div></div>)}
+          {!arbolFoco.capId&&<div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'#9ca3af',gap:'10px'}}><Folder size={44} style={{opacity:0.15}}/><div style={{fontSize:'14px',fontWeight:'600',color:'#6b7280'}}>Selecciona un elemento</div></div>}
           {arbolFoco.capId&&!arbolFoco.subcapId&&selCap&&(
             <div style={{padding:'20px'}}>
               <div style={{fontWeight:'800',fontSize:'16px',color:'#111827',marginBottom:'4px',borderLeft:'4px solid '+selCap.color,paddingLeft:'12px'}}>{selCap.nombre}</div>
@@ -3375,14 +3661,12 @@ const PresupuestoObraView = () => {
                 {(selCap.subcapitulos||[]).map((sc,si)=>{
                   const ci2=caps.findIndex(x=>x.id===selCap.id)+1;
                   const scod=String(ci2).padStart(2,'0')+'.'+String(si+1).padStart(2,'0');
-                  return (
-                    <div key={sc.id} onClick={()=>setArbolFoco({capId:selCap.id,subcapId:sc.id})} style={{background:'white',borderRadius:'10px',padding:'16px',border:'1px solid #e5e7eb',cursor:'pointer',transition:'all 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,0.1)';e.currentTarget.style.borderColor='#6366f1';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.borderColor='#e5e7eb';}}>
-                      <div style={{fontFamily:'monospace',fontSize:'11px',color:'#6b7280',fontWeight:'700',marginBottom:'4px'}}>{scod}</div>
-                      <div style={{fontWeight:'700',fontSize:'13px',color:'#111827',marginBottom:'6px'}}>{sc.nombre}</div>
-                      <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'8px'}}>{(sc.partidas||[]).length} partida(s)</div>
-                      <div style={{fontFamily:'monospace',fontWeight:'800',color:'#6366f1',fontSize:'14px'}}>{fmt(getSCT(sc))}</div>
-                    </div>
-                  );
+                  return (<div key={sc.id} onClick={()=>setArbolFoco({capId:selCap.id,subcapId:sc.id})} style={{background:'white',borderRadius:'10px',padding:'16px',border:'1px solid #e5e7eb',cursor:'pointer'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,0.1)';e.currentTarget.style.borderColor='#6366f1';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.borderColor='#e5e7eb';}}>
+                    <div style={{fontFamily:'monospace',fontSize:'11px',color:'#6b7280',fontWeight:'700',marginBottom:'4px'}}>{scod}</div>
+                    <div style={{fontWeight:'700',fontSize:'13px',color:'#111827',marginBottom:'6px'}}>{sc.nombre}</div>
+                    <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'8px'}}>{(sc.partidas||[]).length} partidas</div>
+                    <div style={{fontFamily:'monospace',fontWeight:'800',color:'#6366f1',fontSize:'14px'}}>{fmt(getSCT(sc))}</div>
+                  </div>);
                 })}
               </div>
             </div>
@@ -3391,108 +3675,123 @@ const PresupuestoObraView = () => {
             const ci2=caps.findIndex(x=>x.id===selCap.id)+1;
             const si2=(selCap.subcapitulos||[]).findIndex(s=>s.id===selSc.id)+1;
             const scod=String(ci2).padStart(2,'0')+'.'+String(si2).padStart(2,'0');
-            return (
-              <div style={{padding:'16px',flex:1,display:'flex',flexDirection:'column'}}>
-                <div style={{marginBottom:'12px'}}>
-                  <div style={{fontSize:'10px',color:'#9ca3af',fontWeight:'700',textTransform:'uppercase'}}>{selCap.nombre}</div>
-                  <div style={{fontWeight:'800',fontSize:'15px',color:'#111827',marginTop:'2px'}}>{scod} {selSc.nombre}</div>
-                  <div style={{fontSize:'12px',color:'#6b7280',marginTop:'2px'}}>Total: <strong style={{fontFamily:'monospace',color:'#6366f1'}}>{fmt(getSCT(selSc))}</strong></div>
-                </div>
-                <div style={{background:'white',borderRadius:'10px',border:'1px solid #e5e7eb',overflow:'hidden',marginBottom:'12px'}}>
-                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
-                    <thead><tr style={{background:'#1f2937',color:'#9ca3af'}}>
-                      {['Codigo','Descripcion','Ud.','Cantidad','P.U.','Total'].map(h=><th key={h} style={{padding:'7px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',textAlign:['Cantidad','P.U.','Total'].includes(h)?'right':'left'}}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>
-                      {(selSc.partidas||[]).map((p,pi)=>{
-                        const pcode=scod+'.'+String(pi+1).padStart(3,'0');
-                        const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;
-                        return (
-                          <tr key={p.id} style={{borderBottom:'1px solid #f3f4f6',background:pi%2===0?'white':'#f9fafb'}}>
-                            <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#4b5563',fontWeight:'700',fontSize:'11px'}}>{pcode}</td>
-                            <td style={{padding:'7px 10px',fontWeight:'600',color:'#111827'}}>{p.desc}</td>
-                            <td style={{padding:'7px 10px',textAlign:'center',color:'#6b7280'}}>{p.unidad}</td>
-                            <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#111827'}}>{fmtN(cant,4)}</td>
-                            <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',color:'#374151'}}>{fmt(pu)}</td>
-                            <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#6366f1'}}>{fmt(tot)}</td>
-                          </tr>
-                        );
-                      })}
-                      {!(selSc.partidas||[]).length&&<tr><td colSpan={6} style={{padding:'20px',textAlign:'center',color:'#9ca3af',fontSize:'12px'}}>Sin partidas</td></tr>}
-                    </tbody>
-                  </table>
-                </div>
-                <button onClick={()=>addPart(selCap.id,selSc.id)} style={{padding:'8px 16px',background:'white',color:'#6366f1',border:'2px dashed #c7d2fe',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',width:'100%',marginBottom:'12px'}}>+ Agregar partida</button>
-                <div style={{marginTop:'auto',borderTop:'2px solid #e5e7eb',paddingTop:'12px'}}>
-                  <div style={{display:'flex',flexDirection:'column',gap:'4px',maxWidth:'300px',marginLeft:'auto'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',padding:'5px 8px',background:'#f9fafb',borderRadius:'5px'}}>
-                      <span style={{fontSize:'12px',color:'#6b7280',fontWeight:'600'}}>Subcapitulo</span>
-                      <span style={{fontFamily:'monospace',fontWeight:'700',color:'#111827'}}>{fmt(getSCT(selSc))}</span>
-                    </div>
-                    <div style={{display:'flex',justifyContent:'space-between',padding:'8px 10px',background:'#1f2937',borderRadius:'7px'}}>
-                      <span style={{fontSize:'12px',color:'white',fontWeight:'700'}}>Total Obra</span>
-                      <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'14px'}}>{fmt(totalFinal)}</span>
-                    </div>
-                  </div>
+            return (<div style={{padding:'16px',flex:1,display:'flex',flexDirection:'column'}}>
+              <div style={{marginBottom:'12px'}}>
+                <div style={{fontSize:'10px',color:'#9ca3af',fontWeight:'700',textTransform:'uppercase'}}>{selCap.nombre}</div>
+                <div style={{fontWeight:'800',fontSize:'15px',color:'#111827',marginTop:'2px'}}>{scod} {selSc.nombre}</div>
+                <div style={{fontSize:'12px',color:'#6b7280',marginTop:'2px'}}>Total: <strong style={{fontFamily:'monospace',color:'#6366f1'}}>{fmt(getSCT(selSc))}</strong></div>
+              </div>
+              <div style={{background:'white',borderRadius:'10px',border:'1px solid #e5e7eb',overflow:'hidden',marginBottom:'12px'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                  <thead><tr style={{background:'#1f2937',color:'#9ca3af'}}>
+                    {['Codigo','Descripcion','Ud.','Cantidad','P.U.','Total'].map(h=><th key={h} style={{padding:'7px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',textAlign:['Cantidad','P.U.','Total'].includes(h)?'right':'left'}}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {(selSc.partidas||[]).map((p,pi)=>{
+                      const pcode=scod+'.'+String(pi+1).padStart(3,'0');
+                      const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;
+                      return (<tr key={p.id} style={{borderBottom:'1px solid #f3f4f6',background:pi%2===0?'white':'#f9fafb',cursor:'default'}}>                        <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#4b5563',fontWeight:'700',fontSize:'11px'}}>{pcode}</td>
+                        <td style={{padding:'7px 10px',fontWeight:'600',color:'#111827'}}>{p.desc}</td>
+                        <td style={{padding:'7px 10px',textAlign:'center',color:'#6b7280'}}>{p.unidad}</td>
+                        <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700'}}>{fmtN(cant,4)}</td>
+                        <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace'}}>{fmt(pu)}</td>
+                        <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#6366f1'}}>{fmt(tot)}</td>
+                      </tr>);
+                    })}
+                    {!(selSc.partidas||[]).length&&<tr><td colSpan={6} style={{padding:'20px',textAlign:'center',color:'#9ca3af',fontSize:'12px'}}>Sin partidas</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <button onClick={()=>addPart(selCap.id,selSc.id)} style={{padding:'8px 16px',background:'white',color:'#6366f1',border:'2px dashed #c7d2fe',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',width:'100%',marginBottom:'12px'}}>+ Agregar partida</button>
+              <div style={{marginTop:'auto',borderTop:'2px solid #e5e7eb',paddingTop:'12px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',padding:'8px 10px',background:'#1f2937',borderRadius:'7px',maxWidth:'300px',marginLeft:'auto'}}>
+                  <span style={{fontSize:'12px',color:'white',fontWeight:'700'}}>Total Obra</span>
+                  <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'14px'}}>{fmt(totalFinal)}</span>
                 </div>
               </div>
-            );
+            </div>);
           })()}
         </div>
       </div>
     );
   };
 
-  // ══════════════════════ RENDER EDITOR ══════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // RENDER EDITOR
+  // ══════════════════════════════════════════════════════════════════════════
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%',background:'#f9fafb'}}>
       {pasteNotif&&(
-        <div style={{position:'fixed',bottom:'24px',left:'50%',transform:'translateX(-50%)',background:'#1f2937',color:'white',padding:'10px 22px',borderRadius:'10px',fontWeight:'700',fontSize:'13px',zIndex:9999,boxShadow:'0 4px 20px rgba(0,0,0,0.35)',border:'1px solid #374151',display:'flex',alignItems:'center',gap:'8px'}}>
-          <span style={{color:'#34d399'}}>checked {pasteNotif}</span>
+        <div style={{position:'fixed',bottom:'24px',left:'50%',transform:'translateX(-50%)',background:'#1f2937',color:'white',padding:'10px 22px',borderRadius:'10px',fontWeight:'700',fontSize:'13px',zIndex:9999,boxShadow:'0 4px 20px rgba(0,0,0,0.35)',border:'1px solid #374151'}}>
+          <span style={{color:'#34d399'}}>✓ {pasteNotif}</span>
         </div>
       )}
 
-      <header style={{background:'#1f2937',borderBottom:'1px solid #374151',padding:'8px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.3)',gap:'10px'}}>
-        <div style={{display:'flex',alignItems:'center',gap:'10px',minWidth:0}}>
+      {/* HEADER */}
+      <header style={{background:'#1f2937',borderBottom:'1px solid #374151',padding:'8px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.3)',gap:'8px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'8px',minWidth:0}}>
           <button onClick={()=>{guardarObra(obra);setPantalla('inicio');}} style={{background:'rgba(255,255,255,0.08)',border:'1px solid #374151',cursor:'pointer',color:'#9ca3af',display:'flex',alignItems:'center',gap:'4px',fontWeight:'700',fontSize:'12px',padding:'5px 10px',borderRadius:'6px',whiteSpace:'nowrap'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.15)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'}>
             <ArrowLeft size={13}/> Obras
           </button>
-          <ClipboardList size={16} style={{color:'#6366f1',flexShrink:0}}/>
+          <ClipboardList size={15} style={{color:'#6366f1',flexShrink:0}}/>
           {editNombre
-            ?<input autoFocus value={obra.nombre||''} onChange={e=>updateObra({nombre:e.target.value})} onBlur={()=>setEditNombre(false)} onKeyDown={e=>e.key==='Enter'&&setEditNombre(false)} style={{fontWeight:'700',fontSize:'14px',border:'2px solid #6366f1',borderRadius:'6px',padding:'2px 8px',outline:'none',color:'#111827',minWidth:'200px',background:'white'}}/>
+            ?<input autoFocus value={obra.nombre||''} onChange={e=>updateObra({nombre:e.target.value})} onBlur={()=>setEditNombre(false)} onKeyDown={e=>e.key==='Enter'&&setEditNombre(false)} style={{fontWeight:'700',fontSize:'14px',border:'2px solid #6366f1',borderRadius:'6px',padding:'2px 8px',outline:'none',color:'#111827',minWidth:'180px',background:'white'}}/>
             :<div onClick={()=>setEditNombre(true)} style={{cursor:'pointer',display:'flex',alignItems:'center',gap:'5px',minWidth:0}}>
-              <span style={{fontWeight:'700',fontSize:'14px',color:'white',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'240px'}}>{obra.nombre}</span>
+              <span style={{fontWeight:'700',fontSize:'14px',color:'white',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'220px'}}>{obra.nombre}</span>
               <Edit2 size={11} style={{color:'#6b7280',flexShrink:0}}/>
             </div>}
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'6px',flexShrink:0}}>
-          {/* Moneda */}
+        <div style={{display:'flex',alignItems:'center',gap:'5px',flexShrink:0}}>
+          {/* MONEDA */}
           <div style={{position:'relative'}} ref={monedaRef}>
-            <button onClick={()=>setShowMoneda(v=>!v)} style={{padding:'5px 10px',background:'rgba(255,255,255,0.08)',color:'#d1d5db',border:'1px solid #374151',borderRadius:'7px',fontWeight:'800',fontSize:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+            <button onClick={()=>setShowMoneda(v=>!v)} style={{padding:'5px 9px',background:'rgba(255,255,255,0.08)',color:'#d1d5db',border:'1px solid #374151',borderRadius:'6px',fontWeight:'800',fontSize:'12px',cursor:'pointer'}}>
               {obra.moneda||'RD$'} ▾
             </button>
             {showMoneda&&(
-              <div style={{position:'absolute',right:0,top:'110%',background:'#1f2937',border:'1px solid #374151',borderRadius:'8px',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',zIndex:300,overflow:'hidden',minWidth:'110px'}}>
+              <div style={{position:'absolute',right:0,top:'110%',background:'#111827',border:'1px solid #374151',borderRadius:'8px',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',zIndex:300,overflow:'hidden',minWidth:'110px'}}>
                 {MONEDAS.map(m=>(
                   <button key={m} onClick={()=>{updateObra({moneda:m});setShowMoneda(false);}} style={{width:'100%',padding:'9px 14px',border:'none',background:(obra.moneda||'RD$')===m?'#374151':'transparent',textAlign:'left',cursor:'pointer',fontSize:'12px',fontWeight:'700',color:(obra.moneda||'RD$')===m?'white':'#9ca3af',display:'block'}} onMouseEnter={e=>e.currentTarget.style.background='#374151'} onMouseLeave={e=>e.currentTarget.style.background=(obra.moneda||'RD$')===m?'#374151':'transparent'}>{m}</button>
                 ))}
               </div>
             )}
           </div>
-          {/* Toggle vista */}
-          <div style={{display:'flex',background:'rgba(255,255,255,0.06)',borderRadius:'8px',padding:'2px',gap:'2px',border:'1px solid #374151'}}>
-            {[['presupuesto','Presupuesto'],['arbol','Arbol']].map(([v,l])=>(
-              <button key={v} onClick={()=>setVista(v)} style={{padding:'5px 12px',border:'none',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',background:vista===v?'#374151':'transparent',color:vista===v?'white':'#6b7280',transition:'all 0.15s'}}>{l}</button>
+
+          {/* TASAS DE CAMBIO */}
+          <div style={{position:'relative'}} ref={tasasRef}>
+            <button onClick={()=>setShowTasas(v=>!v)} style={{padding:'5px 9px',background:'rgba(255,255,255,0.06)',color:'#9ca3af',border:'1px solid #374151',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}} title="Tasas de cambio">
+              $ ↔ ▾
+            </button>
+            {showTasas&&(
+              <div style={{position:'absolute',right:0,top:'110%',background:'#111827',border:'1px solid #374151',borderRadius:'10px',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',zIndex:300,padding:'14px 16px',minWidth:'220px'}}>
+                <div style={{fontSize:'10px',fontWeight:'800',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'10px'}}>Tasas de cambio vs RD$</div>
+                {[['tasaUSD','USD ($)'],['tasaEUR','EUR (€)']].map(([key,lbl])=>(
+                  <div key={key} style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}}>
+                    <span style={{fontSize:'12px',fontWeight:'700',color:'#d1d5db',minWidth:'60px'}}>{lbl}</span>
+                    <input type="number" value={obra[key]||60} onChange={e=>updateObra({[key]:parseFloat(e.target.value)||0})}
+                      style={{flex:1,background:'#1f2937',border:'1px solid #374151',borderRadius:'5px',padding:'4px 8px',color:'white',fontSize:'13px',fontFamily:'monospace',fontWeight:'700',outline:'none',textAlign:'right'}}/>
+                    <span style={{fontSize:'11px',color:'#4b5563'}}>RD$</span>
+                  </div>
+                ))}
+                <div style={{fontSize:'10px',color:'#4b5563',marginTop:'6px',lineHeight:'1.4'}}>Ej: 1 USD = {obra.tasaUSD||60} RD$ · 1 EUR = {obra.tasaEUR||65} RD$</div>
+              </div>
+            )}
+          </div>
+
+          {/* Vista toggle */}
+          <div style={{display:'flex',background:'rgba(255,255,255,0.06)',borderRadius:'7px',padding:'2px',gap:'2px',border:'1px solid #374151'}}>
+            {[['presupuesto','Presupuesto'],['arbol','Árbol']].map(([v,l])=>(
+              <button key={v} onClick={()=>setVista(v)} style={{padding:'4px 11px',border:'none',borderRadius:'5px',fontWeight:'700',fontSize:'11px',cursor:'pointer',background:vista===v?'#374151':'transparent',color:vista===v?'white':'#6b7280',transition:'all 0.15s'}}>{l}</button>
             ))}
           </div>
+
           <div style={{width:'1px',height:'22px',background:'#374151'}}/>
-          <div style={{padding:'4px 10px',background:'rgba(16,185,129,0.12)',border:'1px solid #064e3b',borderRadius:'7px',fontSize:'10px',fontWeight:'700',color:'#34d399'}}>Ctrl+V pega Excel</div>
-          <button onClick={()=>setShowBC3(true)} style={{padding:'6px 11px',background:'rgba(255,255,255,0.07)',color:'#9ca3af',border:'1px solid #374151',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>BC3</button>
-          <button onClick={addCap} style={{padding:'6px 11px',background:'rgba(99,102,241,0.18)',color:'#a5b4fc',border:'1px solid #4338ca',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Capitulo</button>
+          <div style={{padding:'3px 9px',background:'rgba(16,185,129,0.12)',border:'1px solid #064e3b',borderRadius:'6px',fontSize:'10px',fontWeight:'700',color:'#34d399'}}>Ctrl+V</div>
+          <button onClick={()=>setShowBC3(true)} style={{padding:'5px 10px',background:'rgba(255,255,255,0.06)',color:'#9ca3af',border:'1px solid #374151',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>BC3</button>
+          <button onClick={addCap} style={{padding:'5px 10px',background:'rgba(99,102,241,0.18)',color:'#a5b4fc',border:'1px solid #4338ca',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Cap.</button>
           <div style={{width:'1px',height:'22px',background:'#374151'}}/>
-          <div style={{display:'flex',gap:'14px',borderRight:'1px solid #374151',paddingRight:'10px'}}>
+          <div style={{display:'flex',gap:'12px',borderRight:'1px solid #374151',paddingRight:'10px'}}>
             <div style={{textAlign:'right'}}>
-              <div style={{fontSize:'9px',color:'#6b7280',fontWeight:'700',textTransform:'uppercase'}}>Costo Directo</div>
+              <div style={{fontSize:'9px',color:'#6b7280',fontWeight:'700',textTransform:'uppercase'}}>Directo</div>
               <div style={{fontSize:'12px',fontWeight:'700',color:'#d1d5db',fontFamily:'monospace'}}>{fmt(grandTotal)}</div>
             </div>
             <div style={{textAlign:'right'}}>
@@ -3500,17 +3799,17 @@ const PresupuestoObraView = () => {
               <div style={{fontSize:'15px',fontWeight:'800',color:'white',fontFamily:'monospace'}}>{fmt(totalFinal)}</div>
             </div>
           </div>
-          <button onClick={()=>guardarObra(obra)} style={{padding:'7px 12px',background:'#374151',color:'#d1d5db',border:'1px solid #4b5563',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}} onMouseEnter={e=>e.currentTarget.style.background='#4b5563'} onMouseLeave={e=>e.currentTarget.style.background='#374151'}>
+          <button onClick={()=>guardarObra(obra)} style={{padding:'6px 11px',background:'#374151',color:'#d1d5db',border:'1px solid #4b5563',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}} onMouseEnter={e=>e.currentTarget.style.background='#4b5563'} onMouseLeave={e=>e.currentTarget.style.background='#374151'}>
             <Save size={13}/> Guardar
           </button>
           <div style={{position:'relative'}} ref={exportRef}>
-            <button onClick={()=>setShowExport(v=>!v)} style={{padding:'7px 12px',background:'#6366f1',color:'white',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+            <button onClick={()=>setShowExport(v=>!v)} style={{padding:'6px 11px',background:'#6366f1',color:'white',border:'none',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
               <Download size={13}/> Exportar
             </button>
             {showExport&&(
-              <div style={{position:'absolute',right:0,top:'110%',background:'#1f2937',border:'1px solid #374151',borderRadius:'10px',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',zIndex:300,minWidth:'180px',overflow:'hidden'}}>
+              <div style={{position:'absolute',right:0,top:'110%',background:'#111827',border:'1px solid #374151',borderRadius:'10px',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',zIndex:300,minWidth:'180px',overflow:'hidden'}}>
                 {[{label:'PDF / Imprimir',action:exportarPDF},{label:'CSV / Excel',action:exportarCSV},{label:'BC3 Export',action:exportarBC3},{label:'Guardar .obra.json',action:descargarObra}].map(item=>(
-                  <button key={item.label} onClick={()=>{item.action();setShowExport(false);}} style={{width:'100%',padding:'11px 16px',border:'none',background:'none',textAlign:'left',cursor:'pointer',fontSize:'12px',fontWeight:'600',color:'#d1d5db',borderBottom:'1px solid #374151',display:'block'}} onMouseEnter={e=>e.currentTarget.style.background='#374151'} onMouseLeave={e=>e.currentTarget.style.background='none'}>{item.label}</button>
+                  <button key={item.label} onClick={()=>{item.action();setShowExport(false);}} style={{width:'100%',padding:'10px 16px',border:'none',background:'none',textAlign:'left',cursor:'pointer',fontSize:'12px',fontWeight:'600',color:'#d1d5db',borderBottom:'1px solid #374151',display:'block'}} onMouseEnter={e=>e.currentTarget.style.background='#374151'} onMouseLeave={e=>e.currentTarget.style.background='none'}>{item.label}</button>
                 ))}
               </div>
             )}
@@ -3521,11 +3820,10 @@ const PresupuestoObraView = () => {
       {caps.length===0&&(
         <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'16px',color:'#9ca3af',background:'#111827'}}>
           <ClipboardList size={56} style={{opacity:0.1,color:'#6366f1'}}/>
-          <div style={{fontSize:'17px',fontWeight:'600',color:'#6b7280'}}>Obra vacia — pega desde Excel o agrega un capitulo</div>
-          <div style={{fontSize:'12px',color:'#4b5563',background:'#1f2937',border:'1px solid #374151',borderRadius:'8px',padding:'10px 18px',maxWidth:'500px',textAlign:'center',lineHeight:'1.7'}}>
-            Presiona <strong style={{color:'#9ca3af'}}>Ctrl+V</strong> para pegar un presupuesto completo de Excel. El sistema detecta Capitulos, Subcapitulos y Partidas en orden exacto.
+          <div style={{fontSize:'17px',fontWeight:'600',color:'#6b7280'}}>Obra vacía — agrega un capítulo o pega desde Excel</div>
+          <div style={{display:'flex',gap:'10px'}}>
+            <button onClick={addCap} style={{padding:'10px 22px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar Capítulo</button>
           </div>
-          <button onClick={addCap} style={{padding:'10px 22px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar Capitulo</button>
         </div>
       )}
 
@@ -3536,20 +3834,81 @@ const PresupuestoObraView = () => {
         </div>
       )}
 
+      {/* Menú contextual de Naturaleza — estilo Windows 11 */}
+      {natMenu&&(
+        <div
+          style={{position:'fixed',top:natMenu.y,left:natMenu.x,zIndex:9999,background:'rgba(255,255,255,0.92)',backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',border:'1px solid rgba(0,0,0,0.08)',borderRadius:'12px',boxShadow:'0 8px 32px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08)',padding:'6px',minWidth:'190px',maxHeight:'80vh',overflowY:'auto'}}
+          onClick={e=>e.stopPropagation()}
+        >
+          <div style={{fontSize:'9px',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.1em',padding:'4px 10px 6px',userSelect:'none'}}>Naturaleza del insumo</div>
+          {/* Items base + custom */}
+          {Object.entries(ALL_NAT).map(([k,v],idx,arr)=>{
+            const isLast=idx===arr.length-1;
+            const isActive=(natMenu&&natMenu.compId)&&(()=>{const p=getPart(natMenu.capId,natMenu.scId,natMenu.pId);return p&&(p.componentes||[]).find(c=>c.id===natMenu.compId)?.naturaleza===k;})();
+            return (
+              <div key={k}
+                onClick={()=>{updComp(natMenu.capId,natMenu.scId,natMenu.pId,natMenu.compId,{naturaleza:k});setNatMenu(null);setNatMenuAddMode(false);}}
+                style={{display:'flex',alignItems:'center',gap:'10px',padding:'7px 10px',borderRadius:'8px',cursor:'pointer',background:isActive?v.bg:'transparent',marginBottom:isLast?'0':'1px',transition:'background 0.1s'}}
+                onMouseEnter={e=>{if(!isActive)e.currentTarget.style.background='rgba(0,0,0,0.05)';}}
+                onMouseLeave={e=>{if(!isActive)e.currentTarget.style.background='transparent';}}
+              >
+                <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'32px',height:'22px',borderRadius:'5px',fontSize:'9px',fontWeight:'800',background:v.bg,color:v.tx,border:'1px solid '+v.tx+'33',flexShrink:0}}>{v.short}</span>
+                <span style={{fontSize:'13px',fontWeight:isActive?'700':'500',color:isActive?v.tx:'#1f2937',flex:1}}>{v.label}</span>
+                {isActive&&<span style={{fontSize:'12px',color:v.tx}}>✓</span>}
+              </div>
+            );
+          })}
+          {/* Separador */}
+          <div style={{height:'1px',background:'rgba(0,0,0,0.07)',margin:'5px 4px'}}/>
+          {/* Agregar nueva */}
+          {!natMenuAddMode?(
+            <div
+              onClick={e=>{e.stopPropagation();setNatMenuAddMode(true);}}
+              style={{display:'flex',alignItems:'center',gap:'10px',padding:'7px 10px',borderRadius:'8px',cursor:'pointer'}}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,0.05)'}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+            >
+              <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'32px',height:'22px',borderRadius:'5px',fontSize:'14px',fontWeight:'800',background:'#f1f5f9',color:'#6366f1',flexShrink:0}}>+</span>
+              <span style={{fontSize:'13px',fontWeight:'500',color:'#6366f1'}}>Agregar nueva...</span>
+            </div>
+          ):(
+            <div style={{padding:'6px 8px'}} onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:'10px',fontWeight:'700',color:'#6b7280',marginBottom:'5px'}}>Nueva naturaleza</div>
+              <input autoFocus value={natMenuNewLabel} onChange={e=>setNatMenuNewLabel(e.target.value)}
+                placeholder="Nombre (ej: Combustible)" onKeyDown={e=>e.key==='Escape'&&setNatMenuAddMode(false)}
+                style={{width:'100%',border:'1px solid #e5e7eb',borderRadius:'6px',padding:'5px 8px',fontSize:'12px',outline:'none',boxSizing:'border-box',marginBottom:'5px'}}/>
+              <div style={{display:'flex',alignItems:'center',gap:'6px',marginBottom:'6px'}}>
+                <span style={{fontSize:'10px',color:'#6b7280',fontWeight:'600'}}>Color:</span>
+                {['#6366f1','#ef4444','#10b981','#f59e0b','#0ea5e9','#8b5cf6','#ec4899','#14b8a6'].map(c=>(
+                  <div key={c} onClick={()=>setNatMenuNewColor(c)}
+                    style={{width:'18px',height:'18px',borderRadius:'50%',background:c,cursor:'pointer',border:natMenuNewColor===c?'2px solid #111':'2px solid transparent'}}/>
+                ))}
+              </div>
+              <div style={{display:'flex',gap:'5px'}}>
+                <button onClick={()=>{if(!natMenuNewLabel.trim()) return;const key=addCustomNAT(natMenuNewLabel,natMenuNewColor);if(key){updComp(natMenu.capId,natMenu.scId,natMenu.pId,natMenu.compId,{naturaleza:key});setNatMenu(null);setNatMenuAddMode(false);setNatMenuNewLabel('');}}}
+                  style={{flex:1,padding:'5px',background:'#6366f1',color:'white',border:'none',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>Crear y aplicar</button>
+                <button onClick={()=>setNatMenuAddMode(false)}
+                  style={{padding:'5px 8px',background:'#f1f5f9',color:'#6b7280',border:'none',borderRadius:'6px',fontWeight:'600',fontSize:'11px',cursor:'pointer'}}>✕</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {showBC3&&(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:'#1f2937',border:'1px solid #374151',borderRadius:'14px',width:'600px',maxHeight:'88vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.6)'}}>
-            <div style={{padding:'16px 20px',borderBottom:'1px solid #374151',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{fontWeight:'800',fontSize:'16px',color:'white'}}>Importar BC3</div>
-              <button onClick={()=>setShowBC3(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:'20px'}}>x</button>
+          <div style={{background:'#1f2937',border:'1px solid #374151',borderRadius:'14px',width:'580px',maxHeight:'88vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.6)'}}>
+            <div style={{padding:'14px 20px',borderBottom:'1px solid #374151',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:'800',fontSize:'15px',color:'white'}}>Importar BC3</div>
+              <button onClick={()=>setShowBC3(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:'20px'}}>✕</button>
             </div>
-            <div style={{padding:'16px 20px',flex:1,overflow:'auto'}}>
-              <div style={{background:'#111827',borderRadius:'8px',padding:'10px',marginBottom:'12px',fontSize:'11px',color:'#6b7280',border:'1px solid #374151'}}>~C|cod|ud|Capitulo|0| · ~V|cod|ud|Partida|precio||</div>
-              <textarea value={bc3Text} onChange={e=>setBc3Text(e.target.value)} style={{width:'100%',height:'260px',padding:'10px',border:'1px solid #374151',borderRadius:'8px',fontSize:'11px',fontFamily:'monospace',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:'1.6',background:'#111827',color:'#d1d5db'}} placeholder={'~C|01|Ud|PRELIMINARES|0|\n~V|1.01|m2|Limpieza|125.00||'}/>
+            <div style={{padding:'14px 20px',flex:1,overflow:'auto'}}>
+              <div style={{background:'#111827',borderRadius:'7px',padding:'8px',marginBottom:'10px',fontSize:'10px',color:'#6b7280',border:'1px solid #374151'}}>~C|cod|ud|Capitulo|0| · ~V|cod|ud|Partida|precio||</div>
+              <textarea value={bc3Text} onChange={e=>setBc3Text(e.target.value)} style={{width:'100%',height:'240px',padding:'10px',border:'1px solid #374151',borderRadius:'8px',fontSize:'11px',fontFamily:'monospace',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:'1.6',background:'#111827',color:'#d1d5db'}} placeholder={'~C|01|Ud|PRELIMINARES|0|\n~V|1.01|m2|Limpieza|125.00||'}/>
             </div>
-            <div style={{padding:'14px 20px',borderTop:'1px solid #374151',display:'flex',justifyContent:'flex-end',gap:'10px'}}>
-              <button onClick={()=>setShowBC3(false)} style={{padding:'8px 20px',background:'transparent',color:'#6b7280',border:'1px solid #374151',borderRadius:'8px',fontWeight:'600',fontSize:'13px',cursor:'pointer'}}>Cancelar</button>
-              <button onClick={importarBC3} style={{padding:'8px 20px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Importar BC3</button>
+            <div style={{padding:'12px 20px',borderTop:'1px solid #374151',display:'flex',justifyContent:'flex-end',gap:'10px'}}>
+              <button onClick={()=>setShowBC3(false)} style={{padding:'7px 18px',background:'transparent',color:'#6b7280',border:'1px solid #374151',borderRadius:'7px',fontWeight:'600',fontSize:'13px',cursor:'pointer'}}>Cancelar</button>
+              <button onClick={importarBC3} style={{padding:'7px 18px',background:'#6366f1',color:'white',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Importar</button>
             </div>
           </div>
         </div>
