@@ -2734,14 +2734,18 @@ const PresupuestoObraView = () => {
   };
 
   const calcMedParcial = (m) => {
+    // Modo DIRECTO — valor manual ingresado directamente
+    if(m.direct!==undefined && m.direct!=='' && m.direct!==null){
+      return parseFloat(m.direct)||0;
+    }
     const va = parseFloat(m.a)||0;
     const vb = parseFloat(m.b)||0;
     const vc = parseFloat(m.c)||0;
     const vd = parseFloat(m.d)||0;
     const f = (m.formula||'').trim();
-    // Si hay fórmula, evaluarla usando a,b,c,d como variables numéricas
+    // Modo FÓRMULA — expresión libre con variables a,b,c,d
     if(f) return evalConVars(f, {a:va, b:vb, c:vc, d:vd});
-    // Sin fórmula: multiplicar los que tengan valor (ignorar vacíos)
+    // Modo A×B×C×D — multiplicar los campos con valor
     const vals=[m.a,m.b,m.c,m.d].map(x=>x&&String(x).trim()?parseFloat(x)||0:null).filter(x=>x!==null);
     return vals.length===0?0:vals.reduce((p,v)=>p*v,1);
   };
@@ -2873,49 +2877,300 @@ const PresupuestoObraView = () => {
     saveInsumosDB(db);
   };
 
-  // Pegar análisis desde Excel — detecta: cod, descripcion, cantidad, ud, pu/costo
-  const handleApuExcelPaste = (capId, scId, pId, text) => {
-    if(!text||!text.trim()) return;
-    const cleanNum = s => { const n=parseFloat((s||'').toString().replace(/,/g,'.').replace(/[^\d.\-]/g,'')); return isNaN(n)?null:n; };
-    const isNum = s => cleanNum(s)!==null && (s||'').toString().trim()!=='';
-    const isCodStr = s => /^[A-Za-z]{1,5}[\.\-]\d+/i.test((s||'').trim()) || /^\d{4,}$/.test((s||'').trim());
-    const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim());
-    const newComps=[];
-    for(const line of lines){
-      const cols=line.split('\t').map(c=>(c||'').replace(/^"|"$/g,'').trim());
-      if(!cols.some(c=>c)) continue;
-      let cod='', desc='', cantidad='', unidad='ud', pu='', itbis=0, rendimiento=1;
-      let i=0;
-      // ¿Col 0 es código?
-      if(isCodStr(cols[0])){ cod=cols[0]; i=1; }
-      // Saltar naturaleza si es una sola letra o abreviatura conocida
-      const natAbrevs=['M','O','H','E','T','S','V','MAT','M.O.','HER','EQP','TRP','SUB','VAR','MO','MOB'];
-      if(i<cols.length && natAbrevs.includes((cols[i]||'').toUpperCase().replace(/[.\s]/g,''))) i++;
-      // Siguiente texto largo = descripción
-      if(i<cols.length && !isNum(cols[i])){ desc=cols[i]; i++; }
-      // Recoger números en orden: cantidad, ud (si no es número), pu
-      const nums=[];
-      while(i<cols.length){
-        if(isNum(cols[i])){ nums.push({val:cleanNum(cols[i]),idx:i}); }
-        i++;
+  // ── Utilidades compartidas para parseo de Excel ─────────────────────────
+  const _cleanNum = s => {
+    if(s===null||s===undefined) return null;
+    const str=s.toString().trim().replace(/\./g,'').replace(/,/g,'.').replace(/[^\d.\-]/g,'');
+    // Si queda más de un punto, es formato 1.234,56 → ya procesado arriba
+    const n=parseFloat(str);
+    return isNaN(n)?null:n;
+  };
+  const _cleanNum2 = s => {
+    // Acepta tanto 1,234.56 como 1.234,56 como 1234.56
+    if(s===null||s===undefined) return null;
+    let str=s.toString().trim();
+    // Quitar símbolo moneda y espacios
+    str=str.replace(/[RD$€£\s]/g,'');
+    // Detectar formato: si hay coma Y punto, el último es decimal
+    const hasComa=str.includes(','), hasPunto=str.includes('.');
+    if(hasComa&&hasPunto){
+      const lastComa=str.lastIndexOf(','), lastPunto=str.lastIndexOf('.');
+      if(lastComa>lastPunto){ str=str.replace(/\./g,'').replace(',','.'); }
+      else { str=str.replace(/,/g,''); }
+    } else if(hasComa){ str=str.replace(',','.'); }
+    const n=parseFloat(str.replace(/[^\d.\-]/g,''));
+    return isNaN(n)?null:n;
+  };
+  const _isNum = s => {
+    const str=(s||'').toString().trim();
+    if(!str) return false;
+    // Rechazar si contiene letras (excepto símbolo moneda RD$, €, £)
+    const sinMoneda=str.replace(/RD\$|\$|€|£/g,'').trim();
+    if(/[a-záéíóúñA-ZÁÉÍÓÚÑ%]/.test(sinMoneda)) return false;
+    // Debe tener al menos un dígito y solo contener dígitos, puntos, comas, guión
+    if(!/\d/.test(sinMoneda)) return false;
+    return /^-?[\d.,\s]+$/.test(sinMoneda);
+  };
+  const _splitLines = txt => txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  const _splitCols  = line => line.split('\t').map(c=>c.replace(/^"|"$/g,'').trim());
+  const NAT_ABREVS  = new Set(['M','O','H','E','T','S','V','MAT','MO','MOB','M.O.','HER','EQP','TRP','SUB','VAR','MATERIAL','MANO','OBRA','EQUIPO','HERRAMIENTA','TRANSPORTE','SUBCONTRATO','VARIOS']);
+
+  // ── Detectar si una columna es encabezado (texto descriptivo sin datos) ──
+  const _isHeader = cols => {
+    const upper=cols.map(c=>(c||'').toUpperCase().trim());
+    const headerWords=['COD','CODIGO','DESCRIPCION','DESC','CANTIDAD','CANT','UNIDAD','UD','PRECIO','COSTO','PU','VALOR','TOTAL','ITBIS','RENDTO','RENDIMIENTO','NATURALEZA','NAT'];
+    return upper.filter(c=>headerWords.includes(c)).length >= 2;
+  };
+
+  // ── Parsear UNA fila de insumo APU ──────────────────────────────────────
+  const _parseInsumoRow = cols => {
+    if(!cols.some(c=>c)) return null;
+    let cod='', desc='', cantidad='', unidad='ud', pu='', itbis=0, rendimiento=1;
+    let idx=0;
+    const c0=(cols[0]||'').trim();
+
+    // Col 0: ¿Código tipo SV.0028 o alfanumérico o numérico largo?
+    if(/^[A-Za-z]{1,6}[\.\-]\d+/i.test(c0)||/^[A-Za-z]{2,}\d{3,}/i.test(c0)||/^\d{3,}$/.test(c0)){
+      cod=c0; idx=1;
+    }
+
+    // Saltar naturaleza si la siguiente columna es abreviatura conocida
+    if(idx<cols.length){
+      const mayus=(cols[idx]||'').toUpperCase().replace(/[.\s_]/g,'');
+      if(NAT_ABREVS.has(mayus)&&!_isNum(cols[idx])) idx++;
+    }
+
+    // Saltar celdas vacías
+    while(idx<cols.length&&!(cols[idx]||'').trim()) idx++;
+
+    // Siguiente columna no-numérica = descripción
+    while(idx<cols.length){
+      const c=(cols[idx]||'').trim();
+      if(c&&!_isNum(c)){ desc=c; idx++; break; }
+      if(_isNum(c)) break; // llegamos a los números sin desc
+      idx++;
+    }
+
+    // Si aún no hay desc, buscar primer texto largo en cualquier columna
+    if(!desc){
+      const candidato=cols.find((c,i)=>c&&!_isNum(c)&&c.length>2&&!NAT_ABREVS.has(c.toUpperCase().replace(/[.\s]/g,'')));
+      if(candidato) desc=candidato;
+    }
+
+    // Recolectar todos los números con sus posiciones
+    const nums=[];
+    for(let j=0;j<cols.length;j++){
+      if(_isNum(cols[j])){
+        const v=_cleanNum2(cols[j]);
+        if(v!==null) nums.push({val:v,colIdx:j});
       }
-      // Asignar: primer número = cantidad, segundo = pu (salteando unidad)
-      if(nums.length>=1) cantidad=String(nums[0].val);
-      if(nums.length>=2) pu=String(nums[nums.length-1].val); // último número = pu/costo
-      // Unidad: columna entre cantidad y pu que sea texto corto
-      if(nums.length>=2){
-        for(let j=nums[0].idx+1;j<nums[nums.length-1].idx;j++){
-          if(!isNum(cols[j])&&cols[j]&&cols[j].length<=6){ unidad=cols[j]; break; }
+    }
+
+    if(nums.length===1){ pu=String(nums[0].val); cantidad='1'; }
+    else if(nums.length===2){ cantidad=String(nums[0].val); pu=String(nums[1].val); }
+    else if(nums.length>=3){
+      cantidad=String(nums[0].val);
+      const total=nums[nums.length-1].val;
+      const cantV=nums[0].val;
+      let bestPU=null;
+      for(let k=1;k<nums.length-1;k++){
+        if(cantV>0&&Math.abs(cantV*nums[k].val-total)/Math.max(total,1)<0.05){ bestPU=nums[k].val; break; }
+      }
+      pu=String(bestPU!==null?bestPU:nums[nums.length-2].val);
+    }
+
+    // Unidad: primer texto corto (≤8 chars) no-numérico entre los números
+    if(nums.length>=2){
+      const firstIdx=nums[0].colIdx, lastIdx=nums[nums.length-1].colIdx;
+      for(let j=firstIdx+1;j<lastIdx;j++){
+        const c=(cols[j]||'').trim();
+        if(c&&!_isNum(c)&&c.length>=1&&c.length<=8&&!NAT_ABREVS.has(c.toUpperCase())){
+          unidad=c; break;
         }
       }
-      if(desc||cod) newComps.push({id:uid(),cod,naturaleza:'M',desc,cantidad,unidad,pu,itbis,rendimiento});
+    } else if(nums.length===1){
+      // Buscar unidad a la derecha del primer número
+      const firstIdx=nums[0].colIdx;
+      for(let j=firstIdx+1;j<cols.length;j++){
+        const c=(cols[j]||'').trim();
+        if(c&&!_isNum(c)&&c.length<=8){ unidad=c; break; }
+      }
     }
+
+    if(!desc&&!cod) return null;
+    return {id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu,itbis,rendimiento};
+  };
+
+  // ── PASTE EN ANÁLISIS DE COSTO (APU) ────────────────────────────────────
+  const handleApuExcelPaste = (capId, scId, pId, text) => {
+    if(!text||!text.trim()) return;
+    const lines=_splitLines(text).filter(l=>l.trim());
+    if(!lines.length) return;
+
+    const newComps=[];
+    for(const line of lines){
+      const cols=_splitCols(line);
+      if(_isHeader(cols)) continue; // Saltar fila de encabezados
+      const comp=_parseInsumoRow(cols);
+      if(comp) newComps.push(comp);
+    }
+
     if(newComps.length>0){
       const p=getPart(capId,scId,pId);
+      if(!p) return;
+      // Conservar filas existentes con datos, reemplazar vacías
       const existing=(p.componentes||[]).filter(c=>c.desc||c.cod||parseFloat(c.pu)>0);
       updatePart(capId,scId,pId,{componentes:[...existing,...newComps]});
+      setPasteNotif('✓ APU: '+newComps.length+' insumo(s) pegado(s)');
+      setTimeout(()=>setPasteNotif(''),4000);
     }
     setApuPaste(null); setApuPasteText('');
+  };
+
+  // ── PASTE EN PRESUPUESTO — detecta caps/subcaps/partidas en orden ────────
+  const handleSmartPaste = (txt) => {
+    if(!txt||!txt.trim()||!obra) return;
+    const lines=_splitLines(txt);
+    const newCaps=[], newIndirectos=[];
+    let capActual=null, scActual=null;
+
+    // ── Helpers ──
+    const nivelCod = s => {
+      const t=(s||'').trim();
+      // Solo códigos puramente numéricos con puntos: "01", "01.02", "01.02.003"
+      if(!/^\d+(\.\d+)*$/.test(t)) return 0;
+      return t.split('.').length;
+    };
+    const esMayus = s => {
+      const t=(s||'').trim();
+      return t.length>=3 && t===t.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(t) && !/^\d/.test(t);
+    };
+    const todosNum = cols => cols.filter(c=>c.trim()).every(c=>_isNum(c));
+    const hayNum   = cols => cols.some(c=>_isNum(c)&&(_cleanNum2(c)||0)>0);
+    const celdas   = cols => cols.filter(c=>c.trim()).length;
+
+    for(const raw of lines){
+      if(!raw.trim()) continue;
+      const cols = _splitCols(raw);
+      const c0=(cols[0]||'').trim(), c1=(cols[1]||'').trim(), c2=(cols[2]||'').trim();
+      const niv  = nivelCod(c0);
+      const conNum = hayNum(cols);
+      const sinNum = !conNum;
+      const nCeldas = celdas(cols);
+
+      // Saltar encabezados de tabla
+      if(_isHeader(cols)) continue;
+      // Saltar filas totalmente vacías o con un solo valor de total
+      if(nCeldas<=1) continue;
+
+      // ── INDIRECTOS: SOLO si la fila tiene ≤3 celdas Y contiene "XX%"
+      // (porcentaje explícito con símbolo %)
+      if(nCeldas<=3){
+        const pctC=cols.find(c=>/^\d+(\.\d+)?%$/.test(c.trim()));
+        if(pctC){
+          const pv=parseFloat(pctC)||0;
+          const lbl=cols.find(c=>c.trim()&&!/^\d/.test(c.trim())&&c.trim().length>2)||'Indirecto';
+          if(pv>0&&pv<=100){ newIndirectos.push({id:uid(),label:lbl.trim(),pct:pv,activo:true}); continue; }
+        }
+      }
+
+      // ── CAPÍTULO: código de 1 nivel sin precio │ texto TODO MAYÚSCULAS sin precio ──
+      if(sinNum && ((niv===1)||(esMayus(c0)&&nCeldas<=3)||(niv===0&&esMayus(c0)))){
+        const nombre=(niv===1?(c1||c0):c0).trim()||'Capítulo';
+        capActual={...mkCap(nombre,CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
+        newCaps.push(capActual); scActual=null; continue;
+      }
+
+      // ── SUBCAPÍTULO: código de 2 niveles sin precio │ texto corto sin precio dentro de cap ──
+      if(sinNum && (niv===2 || (niv===0&&capActual&&!esMayus(c0)&&nCeldas<=3&&c0.length>1))){
+        if(!capActual){
+          capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
+          newCaps.push(capActual);
+        }
+        const nombre=(niv===2?(c1||c0):c0).trim()||'Subcapítulo';
+        scActual={...mkSubcap(nombre),partidas:[]};
+        capActual.subcapitulos.push(scActual); continue;
+      }
+
+      // ── PARTIDA ── (cualquier fila con datos numéricos o código reconocible)
+      let codigo='', desc='', unidad='ud', cantidad=0, puVal=0;
+      // Solo valores realmente numéricos (no códigos ni texto con números)
+      const nums=cols.filter(c=>_isNum(c)).map(c=>_cleanNum2(c)).filter(n=>n!==null&&n>0);
+      const textos=cols.filter(c=>c&&!_isNum(c)&&!NAT_ABREVS.has(c.toUpperCase().replace(/[.\s]/g,'')));
+
+      if(niv>=3 || (niv===2&&conNum)){
+        // Código numérico jerárquico: "01.02.003" o "6.03" con precio
+        codigo=c0;
+        desc=(textos.find(t=>t!==c0&&t.length>2)||c1||'').trim();
+        // Unidad: texto corto entre columnas numéricas
+        const udCand=cols.find((c,i)=>i>0&&!_isNum(c)&&c.trim()&&c.trim().length<=6&&c.trim()!==desc);
+        unidad=udCand||'ud';
+        if(nums.length>=3){cantidad=nums[0]; puVal=nums[nums.length-2]||nums[1];}
+        else if(nums.length===2){cantidad=nums[0]; puVal=nums[1];}
+        else if(nums.length===1){puVal=nums[0]; cantidad=1;}
+      } else if(/^[A-Z]{1,5}[\.\-]\d+/i.test(c0)||/^[A-Z]{2,}\d{3,}/i.test(c0)){
+        // Código alfanumérico: "SV.0028", "MO.0053"
+        codigo=c0;
+        desc=(c1||textos.find(t=>t!==c0&&t.length>1)||'').trim();
+        const udCand=cols.find((c,i)=>i>1&&!_isNum(c)&&c.trim()&&c.trim().length<=6);
+        unidad=udCand||'ud';
+        if(nums.length>=2){cantidad=nums[0]; puVal=nums[nums.length-2]||nums[1];}
+        else if(nums.length===1){puVal=nums[0]; cantidad=1;}
+      } else if(conNum&&c0.length>=2){
+        // Fila plana: desc + nums, o cod_corto + desc + nums
+        const parCod=c0.length<=16&&c1.length>3&&!_isNum(c1)&&nCeldas>=3;
+        if(parCod){
+          codigo=c0; desc=c1.trim();
+          const udCand=cols.find((c,i)=>i>1&&!_isNum(c)&&c.trim()&&c.trim().length<=8&&c.trim()!==desc);
+          unidad=udCand||'ud';
+        } else {
+          desc=(textos[0]||c0||'').trim();
+          const udCand=cols.find((c,i)=>i>0&&!_isNum(c)&&c.trim()&&c.trim().length<=8&&c.trim()!==desc);
+          unidad=udCand||'ud';
+        }
+        if(nums.length>=2){cantidad=nums[0]; puVal=nums[1];}
+        else if(nums.length===1){puVal=nums[0]; cantidad=1;}
+      } else continue;
+
+      if(!desc&&!codigo) continue;
+
+      const np={
+        ...mkPartida((desc||codigo||'').trim(), unidad, puVal, codigo),
+        temporal: puVal===0,
+        mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]
+      };
+
+      if(!capActual){
+        capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
+        newCaps.push(capActual);
+      }
+      if(!scActual){
+        scActual={...mkSubcap('Partidas'),partidas:[]};
+        capActual.subcapitulos.push(scActual);
+      }
+      scActual.partidas.push(np);
+    }
+
+    // Garantizar subcap en cada cap
+    newCaps.forEach(c=>{ if(!c.subcapitulos.length) c.subcapitulos=[{...mkSubcap('Partidas'),partidas:[]}]; });
+
+    const totalParts=newCaps.reduce((s,c)=>(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).length,s),0);
+    const totalSC=newCaps.reduce((s,c)=>s+(c.subcapitulos||[]).length,0);
+
+    let notif='';
+    if(newCaps.length>0||totalParts>0){
+      setCaps(prev=>[...prev,...newCaps]);
+      notif=`✓ ${newCaps.length} cap · ${totalSC} subcap · ${totalParts} partida(s)`;
+    }
+    if(newIndirectos.length>0){
+      updateObra({indirectos:[...(obra.indirectos||[]),...newIndirectos]});
+      notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';
+    }
+    if(notif){setPasteNotif(notif);setTimeout(()=>setPasteNotif(''),5000);}
+    else if(!notif&&lines.some(l=>l.trim())){
+      setPasteNotif('⚠ No se detectaron partidas. Verifica el formato.');
+      setTimeout(()=>setPasteNotif(''),5000);
+    }
   };
   const exportRef  = React.useRef(null);
   const fileRef    = React.useRef(null);
@@ -2983,6 +3238,17 @@ const PresupuestoObraView = () => {
   };
 
   // ─── PASTE GLOBAL ────────────────────────────────────────────────────────
+  // Helper: encontrar capId y scId a partir del pId (para rutear el paste al APU correcto)
+  const findPartContext = React.useCallback((pId) => {
+    if(!obra||!pId) return null;
+    for(const cap of (obra.capitulos||[])){
+      for(const sc of (cap.subcapitulos||[])){
+        if((sc.partidas||[]).some(p=>p.id===pId)) return {capId:cap.id, scId:sc.id, pId};
+      }
+    }
+    return null;
+  },[obra]);
+
   React.useEffect(()=>{
     if(pantalla!=='editor') return;
     const handler=(e)=>{
@@ -2990,116 +3256,17 @@ const PresupuestoObraView = () => {
       if(tag==='input'||tag==='textarea'||tag==='select') return;
       const txt=e.clipboardData&&e.clipboardData.getData('text');
       if(!txt||!txt.trim()) return;
+      // Si hay un APU abierto, el paste va a los insumos, NO al presupuesto
+      if(apuOpen){
+        const ctx=findPartContext(apuOpen);
+        if(ctx){ e.preventDefault(); handleApuExcelPaste(ctx.capId,ctx.scId,ctx.pId,txt); return; }
+      }
       e.preventDefault();
       handleSmartPaste(txt);
     };
     window.addEventListener('paste',handler);
     return()=>window.removeEventListener('paste',handler);
-  },[pantalla,obra]);
-
-  // ─── SMART PASTE — detecta estructura jerárquica desde Excel ───────────────
-  const handleSmartPaste = (txt) => {
-    if(!txt||!txt.trim()||!obra) return;
-    const lines=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
-    const newCaps=[], newIndirectos=[];
-    let capActual=null, scActual=null;
-    let plainRows=[], isHier=false;
-
-    const cleanNum=(s)=>{ const n=parseFloat((s||'').replace(/[,\s$RD€]/g,'').replace(/[^\d.\-]/g,'')); return isNaN(n)?0:n; };
-    const isNumeric=(s)=>{ const n=cleanNum(s); return n!==0||/^\s*0+\.?0*\s*$/.test(s||''); };
-    // Niveles de código: "01"=1, "01.02"=2, "01.02.003"=3
-    const nivelCod=(s)=>{ const t=(s||'').trim(); if(!/^\d/.test(t)) return 0; return t.split('.').length; };
-    const esSoloCod=(s)=>/^\s*\d+(\.\d+)*\s*$/.test(s||'');
-    // Texto todo mayúsculas ≥ 4 chars = probable nombre de capítulo
-    const esTituloMAY=(s)=>s&&s.length>=4&&s===s.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]/.test(s)&&!/^\d/.test(s);
-
-    for(let li=0;li<lines.length;li++){
-      const raw=lines[li]; if(!raw.trim()) continue;
-      const cols=raw.split('\t').map(c=>c.replace(/^"|"$/g,'').trim());
-      const c0=cols[0]||'', c1=cols[1]||'', c2=cols[2]||'';
-      const nivel=nivelCod(c0);
-      const hayNumeral=cols.slice(1).some(c=>isNumeric(c)&&cleanNum(c)>0);
-      const soloTexto=!hayNumeral&&cols.filter(c=>c).length<=3;
-
-      // ── Detectar INDIRECTOS ──
-      const pctCol=cols.find(c=>/^\d+(\.\d+)?%$/.test(c.trim()));
-      if(pctCol){ const pv=parseFloat(pctCol)||0; const lbl=cols.filter(c=>c&&!/^\d+(\.\d+)?%?$/.test(c.trim())&&c.length>2)[0]||'Indirecto'; if(pv>0) newIndirectos.push({id:uid(),label:lbl,pct:pv,activo:true}); continue; }
-
-      // ── CAPÍTULO: código de 1 nivel sin números, o texto en MAYÚSCULAS ──
-      if((nivel===1&&soloTexto)||esTituloMAY(c0)||(nivel===0&&esTituloMAY(c0)&&soloTexto)){
-        isHier=true;
-        const nombre=(nivel===1?c1||c0:c0)||'Capítulo';
-        capActual={...mkCap(nombre.trim(),CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
-        newCaps.push(capActual); scActual=null; continue;
-      }
-      // ── SUBCAPÍTULO: código de 2 niveles sin precio, o texto normal sin números ──
-      if((nivel===2&&soloTexto)||(nivel===0&&soloTexto&&capActual&&!hayNumeral&&c0.length>3)){
-        isHier=true;
-        if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
-        const nombre=(nivel===2?c1||c0:c0)||'Subcapítulo';
-        scActual={...mkSubcap(nombre.trim()),partidas:[]};
-        capActual.subcapitulos.push(scActual); continue;
-      }
-
-      // ── PARTIDA: cualquier fila con precio/cantidad o código de ≥3 niveles ──
-      let codigo='',desc='',unidad='ud',cantidad=0,puVal=0;
-
-      // A) Código jerárquico numérico (01.02.003)
-      if(nivel>=3){
-        isHier=true; codigo=c0;
-        // Detectar descripción: primer texto largo no numérico
-        let dI=cols.findIndex((c,i)=>i>0&&c.length>2&&!isNumeric(c));
-        desc=dI>0?cols[dI]:c1;
-        // Detectar unidad: string corto no numérico
-        let uI=cols.findIndex((c,i)=>i>0&&c.length>=1&&c.length<=6&&!isNumeric(c)&&i!==(dI>0?dI:1));
-        unidad=uI>0?cols[uI]:'ud';
-        const nums=cols.map(c=>cleanNum(c)).filter(n=>n>0);
-        if(nums.length>=3){cantidad=nums[0];puVal=nums[nums.length-2];}
-        else if(nums.length===2){cantidad=nums[0];puVal=nums[1];}
-        else if(nums.length===1){puVal=nums[0];cantidad=1;}
-      }
-      // B) Código alfanumérico tipo SV.0028, MO.0053
-      else if(/^[A-Z]{1,4}[\.\-]\d+$/i.test(c0)){
-        isHier=true; codigo=c0; desc=c1||c2||''; unidad=c2&&!isNumeric(c2)?c2:'ud';
-        const nums=cols.slice(3).map(c=>cleanNum(c)).filter(n=>n>0);
-        if(nums.length>=2){cantidad=nums[0];puVal=nums[nums.length-1]/Math.max(nums[0],1);}
-        else if(nums.length===1){puVal=nums[0];cantidad=1;}
-      }
-      // C) Sin código claro — buscar desc y números por posición
-      else if(hayNumeral||c0.length>2){
-        const esCodCorto=c0.length<=14&&/[A-Z0-9.]/i.test(c0)&&c1.length>3;
-        if(esCodCorto){codigo=c0;desc=c1;unidad=c2&&!isNumeric(c2)?c2:'ud';const nums=cols.slice(2).map(c=>cleanNum(c)).filter(n=>n>0);if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];cantidad=1;}}
-        else{desc=c0;unidad=c1&&!isNumeric(c1)&&c1.length<=8?c1:'ud';const nums=cols.filter(c=>isNumeric(c)&&cleanNum(c)>0).map(c=>cleanNum(c));if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];cantidad=1;}}
-      } else continue;
-
-      if(!desc&&!codigo) continue;
-      const np={...mkPartida(desc.trim(),unidad,puVal,codigo),temporal:puVal===0,mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]};
-      if(isHier){
-        if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
-        if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos.push(scActual);}
-        scActual.partidas.push(np);
-      } else { plainRows.push(np); }
-    }
-
-    newCaps.forEach(c=>{if(!c.subcapitulos||c.subcapitulos.length===0)c.subcapitulos=[{...mkSubcap('Partidas'),partidas:[]}];});
-
-    let notif='';
-    if(isHier&&newCaps.length>0){
-      const tp=newCaps.reduce((s,c)=>s+c.subcapitulos.reduce((ss,sc)=>ss+sc.partidas.length,0),0);
-      setCaps(prev=>[...prev,...newCaps]);
-      notif='✓ Pegado: '+newCaps.length+' capítulo(s) · '+tp+' partida(s)';
-    } else if(plainRows.length>0){
-      const caps2=[...(obra.capitulos||[])];
-      if(caps2.length===0){const cap=mkCap('Importado',CAP_COLORS[0]);cap.subcapitulos[0].partidas=plainRows;setCaps(()=>[cap]);}
-      else{const lc=caps2[caps2.length-1];const ls=lc.subcapitulos[lc.subcapitulos.length-1];ls.partidas=[...ls.partidas,...plainRows];setCaps(()=>caps2);}
-      notif='✓ Pegadas '+plainRows.length+' partida(s)';
-    }
-    if(newIndirectos.length>0){
-      updateObra({indirectos:[...(obra.indirectos||[]),...newIndirectos]});
-      notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';
-    }
-    if(notif){setPasteNotif(notif);setTimeout(()=>setPasteNotif(''),5000);}
-  };
+  },[pantalla,obra,apuOpen]);
 
   // ─── Totales ─────────────────────────────────────────────────────────────
   const grandTotal = obra?(obra.capitulos||[]).reduce((s,c)=>s+getCT(c),0):0;
@@ -3498,15 +3665,25 @@ const PresupuestoObraView = () => {
                             {p.showMed&&(
                               <tr><td colSpan={7} style={{padding:'0',background:'#f5f3ff',borderBottom:'1px solid #e2e8f0',borderLeft:'4px solid #6366f1'}}>
                                 <div style={{padding:'6px 14px 3px',fontSize:'10px',fontWeight:'800',color:'#6366f1',textTransform:'uppercase',letterSpacing:'0.06em',display:'flex',alignItems:'center',gap:'8px',background:'#ede9fe',borderBottom:'1px solid #ddd6fe'}}>
-                                  Mediciones · Parcial = A × B × C × D
+                                  📐 Mediciones
                                   <span style={{marginLeft:'auto',fontSize:'11px',color:'#6366f1',fontFamily:'monospace',fontWeight:'800',textTransform:'none'}}>Σ = {fmtN(cant,4)} {p.unidad}</span>
                                 </div>
                                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
-                                  <colgroup><col style={{width:'22%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'28%'}}/><col style={{width:'10%'}}/></colgroup>
+                                  <colgroup>
+                                    <col style={{width:'18%'}}/>
+                                    <col style={{width:'9%'}}/>
+                                    <col style={{width:'9%'}}/>
+                                    <col style={{width:'9%'}}/>
+                                    <col style={{width:'9%'}}/>
+                                    <col style={{width:'9%'}}/>
+                                    <col style={{width:'27%'}}/>
+                                    <col style={{width:'10%'}}/>
+                                  </colgroup>
                                   <thead><tr style={{background:'#ede9fe'}}>
                                     <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'left'}}>Concepto</th>
-                                    {['A','B','C','D'].map(k=><th key={k} style={{padding:'4px 8px',fontWeight:'800',fontSize:'11px',color:'#6366f1',textAlign:'right'}}>{k}</th>)}
-                                    <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'center'}}>= Fórmula / Parcial</th>
+                                    <th style={{padding:'4px 6px',fontWeight:'800',fontSize:'10px',color:'#7c3aed',textAlign:'center',borderLeft:'1px solid #ddd6fe'}} title="Valor directo (manual)">DIRECTO</th>
+                                    {['A','B','C','D'].map(k=><th key={k} style={{padding:'4px 6px',fontWeight:'800',fontSize:'11px',color:'#6366f1',textAlign:'right',borderLeft:'1px solid #ddd6fe'}}>{k}</th>)}
+                                    <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'center',borderLeft:'1px solid #ddd6fe'}}>= Fórmula libre / Parcial</th>
                                     <th></th>
                                   </tr></thead>
                                   <tbody>
@@ -3514,25 +3691,50 @@ const PresupuestoObraView = () => {
                                       const parcial=calcMedParcial(m);
                                       const iM={width:'100%',border:'1px solid #ddd6fe',borderRadius:'3px',padding:'3px 5px',fontSize:'11px',outline:'none',background:'white',fontFamily:'monospace',textAlign:'right',boxSizing:'border-box'};
                                       const hasF=(m.formula||'').trim();
+                                      const hasDirect=m.direct!==undefined&&m.direct!==''&&m.direct!==null;
+                                      const modeDisabled=hasF||hasDirect;
                                       return (
                                         <tr key={m.id} style={{borderBottom:'1px solid #ede9fe',background:mi%2===0?'white':'#faf5ff'}}>
-                                          <td style={{padding:'3px 8px'}}><input value={m.concepto||''} onChange={e=>updMed(cap.id,sc.id,p.id,m.id,{concepto:e.target.value})} style={{...iM,textAlign:'left'}} placeholder="Concepto..."/></td>
+                                          <td style={{padding:'3px 8px'}}>
+                                            <input value={m.concepto||''} onChange={e=>updMed(cap.id,sc.id,p.id,m.id,{concepto:e.target.value})}
+                                              style={{...iM,textAlign:'left'}} placeholder="Concepto..."/>
+                                          </td>
+                                          {/* DIRECTO — valor manual directo, bloquea A,B,C,D y fórmula */}
+                                          <td style={{padding:'3px 4px',borderLeft:'2px solid #c4b5fd',background:hasDirect?'#f5f3ff':'transparent'}}>
+                                            <input
+                                              type="number"
+                                              value={m.direct===undefined||m.direct===null?'':m.direct}
+                                              onChange={e=>{
+                                                const v=e.target.value;
+                                                updMed(cap.id,sc.id,p.id,m.id,{direct:v===''?'':parseFloat(v)||0,formula:'',a:'',b:'',c:'',d:''});
+                                              }}
+                                              style={{...iM,color:'#7c3aed',background:hasDirect?'#ede9fe':'white',fontWeight:hasDirect?'800':'400'}}
+                                              placeholder="0"
+                                              title="Valor directo — escribe el total directamente"/>
+                                          </td>
+                                          {/* A, B, C, D — solo activos si no hay directo ni fórmula */}
                                           {['a','b','c','d'].map(k=>(
-                                            <td key={k} style={{padding:'3px 4px'}}>
-                                              <input value={m[k]||''} onChange={e=>updMed(cap.id,sc.id,p.id,m.id,{[k]:e.target.value})} disabled={!!hasF} style={{...iM,opacity:hasF?.4:1,color:'#1e40af'}} placeholder="0"/>
+                                            <td key={k} style={{padding:'3px 4px',borderLeft:'1px solid #ddd6fe'}}>
+                                              <input value={m[k]||''} onChange={e=>updMed(cap.id,sc.id,p.id,m.id,{[k]:e.target.value,direct:''})}
+                                                disabled={!!hasF||hasDirect}
+                                                style={{...iM,opacity:(hasF||hasDirect)?.35:1,color:'#1e40af'}} placeholder="0"/>
                                             </td>
                                           ))}
-                                          <td style={{padding:'3px 6px'}}>
-                                            {/* Campo fórmula — siempre con = prefijado */}
+                                          {/* Fórmula libre */}
+                                          <td style={{padding:'3px 6px',borderLeft:'1px solid #ddd6fe'}}>
                                             <div style={{display:'flex',alignItems:'center',gap:'3px'}}>
-                                              <span style={{fontFamily:'monospace',fontWeight:'800',color:'#6366f1',fontSize:'13px'}}>= </span>
+                                              <span style={{fontFamily:'monospace',fontWeight:'800',color:'#6366f1',fontSize:'13px',opacity:hasDirect?.3:1}}>= </span>
                                               <input
                                                 value={(m.formula||'').replace(/^=/,'')}
-                                                onChange={e=>{const v=e.target.value.replace(/^=/,'');updMed(cap.id,sc.id,p.id,m.id,{formula:v?v:'',a:m.a,b:m.b,c:m.c,d:m.d});}}
-                                                style={{...iM,color:'#6366f1',fontSize:'11px',flex:1}}
-                                                placeholder="a*b+c..."/>
+                                                onChange={e=>{
+                                                  const v=e.target.value.replace(/^=/,'');
+                                                  updMed(cap.id,sc.id,p.id,m.id,{formula:v,direct:'',a:m.a,b:m.b,c:m.c,d:m.d});
+                                                }}
+                                                disabled={hasDirect}
+                                                style={{...iM,color:'#6366f1',fontSize:'11px',flex:1,opacity:hasDirect?.3:1}}
+                                                placeholder="a*b+c...  ó  5*3.2+1.6"/>
                                             </div>
-                                            <div style={{textAlign:'right',fontSize:'11px',color:hasF?'#6366f1':'#059669',fontFamily:'monospace',fontWeight:'700',marginTop:'1px'}}>{fmtN(parcial,4)}</div>
+                                            <div style={{textAlign:'right',fontSize:'11px',color:hasDirect?'#7c3aed':hasF?'#6366f1':'#059669',fontFamily:'monospace',fontWeight:'700',marginTop:'1px'}}>{fmtN(parcial,4)}</div>
                                           </td>
                                           <td style={{textAlign:'center',padding:'3px'}}>
                                             <button onClick={()=>delMed(cap.id,sc.id,p.id,m.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>✕</button>
@@ -3543,7 +3745,12 @@ const PresupuestoObraView = () => {
                                   </tbody>
                                 </table>
                                 <div style={{padding:'5px 12px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#ede9fe',borderTop:'1px solid #ddd6fe'}}>
-                                  <button onClick={()=>addMed(cap.id,sc.id,p.id)} style={{background:'none',border:'1px dashed #a5b4fc',borderRadius:'5px',padding:'3px 10px',cursor:'pointer',fontSize:'10px',color:'#6366f1',fontWeight:'700'}}>+ Fila</button>
+                                  <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                                    <button onClick={()=>addMed(cap.id,sc.id,p.id)} style={{background:'none',border:'1px dashed #a5b4fc',borderRadius:'5px',padding:'3px 10px',cursor:'pointer',fontSize:'10px',color:'#6366f1',fontWeight:'700'}}>+ Fila</button>
+                                    <span style={{fontSize:'9px',color:'#a78bfa'}}>
+                                      <strong style={{color:'#7c3aed'}}>DIRECTO</strong> = valor manual · <strong style={{color:'#1e40af'}}>A×B×C×D</strong> = medición · <strong style={{color:'#6366f1'}}>=fórmula</strong> = expresión libre
+                                    </span>
+                                  </div>
                                   <span style={{fontSize:'11px',color:'#6366f1',fontWeight:'800',fontFamily:'monospace'}}>Σ = {fmtN(cant,4)} {p.unidad}</span>
                                 </div>
                               </td></tr>
@@ -3820,9 +4027,15 @@ const PresupuestoObraView = () => {
       {caps.length===0&&(
         <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'16px',color:'#9ca3af',background:'#111827'}}>
           <ClipboardList size={56} style={{opacity:0.1,color:'#6366f1'}}/>
-          <div style={{fontSize:'17px',fontWeight:'600',color:'#6b7280'}}>Obra vacía — agrega un capítulo o pega desde Excel</div>
-          <div style={{display:'flex',gap:'10px'}}>
-            <button onClick={addCap} style={{padding:'10px 22px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar Capítulo</button>
+          <div style={{fontSize:'17px',fontWeight:'600',color:'#6b7280'}}>Presupuesto vacío — pega desde Excel (Ctrl+V) o agrega manualmente</div>
+          <div style={{display:'flex',gap:'10px',flexWrap:'wrap',justifyContent:'center'}}>
+            <button onClick={()=>setPantalla('inicio')} style={{padding:'10px 22px',background:'#1f2937',color:'white',border:'1px solid #374151',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer',display:'flex',alignItems:'center',gap:'7px'}}>
+              ← Abrir otro presupuesto
+            </button>
+            <button onClick={addCap} style={{padding:'10px 22px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar capítulo</button>
+          </div>
+          <div style={{fontSize:'11px',color:'#4b5563',maxWidth:'420px',textAlign:'center',lineHeight:1.6}}>
+            💡 Para pegar un presupuesto de Excel: copia las filas → haz clic aquí → presiona <strong style={{color:'#34d399'}}>Ctrl+V</strong>
           </div>
         </div>
       )}
