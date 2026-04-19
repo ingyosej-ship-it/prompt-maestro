@@ -2712,413 +2712,326 @@ const TemplatesView = () => {
 const PresupuestoObraView = () => {
 
   const uid = () => '_' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
-  const fmtN = (v, d=2) => Number(v||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
-  const fmtRD = v => 'RD$ ' + fmtN(v,2);
+  const fmtN = (v,d=2) => Number(v||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const fmtMon = (v,mon,d=2) => {
+    const n=fmtN(v,d);
+    return (mon||'RD$')+' '+n;
+  };
 
-  // Evalúa expresión con letras a,b,c,d como variables
-  const evalConVars = (expr, vars) => {
-    if(!expr || typeof expr !== 'string') return parseFloat(expr)||0;
-    let s = expr.trim();
-    if(!s) return 0;
+  const evalConVars = (expr, vars={}) => {
+    if(!expr||typeof expr!=='string') return parseFloat(expr)||0;
+    const s=expr.trim(); if(!s) return 0;
     try {
-      // Reemplazar letras a,b,c,d (case insensitive) con sus valores
-      let e = s
-        .replace(/\ba\b/gi, String(parseFloat(vars.a)||0))
-        .replace(/\bb\b/gi, String(parseFloat(vars.b)||0))
-        .replace(/\bc\b/gi, String(parseFloat(vars.c)||0))
-        .replace(/\bd\b/gi, String(parseFloat(vars.d)||0));
-      // Solo permitir números y operadores
-      e = e.replace(/[^0-9+\-*/().\s]/g, '');
+      let e=s
+        .replace(/\ba\b/gi,String(parseFloat(vars.a)||0))
+        .replace(/\bb\b/gi,String(parseFloat(vars.b)||0))
+        .replace(/\bc\b/gi,String(parseFloat(vars.c)||0))
+        .replace(/\bd\b/gi,String(parseFloat(vars.d)||0));
+      e=e.replace(/[^0-9+\-*/().\s]/g,'');
       if(!e.trim()) return 0;
-      const r = Function('"use strict";return(' + e + ')')();
-      return isFinite(r) ? r : 0;
-    } catch(err) { return 0; }
+      const r=Function('"use strict";return('+e+')')();
+      return isFinite(r)?r:0;
+    } catch{ return 0; }
   };
 
-  // Calcula parcial de una medición usando a,b,c,d y formula
   const calcMedParcial = (m) => {
-    const vars = { a: m.a||'', b: m.b||'', c: m.c||'', d: m.d||'' };
-    if(m.formula && m.formula.trim()) {
-      return evalConVars(m.formula, vars);
-    }
-    // Si no hay formula: a * b * c * d (ignorando vacíos como 1)
-    const va = m.a && m.a.trim() ? evalConVars(m.a, {a:0,b:0,c:0,d:0}) : null;
-    const vb = m.b && m.b.trim() ? evalConVars(m.b, {a:0,b:0,c:0,d:0}) : null;
-    const vc = m.c && m.c.trim() ? evalConVars(m.c, {a:0,b:0,c:0,d:0}) : null;
-    const vd = m.d && m.d.trim() ? evalConVars(m.d, {a:0,b:0,c:0,d:0}) : null;
-    const vals = [va,vb,vc,vd].filter(x => x !== null);
-    if(vals.length === 0) return 0;
-    return vals.reduce((p,v) => p*v, 1);
+    const vars={a:m.a||'',b:m.b||'',c:m.c||'',d:m.d||''};
+    if(m.formula&&m.formula.trim()) return evalConVars(m.formula,vars);
+    const va=m.a&&m.a.trim()?evalConVars(m.a):null;
+    const vb=m.b&&m.b.trim()?evalConVars(m.b):null;
+    const vc=m.c&&m.c.trim()?evalConVars(m.c):null;
+    const vd=m.d&&m.d.trim()?evalConVars(m.d):null;
+    const vals=[va,vb,vc,vd].filter(x=>x!==null);
+    return vals.length===0?0:vals.reduce((p,v)=>p*v,1);
   };
 
-  const mkMed = () => ({ id:uid(), concepto:'', a:'', b:'', c:'', d:'', formula:'' });
-  const mkComp = () => ({ id:uid(), desc:'', cantidad:1, unidad:'ud', pu:0 });
-  const mkPartida = (desc, unidad, codigo) => ({
-    id:uid(), codigo:codigo||'', desc:desc||'Nueva partida', unidad:unidad||'ud',
-    mediciones:[mkMed()],
-    componentes:[], // lista de componentes que definen el P.U.
-    temporal:true
+  const mkMed     = (concepto) => ({id:uid(),concepto:concepto||'',a:'',b:'',c:'',d:'',formula:''});
+  const mkComp    = ()         => ({id:uid(),naturaleza:'M',desc:'',cantidad:'',unidad:'ud',pu:''});
+  const mkPartida = (desc,unidad,puManual,codigo) => ({
+    id:uid(), codigo:codigo||'', desc:desc||'Nueva partida', unidad:unidad||'ud', puManual:puManual||0,
+    mediciones:[mkMed()], componentes:[], temporal:true, showMed:false, showComp:false,
   });
-  const mkSubcap = (nombre) => ({ id:uid(), nombre:nombre||'Nuevo Subcapitulo', abierto:true, partidas:[] });
-  const mkCap = (nombre, color) => ({ id:uid(), nombre:nombre||'Nuevo Capitulo', color:color||'#6366f1', abierto:true, subcapitulos:[mkSubcap()] });
-  const COLORES = ['#6366f1','#ef4444','#10b981','#f59e0b','#0ea5e9','#8b5cf6','#f97316','#14b8a6','#ec4899','#64748b'];
+  const mkSubcap  = (nombre) => ({id:uid(),nombre:nombre||'Nuevo Subcapitulo',abierto:true,partidas:[]});
+  const mkCap     = (nombre,color) => ({id:uid(),nombre:nombre||'Nuevo Capitulo',color:color||'#6366f1',abierto:true,subcapitulos:[mkSubcap()]});
 
-  // P.U. de una partida = suma de (cant * pu) de sus componentes, o campo manual si no hay componentes
-  const calcPU = (p) => {
-    if(!p.componentes || p.componentes.length === 0) return parseFloat(p.puManual)||0;
-    return p.componentes.reduce((s,c) => s + (parseFloat(c.cantidad)||0)*(parseFloat(c.pu)||0), 0);
+  const CAP_BG    = '#1f2937';
+  const SUBCAP_BG = '#374151';
+  const CAP_COLORS= ['#6366f1','#ef4444','#10b981','#f59e0b','#0ea5e9','#8b5cf6','#f97316','#14b8a6','#ec4899','#64748b'];
+  const MONEDAS   = ['RD$','USD','EUR','HTG'];
+
+  const NAT = {
+    'M': {label:'Material',    bg:'#dbeafe',tx:'#1e40af',short:'MAT'},
+    'O': {label:'Mano de Obra',bg:'#dcfce7',tx:'#166534',short:'M.O.'},
+    'E': {label:'Equipo',      bg:'#fce7f3',tx:'#9d174d',short:'EQP'},
+    'T': {label:'Transporte',  bg:'#fef9c3',tx:'#854d0e',short:'TRP'},
+    'V': {label:'Varios',      bg:'#f3f4f6',tx:'#374151',short:'VAR'},
   };
+
+  const calcPU  = p => p.componentes&&p.componentes.length>0
+    ? p.componentes.reduce((s,c)=>s+(parseFloat(c.cantidad)||0)*(parseFloat(c.pu)||0),0)
+    : parseFloat(p.puManual)||0;
+  const calcCant= p => (p.mediciones||[]).reduce((s,m)=>s+calcMedParcial(m),0);
+  const getPT   = p => calcCant(p)*calcPU(p);
+  const getSCT  = sc => (sc.partidas||[]).reduce((s,p)=>s+getPT(p),0);
+  const getCT   = c  => (c.subcapitulos||[]).reduce((s,sc)=>s+getSCT(sc),0);
 
   const emptyObra = () => ({
-    id: uid(), nombre: 'Nueva Obra', fecha: new Date().toLocaleDateString('es-DO'),
-    capitulos: [],
-    indirectos: [
+    id:uid(),nombre:'Nueva Obra',fecha:new Date().toLocaleDateString('es-DO'),moneda:'RD$',capitulos:[],
+    indirectos:[
       {id:uid(),label:'Direccion Tecnica',pct:10,activo:true},
       {id:uid(),label:'Administracion',pct:3,activo:true},
       {id:uid(),label:'Transporte',pct:2,activo:true},
       {id:uid(),label:'Imprevistos',pct:2,activo:true},
       {id:uid(),label:'Beneficio',pct:10,activo:true},
     ],
-    iva: 18,
+    iva:18,
   });
 
-  const [pantalla, setPantalla]       = React.useState('inicio');
-  const [obras, setObras]             = React.useState([]);
-  const [obra, setObra]               = React.useState(null);
-  const [vista, setVista]             = React.useState('presupuesto');
-  const [arbolFoco, setArbolFoco]     = React.useState({capId:null,subcapId:null});
-  const [editCell, setEditCell]       = React.useState(null);
-  const [editCellVal, setEditCellVal] = React.useState('');
-  const [modalPartida, setModalPartida] = React.useState(null); // {ci,si,pi} — modal de mediciones+componentes
-  const [showPaste, setShowPaste]     = React.useState(false);
-  const [pasteText, setPasteText]     = React.useState('');
-  const [pasteRows, setPasteRows]     = React.useState([]);
-  const [pasteDest, setPasteDest]     = React.useState({capId:'',subcapId:''});
-  const [showBC3, setShowBC3]         = React.useState(false);
-  const [bc3Text, setBc3Text]         = React.useState('');
-  const [showExport, setShowExport]   = React.useState(false);
-  const [editNombre, setEditNombre]   = React.useState(false);
+  const [pantalla,setPantalla]       = React.useState('inicio');
+  const [obras,setObras]             = React.useState([]);
+  const [obra,setObra]               = React.useState(null);
+  const [vista,setVista]             = React.useState('presupuesto');
+  const [arbolFoco,setArbolFoco]     = React.useState({capId:null,subcapId:null});
+  const [editCell,setEditCell]       = React.useState(null);
+  const [editCellVal,setEditCellVal] = React.useState('');
+  const [showExport,setShowExport]   = React.useState(false);
+  const [editNombre,setEditNombre]   = React.useState(false);
+  const [showBC3,setShowBC3]         = React.useState(false);
+  const [bc3Text,setBc3Text]         = React.useState('');
+  const [pasteNotif,setPasteNotif]   = React.useState('');
+  const [showMoneda,setShowMoneda]   = React.useState(false);
   const exportRef = React.useRef(null);
   const fileRef   = React.useRef(null);
+  const monedaRef = React.useRef(null);
 
   React.useEffect(()=>{
-    const h = e => { if(exportRef.current && !exportRef.current.contains(e.target)) setShowExport(false); };
-    document.addEventListener('mousedown',h);
-    return ()=>document.removeEventListener('mousedown',h);
+    try{
+      const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');
+      const list=idx.map(id=>{try{return JSON.parse(localStorage.getItem('obra_'+id)||'null');}catch{return null;}}).filter(Boolean);
+      setObras(list);
+    }catch(e){}
   },[]);
 
   React.useEffect(()=>{
-    try {
-      const idx = JSON.parse(localStorage.getItem('obras_index')||'[]');
-      const list = idx.map(id=>{ try{return JSON.parse(localStorage.getItem('obra_'+id)||'null');}catch{return null;} }).filter(Boolean);
-      setObras(list);
-    } catch(e){}
+    const h=e=>{if(exportRef.current&&!exportRef.current.contains(e.target))setShowExport(false);};
+    document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);
+  },[]);
+  React.useEffect(()=>{
+    const h=e=>{if(monedaRef.current&&!monedaRef.current.contains(e.target))setShowMoneda(false);};
+    document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);
   },[]);
 
   const guardarObra = (o) => {
-    if(!o) return;
-    setObras(prev=>{ const i=prev.findIndex(x=>x.id===o.id); if(i>=0){const n=[...prev];n[i]={...o};return n;} return [...prev,{...o}]; });
+    if(!o)return;
+    setObras(prev=>{const i=prev.findIndex(x=>x.id===o.id);if(i>=0){const n=[...prev];n[i]={...o};return n;}return[...prev,{...o}];});
     setObra({...o});
-    try {
-      localStorage.setItem('obra_'+o.id, JSON.stringify(o));
-      const idx = JSON.parse(localStorage.getItem('obras_index')||'[]');
+    try{
+      localStorage.setItem('obra_'+o.id,JSON.stringify(o));
+      const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');
       if(!idx.includes(o.id)){idx.push(o.id);localStorage.setItem('obras_index',JSON.stringify(idx));}
-    } catch(e){}
+    }catch(e){}
   };
 
-  const calcCantidad = (p) => (p.mediciones||[]).reduce((s,m) => s + calcMedParcial(m), 0);
-  const getPT  = p  => calcCantidad(p) * calcPU(p);
-  const getSCT = sc => (sc.partidas||[]).reduce((s,p)=>s+getPT(p),0);
-  const getCT  = c  => (c.subcapitulos||[]).reduce((s,sc)=>s+getSCT(sc),0);
-  const grandTotal = obra ? (obra.capitulos||[]).reduce((s,c)=>s+getCT(c),0) : 0;
-  const totalInd   = obra ? (obra.indirectos||[]).filter(i=>i.activo).reduce((s,i)=>s+grandTotal*(parseFloat(i.pct)||0)/100,0) : 0;
-  const subtConInd = grandTotal+totalInd;
-  const ivaAmt     = obra ? subtConInd*(parseFloat(obra.iva)||0)/100 : 0;
-  const totalFinal = subtConInd+ivaAmt;
+  const fmt = (v,d=2) => fmtMon(v, obra&&obra.moneda?obra.moneda:'RD$', d);
 
-  const updateObra = (chg) => { const o2={...obra,...chg}; setObra(o2); };
-  const setCaps    = (fn)  => { const caps=fn(obra.capitulos||[]); updateObra({capitulos:caps}); };
-  const getPart    = (ci,si,pi) => (obra.capitulos||[]).find(c=>c.id===ci)?.subcapitulos?.find(s=>s.id===si)?.partidas?.find(p=>p.id===pi);
-  const updatePart = (ci,si,pi,chg) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:sc.partidas.map(p=>p.id!==pi?p:{...p,...chg})})}));
+  // ── PASTE GLOBAL ──────────────────────────────────────────────────────────
+  React.useEffect(()=>{
+    if(pantalla!=='editor') return;
+    const handler=(e)=>{
+      const tag=(e.target.tagName||'').toLowerCase();
+      if(tag==='input'||tag==='textarea'||tag==='select') return;
+      const txt=e.clipboardData&&e.clipboardData.getData('text');
+      if(!txt||!txt.trim()) return;
+      e.preventDefault();
+      handleSmartPaste(txt);
+    };
+    window.addEventListener('paste',handler);
+    return()=>window.removeEventListener('paste',handler);
+  },[pantalla,obra]);
 
-  const updateMedFn = (ci,si,pi,mid,chg) => {
-    const p=getPart(ci,si,pi); if(!p)return;
-    updatePart(ci,si,pi,{mediciones:(p.mediciones||[]).map(m=>m.id!==mid?m:{...m,...chg})});
-  };
-  const addMedFn = (ci,si,pi) => {
-    const p=getPart(ci,si,pi); if(!p)return;
-    updatePart(ci,si,pi,{mediciones:[...(p.mediciones||[]),mkMed()]});
-  };
-  const delMedFn = (ci,si,pi,mid) => {
-    const p=getPart(ci,si,pi); if(!p)return;
-    updatePart(ci,si,pi,{mediciones:(p.mediciones||[]).filter(m=>m.id!==mid)});
-  };
+  const handleSmartPaste = (txt) => {
+    if(!txt||!txt.trim()||!obra) return;
+    const lines=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+    const newCaps=[]; let capActual=null, scActual=null;
+    let plainRows=[]; let isHier=false;
 
-  const addCompFn = (ci,si,pi) => {
-    const p=getPart(ci,si,pi); if(!p)return;
-    updatePart(ci,si,pi,{componentes:[...(p.componentes||[]),mkComp()]});
-  };
-  const updCompFn = (ci,si,pi,cid,chg) => {
-    const p=getPart(ci,si,pi); if(!p)return;
-    updatePart(ci,si,pi,{componentes:(p.componentes||[]).map(c=>c.id!==cid?c:{...c,...chg})});
-  };
-  const delCompFn = (ci,si,pi,cid) => {
-    const p=getPart(ci,si,pi); if(!p)return;
-    updatePart(ci,si,pi,{componentes:(p.componentes||[]).filter(c=>c.id!==cid)});
-  };
+    for(let li=0;li<lines.length;li++){
+      const raw=lines[li]; if(!raw.trim()) continue;
+      const cols=raw.split('\t').map(c=>c.replace(/"/g,'').trim());
+      const c0=cols[0]||'', c1=cols[1]||'', c2=cols[2]||'';
+      const puntos=c0.split('.').filter(x=>x!=='').length;
+      const esNumCod=/^\d+(\.\d+)*$/.test(c0.trim());
+      const hayPrecio=cols.slice(1).some(c=>{const v=parseFloat(c.replace(/[,\s]/g,''));return !isNaN(v)&&v>0;});
 
-  const addPart  = (ci,si) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:[...sc.partidas,mkPartida()]})}));
-  const delPart  = (ci,si,pi) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:sc.partidas.filter(p=>p.id!==pi)})}));
-  const addSC    = (ci) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:[...c.subcapitulos,mkSubcap()]}));
-  const delSC    = (ci,si) => { if(!window.confirm('Eliminar subcapitulo?'))return; setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.filter(sc=>sc.id!==si)})); };
-  const addCap   = () => { const col=COLORES[(obra.capitulos||[]).length%COLORES.length]; setCaps(prev=>[...prev,mkCap(String(prev.length+1).padStart(2,'0')+' - Nuevo Capitulo',col)]); };
-  const delCap   = (ci) => { if(!window.confirm('Eliminar capitulo completo?'))return; setCaps(prev=>prev.filter(c=>c.id!==ci)); };
-  const togCap   = (ci) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,abierto:!c.abierto}));
-  const togSC    = (ci,si) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,abierto:!sc.abierto})}));
-  const updInd   = (id,f,v) => updateObra({indirectos:(obra.indirectos||[]).map(i=>i.id!==id?i:{...i,[f]:f==='pct'?parseFloat(v)||0:v})});
-  const addInd   = () => updateObra({indirectos:[...(obra.indirectos||[]),{id:uid(),label:'Nuevo Indirecto',pct:0,activo:true}]});
-  const delInd   = (id) => updateObra({indirectos:(obra.indirectos||[]).filter(i=>i.id!==id)});
-
-  const startEdit  = (ci,si,pi,f,v) => { setEditCell({ci,si,pi,f}); setEditCellVal(String(v)); };
-  const commitEdit = () => { if(!editCell)return; const{ci,si,pi,f}=editCell; updatePart(ci,si,pi,{[f]:editCellVal}); setEditCell(null); };
-  const isEd = (ci,si,pi,f) => editCell?.ci===ci&&editCell?.si===si&&editCell?.pi===pi&&editCell?.f===f;
-  const cellInp = {width:'100%',border:'2px solid #7c3aed',borderRadius:'3px',padding:'1px 4px',fontSize:'12px',outline:'none',background:'#f5f3ff',fontFamily:'inherit',boxSizing:'border-box'};
-
-  // ─── Parse Excel paste — soporta presupuesto completo ────────────────────
-  const parsePaste = (text) => {
-    const lines = text.trim().split('\n').filter(l=>l.trim());
-    const result = { caps:[], errors:[] };
-    let currentCap = null, currentSc = null;
-    lines.forEach((line, li) => {
-      const cols = line.split('\t').map(c=>c.replace(/\r/,'').trim());
-      const raw0 = cols[0]||'';
-      const raw1 = cols[1]||'';
-      // Detectar si es capítulo: solo una columna significativa, sin precio, mayúsculas o empieza con número romano/capítulo
-      const isCapLine = cols.filter(c=>c).length<=2 && !parseFloat(cols[cols.length-1]) && raw0.length>3 && !/^\d+\.\d+/.test(raw0);
-      const hasCode = /^\d+(\.\d+)+/.test(raw0) || /^[A-Z]\d/.test(raw0);
-      const hasPrice = cols.some((c,i)=>i>0&&parseFloat(c)>0);
-      if(isCapLine && !hasCode && !hasPrice) {
-        currentCap = { nombre: raw0||(raw1||'Capitulo '+(result.caps.length+1)), color: COLORES[result.caps.length%COLORES.length], subcapitulos:[] };
-        currentSc = { nombre:'Partidas', partidas:[] };
-        currentCap.subcapitulos.push(currentSc);
-        result.caps.push(currentCap);
-      } else if(hasCode || hasPrice || cols.filter(c=>c).length>=3) {
-        if(!currentCap){currentCap={nombre:'Importado',color:COLORES[0],subcapitulos:[]};currentSc={nombre:'Partidas',partidas:[]};currentCap.subcapitulos.push(currentSc);result.caps.push(currentCap);}
-        if(!currentSc){currentSc={nombre:'Partidas',partidas:[]};currentCap.subcapitulos.push(currentSc);}
-        let codigo='', desc='', unidad='ud', cantidad=0, pu=0;
-        if(hasCode) {
-          codigo=raw0; desc=cols[1]||''; unidad=cols[2]||'ud'; cantidad=parseFloat(cols[3])||0; pu=parseFloat(cols[4])||0;
-        } else {
-          desc=raw0||raw1; unidad=cols[2]||cols[1]||'ud';
-          const nums=cols.map(c=>parseFloat(c)).filter(n=>!isNaN(n)&&n>0);
-          if(nums.length>=2){cantidad=nums[0];pu=nums[1];}
-          else if(nums.length===1){pu=nums[0];}
-        }
-        if(desc||codigo) currentSc.partidas.push({...mkPartida(desc,unidad,codigo),puManual:pu,componentes:[],mediciones:[{id:uid(),concepto:'',a:String(cantidad||0),b:'',c:'',d:'',formula:''}],temporal:pu===0});
+      // Capítulo
+      if(esNumCod&&puntos===1&&!hayPrecio&&(c1.length>1||c0.length<=3)){
+        isHier=true;
+        capActual={...mkCap((c1||c0),CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
+        newCaps.push(capActual); scActual=null; continue;
       }
-    });
-    return result;
-  };
+      // Subcapítulo 2 niveles
+      if(esNumCod&&puntos===2&&!hayPrecio){
+        isHier=true;
+        if(!capActual){capActual={...mkCap('Cap '+c0.split('.')[0],CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
+        scActual={...mkSubcap(c1||c0),partidas:[]};
+        capActual.subcapitulos.push(scActual); continue;
+      }
+      // Solo texto sin código → cap o subcap
+      if(!esNumCod&&!hayPrecio&&cols.filter(c=>c).length<=2&&c0.length>2){
+        isHier=true;
+        if(!capActual){capActual={...mkCap(c0,CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);scActual=null;}
+        else{scActual={...mkSubcap(c0),partidas:[]};capActual.subcapitulos.push(scActual);}
+        continue;
+      }
 
-  const confirmPaste = (mode) => {
-    if(mode==='caps') {
-      // Pegar como estructura completa
-      const {caps} = parsePaste(pasteText);
-      if(caps.length===0){alert('No se detectaron capitulos. Verifica el formato.');return;}
-      setCaps(prev=>[...prev,...caps]);
-      setShowPaste(false); setPasteText(''); setPasteRows([]);
-    } else {
-      // Pegar en destino específico
-      if(!pasteDest.capId||!pasteDest.subcapId){alert('Selecciona destino.');return;}
-      const {caps} = parsePaste(pasteText);
-      const partidas = caps.flatMap(c=>c.subcapitulos.flatMap(sc=>sc.partidas));
-      if(partidas.length===0){alert('No se detectaron partidas.');return;}
-      setCaps(prev=>prev.map(c=>c.id!==pasteDest.capId?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==pasteDest.subcapId?sc:{...sc,partidas:[...sc.partidas,...partidas]})}));
-      setShowPaste(false); setPasteText(''); setPasteRows([]);
+      // Partida
+      let codigo='',desc='',unidad='ud',cantidad=0,puVal=0;
+      if(esNumCod&&puntos>=2){
+        isHier=true;
+        codigo=c0;desc=c1;unidad=c2||'ud';
+        const nums=cols.slice(3).map(c=>parseFloat(c.replace(/[,\s]/g,''))).filter(n=>!isNaN(n)&&n>=0);
+        if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];}
+      } else {
+        const parece_cod=c0.length<=10&&/[A-Z0-9]/.test(c0)&&c1.length>4;
+        if(parece_cod){
+          codigo=c0;desc=c1;unidad=c2||'ud';
+          const nums=cols.slice(3).map(c=>parseFloat(c.replace(/[,\s]/g,''))).filter(n=>!isNaN(n)&&n>=0);
+          if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];}
+        } else {
+          desc=c0;unidad=c1||'ud';
+          const nums=cols.slice(1).map(c=>parseFloat(c.replace(/[,\s]/g,''))).filter(n=>!isNaN(n)&&n>0);
+          if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}else if(nums.length===1){puVal=nums[0];}
+        }
+      }
+      if(!desc&&!codigo) continue;
+      const nuevaPartida={...mkPartida(desc,unidad,puVal,codigo),temporal:puVal===0,mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]};
+      if(isHier){
+        if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
+        if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos.push(scActual);}
+        scActual.partidas.push(nuevaPartida);
+      } else { plainRows.push(nuevaPartida); }
+    }
+
+    newCaps.forEach(c=>{if(!c.subcapitulos||c.subcapitulos.length===0)c.subcapitulos=[{...mkSubcap('Partidas'),partidas:[]}];});
+
+    if(isHier&&newCaps.length>0){
+      const tp=newCaps.reduce((s,c)=>s+c.subcapitulos.reduce((ss,sc)=>ss+sc.partidas.length,0),0);
+      setCaps(prev=>[...prev,...newCaps]);
+      setPasteNotif('Pegado: '+newCaps.length+' capitulo(s), '+tp+' partida(s) en orden');
+      setTimeout(()=>setPasteNotif(''),4000);
+    } else if(plainRows.length>0){
+      const caps2=[...(obra.capitulos||[])];
+      if(caps2.length===0){const cap=mkCap('Importado',CAP_COLORS[0]);cap.subcapitulos[0].partidas=plainRows;setCaps(()=>[cap]);}
+      else{const lc=caps2[caps2.length-1];const ls=lc.subcapitulos[lc.subcapitulos.length-1];ls.partidas=[...ls.partidas,...plainRows];setCaps(()=>caps2);}
+      setPasteNotif('Pegadas '+plainRows.length+' partida(s) en orden');
+      setTimeout(()=>setPasteNotif(''),4000);
     }
   };
 
+  const grandTotal = obra?(obra.capitulos||[]).reduce((s,c)=>s+getCT(c),0):0;
+  const totalInd   = obra?(obra.indirectos||[]).filter(i=>i.activo).reduce((s,i)=>s+grandTotal*(parseFloat(i.pct)||0)/100,0):0;
+  const subtConInd = grandTotal+totalInd;
+  const ivaAmt     = obra?subtConInd*(parseFloat(obra.iva)||0)/100:0;
+  const totalFinal = subtConInd+ivaAmt;
+
+  const updateObra = chg => { const o2={...obra,...chg}; setObra(o2); };
+  const setCaps    = fn  => updateObra({capitulos:fn(obra.capitulos||[])});
+  const getPart    = (ci,si,pi) => (obra.capitulos||[]).find(c=>c.id===ci)?.subcapitulos?.find(s=>s.id===si)?.partidas?.find(p=>p.id===pi);
+  const updatePart = (ci,si,pi,chg) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:sc.partidas.map(p=>p.id!==pi?p:{...p,...chg})})}));
+  const updateMedFn= (ci,si,pi,mid,chg)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:(p.mediciones||[]).map(m=>m.id!==mid?m:{...m,...chg})});};
+  const addMedFn   = (ci,si,pi)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:[...(p.mediciones||[]),mkMed()]});};
+  const delMedFn   = (ci,si,pi,mid)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{mediciones:(p.mediciones||[]).filter(m=>m.id!==mid)});};
+  const addCompFn  = (ci,si,pi,nat)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:[...(p.componentes||[]),{...mkComp(),naturaleza:nat||'M'}]});};
+  const updCompFn  = (ci,si,pi,cid,chg)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:(p.componentes||[]).map(c=>c.id!==cid?c:{...c,...chg})});};
+  const delCompFn  = (ci,si,pi,cid)=>{const p=getPart(ci,si,pi);if(!p)return;updatePart(ci,si,pi,{componentes:(p.componentes||[]).filter(c=>c.id!==cid)});};
+  const addPart    = (ci,si)=>setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:[...sc.partidas,mkPartida()]})}));
+  const delPart    = (ci,si,pi)=>setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:sc.partidas.filter(p=>p.id!==pi)})}));
+  const addSC      = ci=>setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:[...c.subcapitulos,mkSubcap()]}));
+  const delSC      = (ci,si)=>{if(!window.confirm('Eliminar subcapitulo?'))return;setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.filter(sc=>sc.id!==si)}));};
+  const addCap     = ()=>{const col=CAP_COLORS[(obra.capitulos||[]).length%CAP_COLORS.length];setCaps(prev=>[...prev,mkCap(String(prev.length+1).padStart(2,'0')+' - Nuevo Capitulo',col)]);};
+  const delCap     = ci=>{if(!window.confirm('Eliminar capitulo?'))return;setCaps(prev=>prev.filter(c=>c.id!==ci));};
+  const togCap     = ci=>setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,abierto:!c.abierto}));
+  const togSC      = (ci,si)=>setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,abierto:!sc.abierto})}));
+  const togP       = (ci,si,pi,f)=>updatePart(ci,si,pi,{[f]:!getPart(ci,si,pi)?.[f]});
+  const updInd     = (id,f,v)=>updateObra({indirectos:(obra.indirectos||[]).map(i=>i.id!==id?i:{...i,[f]:f==='pct'?parseFloat(v)||0:v})});
+  const addInd     = ()=>updateObra({indirectos:[...(obra.indirectos||[]),{id:uid(),label:'Nuevo Indirecto',pct:0,activo:true}]});
+  const delInd     = id=>updateObra({indirectos:(obra.indirectos||[]).filter(i=>i.id!==id)});
+
+  const startEdit  = (ci,si,pi,f,v)=>{setEditCell({ci,si,pi,f});setEditCellVal(String(v));};
+  const commitEdit = ()=>{if(!editCell)return;const{ci,si,pi,f}=editCell;updatePart(ci,si,pi,{[f]:editCellVal});setEditCell(null);};
+  const isEd       = (ci,si,pi,f)=>editCell?.ci===ci&&editCell?.si===si&&editCell?.pi===pi&&editCell?.f===f;
+  const cInp       = {width:'100%',border:'2px solid #6366f1',borderRadius:'3px',padding:'1px 4px',fontSize:'12px',outline:'none',background:'#eef2ff',fontFamily:'inherit',boxSizing:'border-box'};
+
   const importarBC3 = () => {
-    const lines=bc3Text.trim().split('\n');
-    let capActual=null,scActual=null;
-    const newCaps=[];
-    lines.forEach(line=>{
-      const l=line.trim(); if(!l)return;
-      if(l.startsWith('~C')){
-        const p=l.split('|'); capActual=mkCap(p[3]||p[2]||p[1]||'Capitulo','#6366f1'); scActual=mkSubcap('Partidas importadas');
-        capActual.subcapitulos=[scActual]; newCaps.push(capActual);
-      } else if(l.startsWith('~V')){
-        if(!capActual){capActual=mkCap('Importado BC3','#6366f1');scActual=mkSubcap('Partidas');capActual.subcapitulos=[scActual];newCaps.push(capActual);}
-        if(!scActual){scActual=mkSubcap('Partidas');capActual.subcapitulos=[scActual];}
-        const p=l.split('|');
-        scActual.partidas.push({...mkPartida(p[3]||p[1]||'Partida',p[2]||'ud',p[1]||''),puManual:parseFloat(p[4])||0,componentes:[],temporal:false});
+    const lines=bc3Text.trim().split('\n'); let capActual=null,scActual=null;const nC=[];
+    lines.forEach(line=>{const l=line.trim();if(!l)return;
+      if(l.startsWith('~C')){const p=l.split('|');capActual={...mkCap(p[3]||p[2]||p[1]||'Cap','#374151'),subcapitulos:[]};scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];nC.push(capActual);}
+      else if(l.startsWith('~V')){
+        if(!capActual){capActual={...mkCap('Importado','#374151'),subcapitulos:[]};scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];nC.push(capActual);}
+        if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];}
+        const p=l.split('|');scActual.partidas.push({...mkPartida(p[3]||p[1]||'Partida',p[2]||'ud',parseFloat(p[4])||0,p[1]||''),temporal:false});
       }
     });
-    if(newCaps.length>0){setCaps(prev=>[...prev,...newCaps]);alert('BC3 importado: '+newCaps.length+' capitulo(s).');}
+    if(nC.length>0){setCaps(prev=>[...prev,...nC]);alert('BC3 importado: '+nC.length+' capitulo(s).');}
     else alert('No se detectaron datos BC3 validos.');
-    setShowBC3(false); setBc3Text('');
+    setShowBC3(false);setBc3Text('');
   };
 
-  const descargarObra = () => {
-    const blob=new Blob([JSON.stringify(obra,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob); const a=document.createElement('a');
-    a.href=url; a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.obra.json'; a.click();
-    setTimeout(()=>URL.revokeObjectURL(url),2000);
-  };
+  const descargarObra=()=>{const blob=new Blob([JSON.stringify(obra,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.obra.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
+  const abrirArchivo=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const o=JSON.parse(ev.target.result);if(o&&o.capitulos){if(!o.indirectos)o.indirectos=[{id:uid(),label:'Dir Tecnica',pct:10,activo:true}];if(o.iva===undefined)o.iva=18;if(!o.moneda)o.moneda='RD$';setObra(o);guardarObra(o);setPantalla('editor');}else alert('Archivo no valido.');}catch{alert('Error al leer.');}};reader.readAsText(file);e.target.value='';};
 
-  const abrirArchivo = (e) => {
-    const file=e.target.files[0]; if(!file)return;
-    const reader=new FileReader();
-    reader.onload=(ev)=>{
-      try {
-        const o=JSON.parse(ev.target.result);
-        if(o&&o.capitulos){
-          if(!o.indirectos)o.indirectos=[{id:uid(),label:'Direccion Tecnica',pct:10,activo:true}];
-          if(o.iva===undefined)o.iva=18;
-          // Migrar partidas antiguas que tenían 'pu' directo
-          (o.capitulos||[]).forEach(c=>(c.subcapitulos||[]).forEach(sc=>(sc.partidas||[]).forEach(p=>{
-            if(p.pu!==undefined && p.puManual===undefined){p.puManual=p.pu;}
-            if(!p.componentes)p.componentes=[];
-            if(!p.mediciones)p.mediciones=[mkMed()];
-            (p.mediciones||[]).forEach(m=>{
-              // Migrar mediciones antiguas (nro/largo/ancho/alto) al nuevo formato (a/b/c/d)
-              if(m.nro!==undefined && m.a===undefined){m.a=m.nro||'';m.b=m.largo||'';m.c=m.ancho||'';m.d=m.alto||'';}
-            });
-          })));
-          setObra(o);guardarObra(o);setPantalla('editor');
-        } else alert('Archivo no valido.');
-      } catch(err){alert('Error al leer el archivo.');}
-    };
-    reader.readAsText(file); e.target.value='';
-  };
+  const exportarBC3=()=>{const hoy=new Date().toISOString().slice(0,10).replace(/-/g,'');let bc3='~V|PROCALC||'+obra.nombre+'|||'+hoy+'\n';(obra.capitulos||[]).forEach(c=>{bc3+='~C|'+c.nombre.replace(/\s/g,'_')+'|Ud|'+c.nombre+'|0|\n';(c.subcapitulos||[]).forEach(sc=>(sc.partidas||[]).forEach(p=>{bc3+='~V|'+(p.codigo||p.id)+'|'+p.unidad+'|'+p.desc+'|'+calcPU(p).toFixed(2)+'||\n';bc3+='~D|'+(p.codigo||p.id)+'|||'+calcCant(p).toFixed(4)+'|\n';}));});const blob=new Blob([bc3],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.bc3';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
 
-  const exportarBC3 = () => {
-    const hoy=new Date().toISOString().slice(0,10).replace(/-/g,'');
-    let bc3='~V|PROCALC||'+obra.nombre+'|||'+hoy+'\n';
-    (obra.capitulos||[]).forEach(c=>{
-      bc3+='~C|'+c.nombre.replace(/\s/g,'_')+'|Ud|'+c.nombre+'|0|\n';
-      (c.subcapitulos||[]).forEach(sc=>(sc.partidas||[]).forEach(p=>{
-        const pu=calcPU(p);
-        bc3+='~V|'+(p.codigo||p.id)+'|'+p.unidad+'|'+p.desc+'|'+pu.toFixed(2)+'||\n';
-        bc3+='~D|'+(p.codigo||p.id)+'|||'+calcCantidad(p).toFixed(4)+'|\n';
-      }));
-    });
-    const blob=new Blob([bc3],{type:'text/plain;charset=utf-8'});
-    const url=URL.createObjectURL(blob); const a=document.createElement('a');
-    a.href=url; a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.bc3'; a.click();
-    setTimeout(()=>URL.revokeObjectURL(url),2000);
-  };
+  const exportarCSV=()=>{const mon=obra.moneda||'RD$';let csv='Codigo,Descripcion,Unidad,Cantidad,P.Unitario,Total,Moneda\n';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');csv+='"'+cod+'","'+c.nombre+'","","","","","'+mon+'"\n';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');csv+=',"'+scod+' '+sc.nombre+'","","","","",""\n';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p);csv+='"'+pcod+'","'+p.desc+'","'+p.unidad+'","'+fmtN(cant,4)+'","'+fmtN(pu)+'","'+fmtN(cant*pu)+'","'+mon+'"\n';});});});const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
 
-  const exportarPDF = () => {
-    let rows='';
-    (obra.capitulos||[]).forEach(c=>{
-      const ct=getCT(c);
-      rows+='<tr style="background:#1e293b;color:white;"><td colspan="6" style="padding:8px 14px;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;border-left:4px solid '+c.color+'">'+c.nombre+'</td><td style="padding:8px 14px;text-align:right;font-weight:800;font-family:monospace;">'+fmtRD(ct)+'</td></tr>';
-      (c.subcapitulos||[]).forEach(sc=>{
-        rows+='<tr style="background:#f1f5f9;"><td colspan="7" style="padding:5px 14px 5px 22px;font-weight:700;font-size:10px;color:#475569;">'+sc.nombre+'</td></tr>';
-        (sc.partidas||[]).forEach(p=>{
-          const cant=calcCantidad(p),pu=calcPU(p),tot=cant*pu;
-          rows+='<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:5px 8px;font-size:10px;color:#94a3b8;font-family:monospace;">'+(p.codigo||'')+'</td><td style="padding:5px 8px;padding-left:22px;">'+p.desc+'</td><td style="padding:5px 8px;text-align:center;">'+p.unidad+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;">'+fmtN(cant,4)+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;">'+fmtRD(pu)+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:700;">'+fmtRD(tot)+'</td></tr>';
-        });
-      });
-    });
-    let indRows='';
-    (obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).forEach(i=>{
-      indRows+='<tr><td colspan="5" style="padding:5px 14px;text-align:right;color:#64748b;">'+i.label+' ('+i.pct+'%)</td><td style="padding:5px 14px;text-align:right;font-family:monospace;">'+fmtRD(grandTotal*i.pct/100)+'</td></tr>';
-    });
-    const html='<!DOCTYPE html><html><head><title>'+obra.nombre+'</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px auto;max-width:920px;color:#0f172a;}table{width:100%;border-collapse:collapse;}th{background:#0f172a;color:white;padding:8px 10px;font-size:10px;text-transform:uppercase;text-align:left;}@media print{body{margin:0;}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #7c3aed;padding-bottom:10px;margin-bottom:16px;"><div><div style="font-size:20px;font-weight:900;">PRESUPUESTO DE OBRA</div><div style="font-size:13px;color:#64748b;margin-top:3px;">'+obra.nombre+'</div></div><div style="font-size:10px;color:#94a3b8;">ProCalc - '+new Date().toLocaleDateString('es-DO')+'</div></div><table><thead><tr><th style="width:7%">Codigo</th><th style="width:38%">Descripcion</th><th style="width:6%;text-align:center">Ud.</th><th style="width:10%;text-align:right">Cantidad</th><th style="width:14%;text-align:right">P. Unit.</th><th style="width:14%;text-align:right">Total RD$</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="5" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid #e2e8f0;">COSTO DIRECTO</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:800;font-size:14px;">'+fmtRD(grandTotal)+'</td></tr>'+indRows+'<tr style="background:#1e293b;color:white;"><td colspan="5" style="padding:7px 14px;text-align:right;font-weight:700;">ITBIS ('+obra.iva+'%)</td><td style="padding:7px 14px;text-align:right;font-family:monospace;font-weight:700;">'+fmtRD(ivaAmt)+'</td></tr><tr style="background:#7c3aed;color:white;"><td colspan="5" style="padding:10px;text-align:right;font-weight:800;font-size:13px;">TOTAL GENERAL</td><td style="padding:10px;text-align:right;font-family:monospace;font-weight:800;font-size:15px;">'+fmtRD(totalFinal)+'</td></tr></tfoot></table><script>window.onload=()=>{window.print();}<\/script></body></html>';
-    const w=window.open('','_blank','width=960,height=720');
-    if(w){w.document.write(html);w.document.close();}
-  };
+  const exportarPDF=()=>{const mon=obra.moneda||'RD$';const fmP=v=>fmtMon(v,mon);let rows='';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');rows+='<tr style="background:#1f2937;color:white;"><td style="padding:8px 14px;font-weight:800;font-size:11px;text-transform:uppercase;border-left:4px solid '+c.color+'">'+cod+' '+c.nombre+'</td><td colspan="4"></td><td style="padding:8px 14px;text-align:right;font-weight:800;font-family:monospace;">'+fmP(getCT(c))+'</td></tr>';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');rows+='<tr style="background:#374151;color:#d1d5db;"><td colspan="6" style="padding:5px 14px 5px 22px;font-weight:700;font-size:10px;">'+scod+' '+sc.nombre+'</td></tr>';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;rows+='<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 8px;font-size:10px;color:#6b7280;font-family:monospace;">'+pcod+'</td><td style="padding:5px 8px;padding-left:16px;" colspan="2">'+p.desc+'</td><td style="padding:5px 8px;text-align:center;">'+p.unidad+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;">'+fmtN(cant,4)+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:700;">'+fmP(tot)+'</td></tr>';});});});let indRows='';(obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).forEach(i=>{indRows+='<tr><td colspan="4" style="padding:5px 14px;text-align:right;color:#6b7280;">'+i.label+' ('+i.pct+'%)</td><td style="padding:5px 14px;text-align:right;font-family:monospace;">'+fmP(grandTotal*i.pct/100)+'</td></tr>';});const html='<!DOCTYPE html><html><head><title>'+obra.nombre+'</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px auto;max-width:920px;color:#111827;}table{width:100%;border-collapse:collapse;}th{background:#1f2937;color:#9ca3af;padding:8px 10px;font-size:10px;text-transform:uppercase;text-align:left;}@media print{body{margin:0;}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #6366f1;padding-bottom:10px;margin-bottom:16px;"><div><div style="font-size:20px;font-weight:900;">PRESUPUESTO DE OBRA</div><div style="font-size:15px;font-weight:700;color:#374151;margin-top:2px;">'+obra.nombre+'</div><div style="font-size:11px;color:#9ca3af;margin-top:2px;">Moneda: '+mon+'</div></div><div style="font-size:10px;color:#9ca3af;">ProCalc - '+new Date().toLocaleDateString('es-DO')+'</div></div><table><thead><tr><th style="width:9%">Codigo</th><th style="width:35%" colspan="2">Descripcion</th><th style="width:6%;text-align:center">Ud.</th><th style="width:10%;text-align:right">Cantidad</th><th style="width:14%;text-align:right">Total '+mon+'</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid #e5e7eb;">COSTO DIRECTO</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:800;font-size:14px;">'+fmP(grandTotal)+'</td></tr>'+indRows+'<tr style="background:#374151;color:white;"><td colspan="4" style="padding:7px 14px;text-align:right;font-weight:700;">ITBIS ('+obra.iva+'%)</td><td style="padding:7px 14px;text-align:right;font-family:monospace;font-weight:700;">'+fmP(ivaAmt)+'</td></tr><tr style="background:#1f2937;color:white;"><td colspan="4" style="padding:10px;text-align:right;font-weight:800;font-size:13px;">TOTAL GENERAL</td><td style="padding:10px;text-align:right;font-family:monospace;font-weight:800;font-size:15px;">'+fmP(totalFinal)+'</td></tr></tfoot></table><script>window.onload=()=>{window.print();}<\/script></body></html>';const w=window.open('','_blank','width=960,height=720');if(w){w.document.write(html);w.document.close();}};
 
-  const exportarCSV = () => {
-    let csv='Codigo,Descripcion,Unidad,Cantidad,P.Unitario,Total\n';
-    (obra.capitulos||[]).forEach(c=>{
-      csv+='"'+c.nombre+'","","","","","'+fmtN(getCT(c))+'"\n';
-      (c.subcapitulos||[]).forEach(sc=>{
-        csv+=',"'+sc.nombre+'","","","",""\n';
-        (sc.partidas||[]).forEach(p=>{
-          const cant=calcCantidad(p),pu=calcPU(p);
-          csv+='"'+(p.codigo||'')+'","'+p.desc+'","'+p.unidad+'","'+fmtN(cant,4)+'","'+fmtN(pu)+'","'+fmtN(cant*pu)+'"\n';
-        });
-      });
-    });
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob); const a=document.createElement('a');
-    a.href=url; a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.csv'; a.click();
-    setTimeout(()=>URL.revokeObjectURL(url),2000);
-  };
-
-  // ═══════════════════ PANTALLA INICIO ════════════════════════════════════════
+  // ══════════════════════ PANTALLA INICIO ════════════════════════════════════
   if(pantalla==='inicio') return (
     <div style={{display:'flex',height:'100%',background:'#f0f2f5',overflow:'hidden'}}>
-      <div style={{width:'220px',flexShrink:0,background:'white',borderRight:'1px solid #e2e8f0',display:'flex',flexDirection:'column',boxShadow:'2px 0 8px rgba(0,0,0,0.05)'}}>
-        <div style={{padding:'18px 16px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:'10px'}}>
-          <div style={{width:'32px',height:'32px',background:'#7c3aed',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-            <ClipboardList size={18} color="white"/>
-          </div>
-          <div>
-            <div style={{fontWeight:'800',fontSize:'13px',color:'#0f172a',lineHeight:1}}>Presupuesto</div>
-            <div style={{fontSize:'9px',fontWeight:'700',color:'#7c3aed',letterSpacing:'0.1em',textTransform:'uppercase'}}>de Obra</div>
-          </div>
+      <div style={{width:'220px',flexShrink:0,background:'white',borderRight:'1px solid #e5e7eb',display:'flex',flexDirection:'column',boxShadow:'2px 0 8px rgba(0,0,0,0.05)'}}>
+        <div style={{padding:'18px 16px',borderBottom:'1px solid #f3f4f6',display:'flex',alignItems:'center',gap:'10px'}}>
+          <div style={{width:'32px',height:'32px',background:'#1f2937',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><ClipboardList size={18} color="white"/></div>
+          <div><div style={{fontWeight:'800',fontSize:'13px',color:'#111827',lineHeight:1}}>Presupuesto</div><div style={{fontSize:'9px',fontWeight:'700',color:'#6366f1',letterSpacing:'0.1em',textTransform:'uppercase'}}>de Obra</div></div>
         </div>
-        {[
-          {icon:'≡',label:'Obras',active:true,action:()=>{}},
-          {icon:'+',label:'Nuevo',active:false,action:()=>{const o=emptyObra();setObra(o);guardarObra(o);setPantalla('editor');}},
-          {icon:'↑',label:'Abrir',active:false,action:()=>fileRef.current&&fileRef.current.click()},
-        ].map(item=>(
-          <div key={item.label} onClick={item.action} style={{padding:'11px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',background:item.active?'#f5f3ff':'transparent',borderLeft:item.active?'3px solid #7c3aed':'3px solid transparent',transition:'all 0.12s'}} onMouseEnter={e=>{if(!item.active)e.currentTarget.style.background='#f8fafc';}} onMouseLeave={e=>{if(!item.active)e.currentTarget.style.background='transparent';}}>
-            <span style={{fontWeight:'700',fontSize:'16px',color:item.active?'#7c3aed':'#64748b',width:'18px',textAlign:'center',lineHeight:1}}>{item.icon}</span>
-            <span style={{fontWeight:item.active?'700':'600',fontSize:'13px',color:item.active?'#7c3aed':'#374151'}}>{item.label}</span>
+        {[{icon:'≡',label:'Obras',active:true,action:()=>{}},{icon:'+',label:'Nuevo',active:false,action:()=>{const o=emptyObra();setObra(o);guardarObra(o);setPantalla('editor');}},{icon:'↑',label:'Abrir',active:false,action:()=>fileRef.current&&fileRef.current.click()}].map(item=>(
+          <div key={item.label} onClick={item.action} style={{padding:'11px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',background:item.active?'#eef2ff':'transparent',borderLeft:item.active?'3px solid #6366f1':'3px solid transparent'}} onMouseEnter={e=>{if(!item.active)e.currentTarget.style.background='#f9fafb';}} onMouseLeave={e=>{if(!item.active)e.currentTarget.style.background='transparent';}}>
+            <span style={{fontWeight:'700',fontSize:'16px',color:item.active?'#6366f1':'#6b7280',width:'18px',textAlign:'center',lineHeight:1}}>{item.icon}</span>
+            <span style={{fontWeight:item.active?'700':'600',fontSize:'13px',color:item.active?'#6366f1':'#374151'}}>{item.label}</span>
           </div>
         ))}
-        <div style={{height:'1px',background:'#f1f5f9',margin:'6px 0'}}/>
         <input ref={fileRef} type="file" accept=".json,.obra.json" style={{display:'none'}} onChange={abrirArchivo}/>
       </div>
       <div style={{flex:1,padding:'32px 40px',overflowY:'auto'}}>
-        <h1 style={{fontWeight:'800',fontSize:'26px',color:'#0f172a',margin:'0 0 6px'}}>Obras Recientes</h1>
-        <div style={{height:'2px',width:'60px',background:'#7c3aed',borderRadius:'2px',marginBottom:'28px'}}/>
+        <h1 style={{fontWeight:'800',fontSize:'26px',color:'#111827',margin:'0 0 6px'}}>Obras Recientes</h1>
+        <div style={{height:'2px',width:'60px',background:'#6366f1',borderRadius:'2px',marginBottom:'28px'}}/>
         {obras.length===0?(
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'300px',gap:'16px'}}>
-            <ClipboardList size={56} style={{opacity:0.12,color:'#7c3aed'}}/>
-            <div style={{fontSize:'16px',fontWeight:'600',color:'#64748b'}}>No hay obras recientes</div>
+            <ClipboardList size={56} style={{opacity:0.12,color:'#6366f1'}}/>
+            <div style={{fontSize:'16px',fontWeight:'600',color:'#6b7280'}}>No hay obras recientes</div>
             <div style={{display:'flex',gap:'12px',marginTop:'8px'}}>
-              <button onClick={()=>{const o=emptyObra();setObra(o);guardarObra(o);setPantalla('editor');}} style={{padding:'10px 22px',background:'#7c3aed',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Nueva Obra</button>
-              <button onClick={()=>fileRef.current&&fileRef.current.click()} style={{padding:'10px 22px',background:'white',color:'#7c3aed',border:'2px solid #7c3aed',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Abrir archivo...</button>
+              <button onClick={()=>{const o=emptyObra();setObra(o);guardarObra(o);setPantalla('editor');}} style={{padding:'10px 22px',background:'#1f2937',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Nueva Obra</button>
+              <button onClick={()=>fileRef.current&&fileRef.current.click()} style={{padding:'10px 22px',background:'white',color:'#374151',border:'2px solid #e5e7eb',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Abrir archivo...</button>
             </div>
           </div>
         ):(
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:'16px'}}>
-            <div onClick={()=>{const o=emptyObra();setObra(o);guardarObra(o);setPantalla('editor');}} style={{border:'2px dashed #c4b5fd',borderRadius:'12px',padding:'24px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'10px',minHeight:'140px',background:'#faf5ff',transition:'all 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor='#7c3aed';e.currentTarget.style.background='#f5f3ff';}} onMouseLeave={e=>{e.currentTarget.style.borderColor='#c4b5fd';e.currentTarget.style.background='#faf5ff';}}>
-              <Plus size={28} style={{color:'#7c3aed',opacity:0.7}}/>
-              <span style={{fontWeight:'700',fontSize:'13px',color:'#7c3aed'}}>Nueva Obra</span>
+            <div onClick={()=>{const o=emptyObra();setObra(o);guardarObra(o);setPantalla('editor');}} style={{border:'2px dashed #d1d5db',borderRadius:'12px',padding:'24px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'10px',minHeight:'140px',background:'white',transition:'all 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor='#6366f1';e.currentTarget.style.background='#eef2ff';}} onMouseLeave={e=>{e.currentTarget.style.borderColor='#d1d5db';e.currentTarget.style.background='white';}}>
+              <Plus size={28} style={{color:'#6366f1',opacity:0.7}}/><span style={{fontWeight:'700',fontSize:'13px',color:'#6366f1'}}>Nueva Obra</span>
             </div>
-            {obras.slice().reverse().map(o=>{
-              const gt=(o.capitulos||[]).reduce((s,c)=>s+(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).reduce((sp,p)=>{
-                const pu=p.componentes&&p.componentes.length>0?p.componentes.reduce((cs,comp)=>cs+(parseFloat(comp.cantidad)||0)*(parseFloat(comp.pu)||0),0):(parseFloat(p.puManual)||parseFloat(p.pu)||0);
-                const cant=(p.mediciones||[]).reduce((ms,m)=>{
-                  if(m.formula&&m.formula.trim())return ms+0; // simplificado
-                  const va=m.a&&m.a.trim()?parseFloat(m.a)||0:null;const vb=m.b&&m.b.trim()?parseFloat(m.b)||0:null;
-                  const vc=m.c&&m.c.trim()?parseFloat(m.c)||0:null;const vd=m.d&&m.d.trim()?parseFloat(m.d)||0:null;
-                  const vals=[va,vb,vc,vd].filter(x=>x!==null); return ms+(vals.length===0?0:vals.reduce((pp,v)=>pp*v,1));
-                },0);
-                return sp+cant*pu;
-              },0),0),0);
-              return (
-                <div key={o.id} style={{background:'white',borderRadius:'12px',padding:'20px',border:'1px solid #e2e8f0',cursor:'pointer',transition:'all 0.15s',boxShadow:'0 1px 4px rgba(0,0,0,0.05)',position:'relative'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 6px 20px rgba(0,0,0,0.1)';e.currentTarget.style.borderColor='#a78bfa';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.05)';e.currentTarget.style.borderColor='#e2e8f0';}}>
-                  <div onClick={()=>{setObra(o);setPantalla('editor');}} style={{display:'flex',flexDirection:'column',gap:'6px'}}>
-                    <div style={{fontWeight:'800',fontSize:'14px',color:'#0f172a',lineHeight:'1.3',paddingRight:'52px'}}>{o.nombre}</div>
-                    <div style={{fontSize:'11px',color:'#94a3b8'}}>{o.fecha}</div>
-                    <div style={{fontSize:'11px',color:'#64748b',marginTop:'4px'}}>{(o.capitulos||[]).length} cap. · {(o.capitulos||[]).reduce((s,c)=>s+(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).length,0),0)} partidas</div>
-                    <div style={{fontFamily:'monospace',fontWeight:'800',color:'#7c3aed',fontSize:'14px',marginTop:'6px'}}>{fmtRD(gt)}</div>
-                  </div>
-                  <div style={{position:'absolute',top:'12px',right:'12px',display:'flex',gap:'4px'}}>
-                    <button title="Descargar" onClick={e=>{e.stopPropagation();const blob=new Blob([JSON.stringify(o,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(o.nombre||'obra').replace(/\s/g,'_')+'.obra.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}} style={{background:'#f1f5f9',border:'none',borderRadius:'6px',padding:'4px 7px',cursor:'pointer',color:'#64748b',fontSize:'13px'}}>↓</button>
-                    <button title="Eliminar" onClick={e=>{e.stopPropagation();if(!window.confirm('Eliminar esta obra?'))return;setObras(prev=>prev.filter(x=>x.id!==o.id));try{localStorage.removeItem('obra_'+o.id);const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');localStorage.setItem('obras_index',JSON.stringify(idx.filter(x=>x!==o.id)));}catch(er){}}} style={{background:'#fef2f2',border:'none',borderRadius:'6px',padding:'4px 7px',cursor:'pointer',color:'#ef4444',fontSize:'13px'}}>✕</button>
-                  </div>
+            {obras.slice().reverse().map(o=>(
+              <div key={o.id} style={{background:'white',borderRadius:'12px',padding:'20px',border:'1px solid #e5e7eb',cursor:'pointer',transition:'all 0.15s',boxShadow:'0 1px 4px rgba(0,0,0,0.05)',position:'relative'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 6px 20px rgba(0,0,0,0.1)';e.currentTarget.style.borderColor='#6366f1';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.05)';e.currentTarget.style.borderColor='#e5e7eb';}}>
+                <div onClick={()=>{setObra(o);setPantalla('editor');}} style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+                  <div style={{fontWeight:'800',fontSize:'14px',color:'#111827',lineHeight:'1.3',paddingRight:'52px'}}>{o.nombre}</div>
+                  <div style={{fontSize:'11px',color:'#9ca3af'}}>{o.fecha} · <strong style={{color:'#6366f1'}}>{o.moneda||'RD$'}</strong></div>
+                  <div style={{fontSize:'11px',color:'#6b7280',marginTop:'2px'}}>{(o.capitulos||[]).length} cap. · {(o.capitulos||[]).reduce((s,c)=>s+(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).length,0),0)} partidas</div>
                 </div>
-              );
-            })}
+                <div style={{position:'absolute',top:'12px',right:'12px',display:'flex',gap:'4px'}}>
+                  <button title="Descargar" onClick={e=>{e.stopPropagation();const blob=new Blob([JSON.stringify(o,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(o.nombre||'obra').replace(/\s/g,'_')+'.obra.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}} style={{background:'#f3f4f6',border:'none',borderRadius:'6px',padding:'4px 7px',cursor:'pointer',color:'#6b7280',fontSize:'13px'}}>↓</button>
+                  <button title="Eliminar" onClick={e=>{e.stopPropagation();if(!window.confirm('Eliminar esta obra?'))return;setObras(prev=>prev.filter(x=>x.id!==o.id));try{localStorage.removeItem('obra_'+o.id);const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');localStorage.setItem('obras_index',JSON.stringify(idx.filter(x=>x!==o.id)));}catch(er){}}} style={{background:'#fef2f2',border:'none',borderRadius:'6px',padding:'4px 7px',cursor:'pointer',color:'#ef4444',fontSize:'13px'}}>x</button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -3126,270 +3039,232 @@ const PresupuestoObraView = () => {
   );
 
   if(!obra) return null;
+  const caps=obra.capitulos||[];
 
-  // ═══════════════════ MODAL PARTIDA (Mediciones + Componentes) ═══════════════
-  const ModalPartida = ({info}) => {
-    const {ci,si,pi}=info;
-    const cap=(obra.capitulos||[]).find(c=>c.id===ci);
-    const sc=cap&&(cap.subcapitulos||[]).find(s=>s.id===si);
-    const p=sc&&(sc.partidas||[]).find(x=>x.id===pi);
-    if(!p) return null;
-    const [tab, setTab] = React.useState('mediciones');
-    const totalCant = calcCantidad(p);
-    const pu = calcPU(p);
-    const totalPartida = totalCant * pu;
-    const hasComps = p.componentes && p.componentes.length > 0;
-
-    const fld = {border:'1px solid #334155',borderRadius:'4px',padding:'4px 7px',fontSize:'12px',outline:'none',background:'#1e293b',color:'#e2e8f0',fontFamily:'monospace',width:'100%',boxSizing:'border-box'};
-    const fldFocus = '1px solid #7c3aed';
-
-    return (
-      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(2px)'}}>
-        <div style={{background:'#0f172a',borderRadius:'16px',width:'860px',maxHeight:'90vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.6)',border:'1px solid #1e293b'}}>
-
-          {/* Header */}
-          <div style={{padding:'14px 20px',borderBottom:'1px solid #1e293b',display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexShrink:0}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:'10px',fontWeight:'700',color:'#7c3aed',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'4px'}}>Detalle de Partida</div>
-              <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
-                {p.codigo&&<span style={{fontFamily:'monospace',color:'#7c3aed',fontWeight:'800',fontSize:'12px'}}>{p.codigo}</span>}
-                <span style={{fontSize:'14px',fontWeight:'700',color:'white'}}>{p.desc}</span>
-                <span style={{fontSize:'11px',color:'#64748b',background:'#1e293b',padding:'2px 8px',borderRadius:'4px'}}>{p.unidad}</span>
-              </div>
-              <div style={{marginTop:'8px',display:'flex',gap:'20px',flexWrap:'wrap'}}>
-                <div style={{fontSize:'11px',color:'#64748b'}}>Cantidad: <strong style={{color:'#94a3b8',fontFamily:'monospace'}}>{fmtN(totalCant,4)}</strong></div>
-                <div style={{fontSize:'11px',color:'#64748b'}}>P.U.: <strong style={{color:hasComps?'#f59e0b':'#94a3b8',fontFamily:'monospace'}}>{fmtRD(pu)}</strong></div>
-                <div style={{fontSize:'12px',fontWeight:'800',color:'#a78bfa',fontFamily:'monospace'}}>Total: {fmtRD(totalPartida)}</div>
-              </div>
-            </div>
-            <button onClick={()=>setModalPartida(null)} style={{background:'none',border:'none',color:'#64748b',cursor:'pointer',fontSize:'22px',lineHeight:1,marginLeft:'10px'}}>✕</button>
-          </div>
-
-          {/* Tabs */}
-          <div style={{display:'flex',borderBottom:'1px solid #1e293b',flexShrink:0}}>
-            {[['mediciones','📐 Mediciones'],['componentes','🧱 Componentes (P.U.)']].map(([t,l])=>(
-              <button key={t} onClick={()=>setTab(t)} style={{padding:'10px 20px',border:'none',background:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',color:tab===t?'white':'#64748b',borderBottom:tab===t?'2px solid #7c3aed':'2px solid transparent',transition:'all 0.15s'}}>
-                {l}{t==='componentes'&&hasComps&&<span style={{marginLeft:'6px',background:'#f59e0b',color:'#0f172a',borderRadius:'10px',fontSize:'9px',padding:'1px 5px',fontWeight:'800'}}>{p.componentes.length}</span>}
-              </button>
-            ))}
-          </div>
-
-          {/* Tab: Mediciones */}
-          {tab==='mediciones'&&(
-            <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-              <div style={{padding:'8px 20px',background:'#1e293b',borderBottom:'1px solid #334155',flexShrink:0}}>
-                <span style={{fontSize:'10px',color:'#475569',fontWeight:'600'}}>
-                  Parcial = a × b × c × d (campos vacios se ignoran). En <strong style={{color:'#a78bfa'}}>Formula</strong> usa letras: <code style={{background:'#0f172a',padding:'1px 6px',borderRadius:'3px',color:'#a78bfa'}}>a*b+c</code> · <code style={{background:'#0f172a',padding:'1px 6px',borderRadius:'3px',color:'#a78bfa'}}>(a+b)*c</code> · <code style={{background:'#0f172a',padding:'1px 6px',borderRadius:'3px',color:'#a78bfa'}}>a*b*c*d</code>
-                </span>
-              </div>
-              <div style={{flex:1,overflow:'auto'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
-                  <colgroup>
-                    <col style={{width:'22%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'26%'}}/><col style={{width:'8%'}}/>
-                  </colgroup>
-                  <thead>
-                    <tr style={{background:'#1e293b',position:'sticky',top:0,zIndex:1}}>
-                      <th style={{padding:'8px 12px',fontWeight:'700',fontSize:'10px',color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'left',borderBottom:'1px solid #334155'}}>Concepto</th>
-                      {['a','b','c','d'].map(k=>(
-                        <th key={k} style={{padding:'8px 10px',fontWeight:'800',fontSize:'12px',color:'#a78bfa',textAlign:'right',borderBottom:'1px solid #334155',letterSpacing:'0.04em'}}>{k.toUpperCase()}</th>
-                      ))}
-                      <th style={{padding:'8px 12px',fontWeight:'700',fontSize:'10px',color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'right',borderBottom:'1px solid #334155'}}>Formula / Parcial</th>
-                      <th style={{borderBottom:'1px solid #334155'}}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(p.mediciones||[]).map((m,mi)=>{
-                      const parcial = calcMedParcial(m);
-                      const hasFormula = m.formula && m.formula.trim();
-                      return (
-                        <tr key={m.id} style={{borderBottom:'1px solid #1e293b',background:mi%2===0?'#0f172a':'#0b1120'}}>
-                          <td style={{padding:'5px 8px'}}>
-                            <input value={m.concepto||''} onChange={e=>updateMedFn(ci,si,pi,m.id,{concepto:e.target.value})} style={fld} placeholder="Concepto..."/>
-                          </td>
-                          {['a','b','c','d'].map(k=>(
-                            <td key={k} style={{padding:'5px 8px'}}>
-                              <input value={m[k]||''} onChange={e=>updateMedFn(ci,si,pi,m.id,{[k]:e.target.value})} disabled={!!hasFormula} style={{...fld,textAlign:'right',opacity:hasFormula?.35:1,color:'#93c5fd'}} placeholder="0"/>
-                            </td>
-                          ))}
-                          <td style={{padding:'5px 8px'}}>
-                            <div style={{display:'flex',flexDirection:'column',gap:'2px'}}>
-                              <input value={m.formula||''} onChange={e=>updateMedFn(ci,si,pi,m.id,{formula:e.target.value})} style={{...fld,textAlign:'right',color:'#a78bfa',fontSize:'11px'}} placeholder="ej: a*b+c"/>
-                              <div style={{fontSize:'10px',fontFamily:'monospace',fontWeight:'700',textAlign:'right',color:hasFormula?'#a78bfa':'#34d399',padding:'1px 0'}}>{fmtN(parcial,4)}</div>
-                            </div>
-                          </td>
-                          <td style={{padding:'5px 4px',textAlign:'center'}}>
-                            <button onClick={()=>delMedFn(ci,si,pi,m.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#334155',fontSize:'14px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#334155'}>✕</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{padding:'10px 20px',borderTop:'1px solid #1e293b',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0,background:'#0b1120'}}>
-                <button onClick={()=>addMedFn(ci,si,pi)} style={{padding:'6px 14px',background:'#1e293b',color:'#94a3b8',border:'1px solid #334155',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Fila</button>
-                <div style={{display:'flex',gap:'20px',alignItems:'center'}}>
-                  <div style={{fontSize:'11px',color:'#64748b'}}>Total cantidad: <span style={{fontFamily:'monospace',color:'#94a3b8',fontWeight:'700'}}>{fmtN(totalCant,4)} {p.unidad}</span></div>
-                  <div style={{fontSize:'13px',fontWeight:'800',color:'#a78bfa',fontFamily:'monospace'}}>Subtotal: {fmtRD(totalPartida)}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tab: Componentes */}
-          {tab==='componentes'&&(
-            <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-              <div style={{padding:'8px 20px',background:'#1e293b',borderBottom:'1px solid #334155',flexShrink:0}}>
-                <span style={{fontSize:'10px',color:'#475569',fontWeight:'600'}}>
-                  Los componentes definen el <strong style={{color:'#f59e0b'}}>Precio Unitario</strong> de la partida. P.U. = suma de (Cantidad × P.U.) de cada componente.
-                  {!hasComps&&<span style={{color:'#94a3b8'}}> Sin componentes: el P.U. se edita directamente en la tabla.</span>}
-                </span>
-              </div>
-              <div style={{flex:1,overflow:'auto'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
-                  <colgroup><col style={{width:'38%'}}/><col style={{width:'12%'}}/><col style={{width:'12%'}}/><col style={{width:'14%'}}/><col style={{width:'18%'}}/><col style={{width:'6%'}}/></colgroup>
-                  <thead>
-                    <tr style={{background:'#1e293b',position:'sticky',top:0,zIndex:1}}>
-                      {['Descripcion','Cantidad','Unidad','P.U. (RD$)','Total',''].map((h,i)=>(
-                        <th key={i} style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:i>=1&&i<=4?'right':'left',borderBottom:'1px solid #334155'}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(p.componentes||[]).length===0&&(
-                      <tr><td colSpan={6} style={{padding:'28px',textAlign:'center',color:'#334155',fontSize:'13px'}}>Sin componentes. Usa el boton de abajo para agregar.</td></tr>
-                    )}
-                    {(p.componentes||[]).map((comp,ci2)=>{
-                      const tot=(parseFloat(comp.cantidad)||0)*(parseFloat(comp.pu)||0);
-                      return (
-                        <tr key={comp.id} style={{borderBottom:'1px solid #1e293b',background:ci2%2===0?'#0f172a':'#0b1120'}}>
-                          <td style={{padding:'5px 8px'}}>
-                            <input value={comp.desc||''} onChange={e=>updCompFn(ci,si,pi,comp.id,{desc:e.target.value})} style={fld} placeholder="Descripcion del componente"/>
-                          </td>
-                          <td style={{padding:'5px 8px'}}>
-                            <input type="number" value={comp.cantidad||0} onChange={e=>updCompFn(ci,si,pi,comp.id,{cantidad:e.target.value})} style={{...fld,textAlign:'right'}} placeholder="0"/>
-                          </td>
-                          <td style={{padding:'5px 8px'}}>
-                            <input value={comp.unidad||''} onChange={e=>updCompFn(ci,si,pi,comp.id,{unidad:e.target.value})} style={{...fld,textAlign:'center'}} placeholder="ud"/>
-                          </td>
-                          <td style={{padding:'5px 8px'}}>
-                            <input type="number" value={comp.pu||0} onChange={e=>updCompFn(ci,si,pi,comp.id,{pu:e.target.value})} style={{...fld,textAlign:'right'}} placeholder="0.00"/>
-                          </td>
-                          <td style={{padding:'5px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#f59e0b'}}>{fmtRD(tot)}</td>
-                          <td style={{padding:'5px 4px',textAlign:'center'}}>
-                            <button onClick={()=>delCompFn(ci,si,pi,comp.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#334155',fontSize:'14px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#334155'}>✕</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{padding:'10px 20px',borderTop:'1px solid #1e293b',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0,background:'#0b1120'}}>
-                <button onClick={()=>addCompFn(ci,si,pi)} style={{padding:'6px 14px',background:'#1e293b',color:'#f59e0b',border:'1px solid #334155',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Componente</button>
-                <div style={{display:'flex',gap:'16px',alignItems:'center'}}>
-                  <div style={{fontSize:'11px',color:'#64748b'}}>P.U. calculado: <span style={{fontFamily:'monospace',color:'#f59e0b',fontWeight:'800'}}>{fmtRD(pu)}</span></div>
-                  <div style={{fontSize:'13px',fontWeight:'800',color:'#a78bfa',fontFamily:'monospace'}}>Total partida: {fmtRD(totalPartida)}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Footer */}
-          <div style={{padding:'10px 20px',borderTop:'1px solid #1e293b',display:'flex',justifyContent:'flex-end',flexShrink:0}}>
-            <button onClick={()=>setModalPartida(null)} style={{padding:'8px 22px',background:'#7c3aed',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Cerrar</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ═══════════════════ VISTA PRESUPUESTO ══════════════════════════════════════
+  // ══════════════════════ VISTA PRESUPUESTO ══════════════════════════════════
   const VPresupuesto = () => (
     <div style={{flex:1,overflow:'auto'}}>
-      <table style={{width:'100%',tableLayout:'fixed',borderCollapse:'collapse',fontSize:'12px',minWidth:'780px'}}>
+      {/* Nombre del proyecto sobre la tabla */}
+      <div style={{background:'#111827',padding:'8px 16px 8px',display:'flex',alignItems:'center',gap:'12px',borderBottom:'2px solid #1f2937'}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:'9px',fontWeight:'700',color:'#4b5563',textTransform:'uppercase',letterSpacing:'0.08em'}}>Proyecto</div>
+          <div style={{fontWeight:'800',fontSize:'14px',color:'white'}}>{obra.nombre}</div>
+        </div>
+        <div style={{fontSize:'10px',color:'#4b5563'}}>{obra.fecha}</div>
+      </div>
+
+      <table style={{width:'100%',tableLayout:'fixed',borderCollapse:'collapse',fontSize:'12px',minWidth:'860px'}}>
         <colgroup>
-          <col style={{width:'70px'}}/><col style={{width:'37%'}}/><col style={{width:'50px'}}/><col style={{width:'90px'}}/><col style={{width:'100px'}}/><col style={{width:'105px'}}/><col style={{width:'26px'}}/>
+          <col style={{width:'90px'}}/><col/><col style={{width:'52px'}}/><col style={{width:'88px'}}/><col style={{width:'110px'}}/><col style={{width:'110px'}}/><col style={{width:'26px'}}/>
         </colgroup>
         <thead style={{position:'sticky',top:0,zIndex:10}}>
-          <tr style={{background:'#1e293b',color:'white'}}>
-            {['Codigo','Descripcion','Ud.','Cantidad','P. Unitario','Total RD$',''].map((h,i)=>(
-              <th key={i} style={{padding:'9px 8px',fontWeight:'700',fontSize:'10px',letterSpacing:'0.06em',textTransform:'uppercase',textAlign:i>=3&&i<=5?'right':i===2?'center':'left',borderRight:'1px solid #334155'}}>{h}</th>
-            ))}
+          <tr style={{background:'#1f2937',color:'#9ca3af'}}>
+            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'left',borderRight:'1px solid #374151'}}>Codigo</th>
+            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'left',borderRight:'1px solid #374151'}}>Descripcion</th>
+            <th style={{padding:'8px 6px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',borderRight:'1px solid #374151'}}>Ud.</th>
+            <th style={{padding:'8px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'right',borderRight:'1px solid #374151'}}>Cantidad</th>
+            <th style={{padding:'8px 10px',textAlign:'right',borderRight:'1px solid #374151'}}>
+              <div style={{fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em'}}>P. Unitario</div>
+              <div style={{fontSize:'9px',color:'#6b7280',fontWeight:'600'}}>{obra.moneda||'RD$'}</div>
+            </th>
+            <th style={{padding:'8px 10px',textAlign:'right',borderRight:'1px solid #374151'}}>
+              <div style={{fontWeight:'700',fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Total</div>
+              <div style={{fontSize:'9px',color:'#6b7280',fontWeight:'600'}}>{obra.moneda||'RD$'}</div>
+            </th>
+            <th style={{padding:'8px 4px'}}></th>
           </tr>
         </thead>
         <tbody>
-          {(obra.capitulos||[]).map(cap=>{
+          {caps.map((cap,ci)=>{
             const ct=getCT(cap);
+            const capCode=String(ci+1).padStart(2,'0');
             return (
               <React.Fragment key={cap.id}>
-                <tr style={{background:'#0f172a',cursor:'pointer',userSelect:'none'}} onClick={()=>togCap(cap.id)}>
-                  <td colSpan={5} style={{padding:'8px 10px',fontWeight:'800',fontSize:'11px',color:'white',textTransform:'uppercase',letterSpacing:'0.07em',borderLeft:'4px solid '+cap.color}}>
-                    <span style={{marginRight:'6px',color:'#64748b',fontSize:'10px'}}>{cap.abierto?'▼':'▶'}</span>{cap.nombre}
+                {/* CAPÍTULO — gris muy oscuro */}
+                <tr style={{background:CAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color}} onClick={()=>togCap(cap.id)}>
+                  <td style={{padding:'9px 10px',fontFamily:'monospace',color:cap.color,fontWeight:'800',fontSize:'12px',borderRight:'1px solid #374151'}}>{capCode}</td>
+                  <td colSpan={4} style={{padding:'9px 10px',fontWeight:'800',fontSize:'12px',color:'white',textTransform:'uppercase',letterSpacing:'0.06em'}}>
+                    <span style={{marginRight:'6px',color:'#6b7280',fontSize:'10px'}}>{cap.abierto?'v':'>'}</span>{cap.nombre}
                   </td>
-                  <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:cap.color,borderRight:'1px solid #334155'}}>{fmtRD(ct)}</td>
-                  <td style={{background:'#0f172a',textAlign:'center',padding:'4px'}}>
-                    <button onClick={e=>{e.stopPropagation();delCap(cap.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#334155',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#334155'}>✕</button>
+                  <td style={{padding:'9px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:cap.color,borderLeft:'1px solid #374151',borderRight:'1px solid #374151'}}>{fmt(ct)}</td>
+                  <td style={{background:CAP_BG,textAlign:'center',padding:'4px'}}>
+                    <button onClick={e=>{e.stopPropagation();delCap(cap.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#4b5563',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#4b5563'}>x</button>
                   </td>
                 </tr>
-                {cap.abierto&&(cap.subcapitulos||[]).map(sc=>{
+                {cap.abierto&&(cap.subcapitulos||[]).map((sc,si)=>{
                   const sct=getSCT(sc);
+                  const scCode=capCode+'.'+String(si+1).padStart(2,'0');
                   return (
                     <React.Fragment key={sc.id}>
-                      <tr style={{background:'#1e293b',cursor:'pointer',userSelect:'none'}} onClick={()=>togSC(cap.id,sc.id)}>
-                        <td colSpan={5} style={{padding:'6px 10px 6px 22px',fontWeight:'700',fontSize:'11px',color:'#94a3b8',borderLeft:'2px solid '+cap.color+'55'}}>
-                          <span style={{marginRight:'6px',color:'#475569',fontSize:'9px'}}>{sc.abierto?'▼':'▶'}</span>{sc.nombre}
+                      {/* SUBCAPÍTULO — gris medio */}
+                      <tr style={{background:SUBCAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color+'88'}} onClick={()=>togSC(cap.id,sc.id)}>
+                        <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#9ca3af',fontWeight:'700',fontSize:'11px',borderRight:'1px solid #4b5563'}}>{scCode}</td>
+                        <td colSpan={4} style={{padding:'7px 10px',fontWeight:'700',fontSize:'11px',color:'#d1d5db'}}>
+                          <span style={{marginRight:'6px',color:'#6b7280',fontSize:'9px'}}>{sc.abierto?'v':'>'}</span>{sc.nombre}
                         </td>
-                        <td style={{padding:'6px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#64748b',fontSize:'11px',borderRight:'1px solid #334155'}}>{fmtRD(sct)}</td>
-                        <td style={{background:'#1e293b',textAlign:'center',padding:'4px'}}>
-                          <button onClick={e=>{e.stopPropagation();delSC(cap.id,sc.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#334155',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#334155'}>✕</button>
+                        <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#9ca3af',fontSize:'11px',borderLeft:'1px solid #4b5563',borderRight:'1px solid #4b5563'}}>{fmt(sct)}</td>
+                        <td style={{background:SUBCAP_BG,textAlign:'center',padding:'4px'}}>
+                          <button onClick={e=>{e.stopPropagation();delSC(cap.id,sc.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#4b5563',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#4b5563'}>x</button>
                         </td>
                       </tr>
                       {sc.abierto&&(sc.partidas||[]).map((p,pi)=>{
-                        const cant=calcCantidad(p), pu=calcPU(p), tot=cant*pu;
-                        const bg=pi%2===0?'#ffffff':'#f8fafc';
-                        const bdr='1px solid #e2e8f0';
-                        const td={borderBottom:bdr,borderRight:bdr,background:bg};
+                        const pCode=scCode+'.'+String(pi+1).padStart(3,'0');
+                        const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;
+                        const bg=pi%2===0?'#ffffff':'#f9fafb';
+                        const bdr='1px solid #e5e7eb';
                         const hasComps=p.componentes&&p.componentes.length>0;
                         return (
-                          <tr key={p.id} style={{borderBottom:bdr}}>
-                            <td style={{...td,fontFamily:'monospace',color:'#1e40af',fontWeight:'700',fontSize:'11px',padding:'5px 8px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'codigo',p.codigo||'')}>
-                              {isEd(cap.id,sc.id,p.id,'codigo')?<input autoFocus style={{...cellInp,textAlign:'center'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:p.codigo||<span style={{color:'#cbd5e1'}}>—</span>}
-                            </td>
-                            {/* Descripción — clic abre modal */}
-                            <td style={{...td,fontWeight:'600',color:'#0f172a',padding:'5px 8px',cursor:'pointer'}} onClick={()=>setModalPartida({ci:cap.id,si:sc.id,pi:p.id})}>
-                              <span style={{display:'flex',alignItems:'center',gap:'5px',wordBreak:'break-word'}}>
-                                {p.temporal&&<span style={{fontSize:'8px',background:'#fef3c7',color:'#b45309',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>TEMP</span>}
-                                {hasComps&&<span style={{fontSize:'8px',background:'#fef9c3',color:'#854d0e',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>APU</span>}
-                                <span style={{textDecoration:'underline',textDecorationStyle:'dotted',textDecorationColor:'#cbd5e1'}}>{p.desc}</span>
-                              </span>
-                            </td>
-                            <td style={{...td,textAlign:'center',padding:'5px 6px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'unidad',p.unidad||'')}>
-                              {isEd(cap.id,sc.id,p.id,'unidad')?<input autoFocus style={{...cellInp,textAlign:'center'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:p.unidad}
-                            </td>
-                            {/* Cantidad — clic abre modal en tab mediciones */}
-                            <td style={{...td,textAlign:'right',padding:'5px 8px',cursor:'pointer',fontFamily:'monospace',fontWeight:'700',color:'#1e293b'}} title="Clic: Libro de Mediciones" onClick={()=>setModalPartida({ci:cap.id,si:sc.id,pi:p.id})}>
-                              <span style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
-                                <span>{fmtN(cant,4)}</span>
-                                <span style={{fontSize:'9px',color:'#94a3b8',fontWeight:'600'}}>{(p.mediciones||[]).length} med.</span>
-                              </span>
-                            </td>
-                            {/* P.U. — editable solo si no hay componentes */}
-                            <td style={{...td,textAlign:'right',padding:'5px 8px',cursor:hasComps?'default':'text',fontFamily:'monospace',color:hasComps?'#f59e0b':'#1e293b',fontWeight:hasComps?'700':'400'}}
-                              onClick={()=>{ if(!hasComps) startEdit(cap.id,sc.id,p.id,'puManual',p.puManual||0); }}>
-                              {isEd(cap.id,sc.id,p.id,'puManual')&&!hasComps?<input autoFocus type="number" style={{...cellInp,textAlign:'right'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:fmtRD(pu)}
-                            </td>
-                            <td style={{textAlign:'right',padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',color:'#0f172a',borderBottom:bdr,borderRight:bdr,background:pi%2===0?'#f5f3ff':'#ede9fe'}}>{fmtRD(tot)}</td>
-                            <td style={{borderBottom:bdr,background:bg,padding:'4px',textAlign:'center'}}>
-                              <button onClick={()=>delPart(cap.id,sc.id,p.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#cbd5e1',fontSize:'13px',lineHeight:1}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#cbd5e1'}>✕</button>
-                            </td>
-                          </tr>
+                          <React.Fragment key={p.id}>
+                            {/* PARTIDA — blanco/gris muy claro */}
+                            <tr style={{borderBottom:bdr,borderLeft:'4px solid '+cap.color+'33',background:bg}}>
+                              <td style={{borderRight:bdr,background:bg,padding:'5px 8px',fontFamily:'monospace',color:'#4b5563',fontWeight:'600',fontSize:'11px'}}>{pCode}</td>
+                              <td style={{borderRight:bdr,background:bg,fontWeight:'600',color:'#111827',padding:'5px 8px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'desc',p.desc)}>
+                                {isEd(cap.id,sc.id,p.id,'desc')?<input autoFocus style={cInp} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:
+                                  <span style={{display:'flex',alignItems:'center',gap:'5px',wordBreak:'break-word'}}>
+                                    {p.temporal&&<span style={{fontSize:'8px',background:'#fef3c7',color:'#b45309',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>TEMP</span>}
+                                    {hasComps&&<span style={{fontSize:'8px',background:'#e0e7ff',color:'#3730a3',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>APU</span>}
+                                    {p.desc}
+                                  </span>}
+                              </td>
+                              <td style={{borderRight:bdr,background:bg,textAlign:'center',padding:'5px 6px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'unidad',p.unidad||'')}>
+                                {isEd(cap.id,sc.id,p.id,'unidad')?<input autoFocus style={{...cInp,textAlign:'center'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:<span style={{color:'#374151',fontWeight:'500'}}>{p.unidad}</span>}
+                              </td>
+                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:'pointer',fontFamily:'monospace',fontWeight:'700',color:p.showMed?'#6366f1':'#111827'}} onClick={()=>togP(cap.id,sc.id,p.id,'showMed')} title="Clic: Mediciones">
+                                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
+                                  <span>{fmtN(cant,4)}</span>
+                                  <span style={{fontSize:'9px',color:p.showMed?'#6366f1':'#9ca3af',fontWeight:'600'}}>{(p.mediciones||[]).length} med.</span>
+                                </div>
+                              </td>
+                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:hasComps?'pointer':'text',fontFamily:'monospace',color:hasComps?'#b45309':'#111827',fontWeight:hasComps?'700':'400'}}
+                                onClick={()=>{if(hasComps)togP(cap.id,sc.id,p.id,'showComp');else startEdit(cap.id,sc.id,p.id,'puManual',p.puManual||0);}} title={hasComps?'Clic: APU':'Editar P.U.'}>
+                                {isEd(cap.id,sc.id,p.id,'puManual')&&!hasComps?<input autoFocus type="number" style={{...cInp,textAlign:'right'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:fmt(pu)}
+                              </td>
+                              <td style={{textAlign:'right',padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',color:'#111827',borderRight:bdr,background:pi%2===0?'#eef2ff':'#e0e7ff'}}>{fmt(tot)}</td>
+                              <td style={{borderBottom:bdr,background:bg,padding:'4px',textAlign:'center'}}>
+                                <button onClick={()=>delPart(cap.id,sc.id,p.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>x</button>
+                              </td>
+                            </tr>
+
+                            {/* MEDICIONES inline */}
+                            {p.showMed&&(
+                              <tr><td colSpan={7} style={{padding:'0',background:'#f5f3ff',borderBottom:'1px solid #e2e8f0',borderLeft:'4px solid #6366f1'}}>
+                                <div style={{padding:'6px 14px 3px',fontSize:'10px',fontWeight:'800',color:'#6366f1',textTransform:'uppercase',letterSpacing:'0.06em',display:'flex',alignItems:'center',gap:'8px',background:'#ede9fe',borderBottom:'1px solid #ddd6fe'}}>
+                                  Mediciones · Parcial = A x B x C x D
+                                  <span style={{marginLeft:'auto',fontSize:'11px',color:'#6366f1',fontFamily:'monospace',fontWeight:'800',textTransform:'none'}}>Suma = {fmtN(cant,4)} {p.unidad}</span>
+                                </div>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
+                                  <colgroup><col style={{width:'24%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'11%'}}/><col style={{width:'24%'}}/><col style={{width:'8%'}}/></colgroup>
+                                  <thead><tr style={{background:'#ede9fe'}}>
+                                    <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'left',letterSpacing:'0.05em'}}>Concepto</th>
+                                    {['A','B','C','D'].map(k=><th key={k} style={{padding:'4px 8px',fontWeight:'800',fontSize:'11px',color:'#6366f1',textAlign:'right'}}>{k}</th>)}
+                                    <th style={{padding:'4px 8px',fontWeight:'700',fontSize:'9px',color:'#6366f1',textTransform:'uppercase',textAlign:'right',letterSpacing:'0.05em'}}>Formula/Parcial</th>
+                                    <th></th>
+                                  </tr></thead>
+                                  <tbody>
+                                    {(p.mediciones||[]).map((m,mi)=>{
+                                      const parcial=calcMedParcial(m);const isF=m.formula&&m.formula.trim();
+                                      const iM={width:'100%',border:'1px solid #ddd6fe',borderRadius:'3px',padding:'3px 5px',fontSize:'11px',outline:'none',background:'white',fontFamily:'monospace',textAlign:'right',boxSizing:'border-box'};
+                                      return (
+                                        <tr key={m.id} style={{borderBottom:'1px solid #ede9fe',background:mi%2===0?'white':'#faf5ff'}}>
+                                          <td style={{padding:'3px 8px'}}><input value={m.concepto||''} onChange={e=>updateMedFn(cap.id,sc.id,p.id,m.id,{concepto:e.target.value})} style={{...iM,textAlign:'left'}} placeholder="Concepto..."/></td>
+                                          {['a','b','c','d'].map(k=><td key={k} style={{padding:'3px 4px'}}><input value={m[k]||''} onChange={e=>updateMedFn(cap.id,sc.id,p.id,m.id,{[k]:e.target.value})} disabled={!!isF} style={{...iM,opacity:isF?.4:1,color:'#1e40af'}} placeholder="0"/></td>)}
+                                          <td style={{padding:'3px 4px'}}>
+                                            <input value={m.formula||''} onChange={e=>updateMedFn(cap.id,sc.id,p.id,m.id,{formula:e.target.value})} style={{...iM,color:'#6366f1',fontSize:'10px'}} placeholder="=a*b+c..."/>
+                                            <div style={{textAlign:'right',fontSize:'10px',color:isF?'#6366f1':'#059669',fontFamily:'monospace',fontWeight:'700'}}>{fmtN(parcial,4)}</div>
+                                          </td>
+                                          <td style={{textAlign:'center',padding:'3px'}}><button onClick={()=>delMedFn(cap.id,sc.id,p.id,m.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>x</button></td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                <div style={{padding:'5px 12px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#ede9fe',borderTop:'1px solid #ddd6fe'}}>
+                                  <button onClick={()=>addMedFn(cap.id,sc.id,p.id)} style={{background:'none',border:'1px dashed #a5b4fc',borderRadius:'5px',padding:'3px 10px',cursor:'pointer',fontSize:'10px',color:'#6366f1',fontWeight:'700'}}>+ Fila</button>
+                                  <span style={{fontSize:'10px',color:'#6366f1',fontWeight:'800',fontFamily:'monospace'}}>Suma = {fmtN(cant,4)} {p.unidad}</span>
+                                </div>
+                              </td></tr>
+                            )}
+
+                            {/* APU ANÁLISIS DE COSTO inline */}
+                            {p.showComp&&(
+                              <tr><td colSpan={7} style={{padding:'0',background:'#fffbeb',borderBottom:'2px solid #d97706',borderLeft:'4px solid #d97706'}}>
+                                <div style={{padding:'6px 14px 3px',fontSize:'10px',fontWeight:'800',color:'#92400e',textTransform:'uppercase',letterSpacing:'0.06em',display:'flex',alignItems:'center',gap:'8px',background:'#fef3c7',borderBottom:'1px solid #fde68a'}}>
+                                  Analisis de Precio Unitario — {pCode}
+                                  <span style={{marginLeft:'auto',fontSize:'10px',color:'#b45309',fontWeight:'700',textTransform:'none',letterSpacing:'0'}}>P.U. = <strong style={{fontFamily:'monospace'}}>{fmt(pu)}</strong></span>
+                                </div>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
+                                  <colgroup><col style={{width:'11%'}}/><col style={{width:'33%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/><col style={{width:'13%'}}/><col style={{width:'17%'}}/><col style={{width:'8%'}}/></colgroup>
+                                  <thead><tr style={{background:'#fde68a'}}>
+                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',letterSpacing:'0.05em'}}>Naturaleza</th>
+                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',letterSpacing:'0.05em'}}>Descripcion</th>
+                                    <th style={{padding:'5px 6px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',textAlign:'center'}}>Und</th>
+                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',textAlign:'right'}}>Cantidad</th>
+                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',textAlign:'right'}}>P.U.</th>
+                                    <th style={{padding:'5px 8px',fontWeight:'700',fontSize:'9px',color:'#78350f',textTransform:'uppercase',textAlign:'right'}}>Total</th>
+                                    <th></th>
+                                  </tr></thead>
+                                  <tbody>
+                                    {(p.componentes||[]).length===0&&(<tr><td colSpan={7} style={{padding:'14px',textAlign:'center',color:'#d97706',fontSize:'11px',fontStyle:'italic'}}>Sin componentes. Usa los botones de abajo para agregar por rubro.</td></tr>)}
+                                    {(p.componentes||[]).map((comp,ci2)=>{
+                                      const tot=(parseFloat(comp.cantidad)||0)*(parseFloat(comp.pu)||0);
+                                      const nI=NAT[comp.naturaleza]||NAT['M'];
+                                      const iC={width:'100%',border:'1px solid #fde68a',borderRadius:'3px',padding:'3px 5px',fontSize:'11px',outline:'none',background:'white',fontFamily:'inherit',boxSizing:'border-box'};
+                                      return (
+                                        <tr key={comp.id} style={{borderBottom:'1px solid #fef3c7',background:ci2%2===0?'white':'#fffbeb'}}>
+                                          <td style={{padding:'3px 6px'}}>
+                                            <select value={comp.naturaleza||'M'} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{naturaleza:e.target.value})}
+                                              style={{width:'100%',border:'1px solid #fde68a',borderRadius:'4px',padding:'3px 4px',fontSize:'9px',fontWeight:'800',background:nI.bg,color:nI.tx,outline:'none',cursor:'pointer'}}>
+                                              {Object.entries(NAT).map(([k,v])=><option key={k} value={k}>{v.short}</option>)}
+                                            </select>
+                                            <div style={{textAlign:'center',fontSize:'8px',color:nI.tx,fontWeight:'700',marginTop:'1px'}}>{nI.label}</div>
+                                          </td>
+                                          <td style={{padding:'3px 8px'}}><input value={comp.desc||''} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{desc:e.target.value})} style={iC} placeholder="Descripcion..."/></td>
+                                          <td style={{padding:'3px 4px'}}><input value={comp.unidad||''} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{unidad:e.target.value})} style={{...iC,textAlign:'center'}} placeholder="ud"/></td>
+                                          <td style={{padding:'3px 4px'}}><input type="number" value={comp.cantidad||''} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{cantidad:e.target.value})} style={{...iC,textAlign:'right',fontFamily:'monospace'}} placeholder="0"/></td>
+                                          <td style={{padding:'3px 4px'}}><input type="number" value={comp.pu||''} onChange={e=>updCompFn(cap.id,sc.id,p.id,comp.id,{pu:e.target.value})} style={{...iC,textAlign:'right',fontFamily:'monospace'}} placeholder="0.00"/></td>
+                                          <td style={{padding:'3px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#b45309'}}>{fmt(tot)}</td>
+                                          <td style={{textAlign:'center',padding:'3px'}}><button onClick={()=>delCompFn(cap.id,sc.id,p.id,comp.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#fde68a',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#fde68a'}>x</button></td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                {/* Subtotales por naturaleza */}
+                                {p.componentes&&p.componentes.length>0&&(()=>{
+                                  const subs=Object.entries(NAT).map(([k,v])=>{const st=(p.componentes||[]).filter(c=>c.naturaleza===k).reduce((s,c)=>s+(parseFloat(c.cantidad)||0)*(parseFloat(c.pu)||0),0);return{k,v,st};}).filter(x=>x.st>0);
+                                  if(!subs.length) return null;
+                                  return (
+                                    <div style={{display:'flex',gap:'6px',padding:'5px 14px',background:'#fef9c3',borderTop:'1px solid #fde68a',flexWrap:'wrap',alignItems:'center'}}>
+                                      {subs.map(({k,v,st})=>(
+                                        <div key={k} style={{display:'flex',alignItems:'center',gap:'4px',background:v.bg,borderRadius:'5px',padding:'3px 8px'}}>
+                                          <span style={{fontSize:'8px',fontWeight:'800',color:v.tx,textTransform:'uppercase'}}>{v.short}</span>
+                                          <span style={{fontSize:'11px',fontFamily:'monospace',fontWeight:'700',color:v.tx}}>{fmt(st)}</span>
+                                        </div>
+                                      ))}
+                                      <div style={{marginLeft:'auto',display:'flex',gap:'12px',alignItems:'center'}}>
+                                        <span style={{fontSize:'11px',color:'#92400e',fontWeight:'800'}}>P.U. = <strong style={{fontFamily:'monospace'}}>{fmt(pu)}</strong></span>
+                                        <span style={{fontSize:'12px',color:'#78350f',fontWeight:'800',fontFamily:'monospace'}}>Partida = {fmt(tot)}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                                <div style={{padding:'5px 12px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fef3c7',borderTop:'1px solid #fde68a'}}>
+                                  <div style={{display:'flex',gap:'5px',flexWrap:'wrap'}}>
+                                    {Object.entries(NAT).map(([k,v])=>(
+                                      <button key={k} onClick={()=>addCompFn(cap.id,sc.id,p.id,k)} style={{background:v.bg,border:'1px solid '+v.tx+'44',borderRadius:'5px',padding:'3px 8px',cursor:'pointer',fontSize:'9px',color:v.tx,fontWeight:'800'}}>+ {v.short}</button>
+                                    ))}
+                                  </div>
+                                  <span style={{fontSize:'10px',color:'#b45309',fontWeight:'800',fontFamily:'monospace'}}>Total: {fmt(tot)}</span>
+                                </div>
+                              </td></tr>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                       {sc.abierto&&(
-                        <tr style={{background:'#f8fafc',borderBottom:'1px solid #e2e8f0'}}>
+                        <tr style={{background:'#f9fafb',borderBottom:'1px solid #e5e7eb',borderLeft:'4px solid '+cap.color+'22'}}>
                           <td colSpan={7} style={{padding:'4px 10px 4px 32px'}}>
-                            <button onClick={()=>addPart(cap.id,sc.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'11px',color:'#94a3b8',fontWeight:'700',padding:'2px 0'}} onMouseEnter={e=>e.currentTarget.style.color='#7c3aed'} onMouseLeave={e=>e.currentTarget.style.color='#94a3b8'}>+ Agregar partida</button>
+                            <button onClick={()=>addPart(cap.id,sc.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'11px',color:'#9ca3af',fontWeight:'700',padding:'2px 0'}} onMouseEnter={e=>e.currentTarget.style.color='#6366f1'} onMouseLeave={e=>e.currentTarget.style.color='#9ca3af'}>+ Agregar partida</button>
                           </td>
                         </tr>
                       )}
@@ -3397,9 +3272,9 @@ const PresupuestoObraView = () => {
                   );
                 })}
                 {cap.abierto&&(
-                  <tr style={{background:'#0f172a',borderBottom:'1px solid #1e293b'}}>
+                  <tr style={{background:CAP_BG,borderBottom:'1px solid #374151',borderLeft:'4px solid '+cap.color}}>
                     <td colSpan={7} style={{padding:'4px 10px 4px 20px'}}>
-                      <button onClick={()=>addSC(cap.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'11px',color:'#334155',fontWeight:'700',padding:'2px 0'}} onMouseEnter={e=>e.currentTarget.style.color='#94a3b8'} onMouseLeave={e=>e.currentTarget.style.color='#334155'}>+ Agregar subcapitulo</button>
+                      <button onClick={()=>addSC(cap.id)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'11px',color:'#4b5563',fontWeight:'700',padding:'2px 0'}} onMouseEnter={e=>e.currentTarget.style.color='#9ca3af'} onMouseLeave={e=>e.currentTarget.style.color='#4b5563'}>+ Agregar subcapitulo</button>
                     </td>
                   </tr>
                 )}
@@ -3408,46 +3283,47 @@ const PresupuestoObraView = () => {
           })}
         </tbody>
       </table>
+
       {/* INDIRECTOS + TOTALES */}
-      <div style={{padding:'20px',background:'white',borderTop:'2px solid #e2e8f0'}}>
+      <div style={{padding:'20px',background:'white',borderTop:'2px solid #e5e7eb'}}>
         <div style={{display:'flex',gap:'32px',alignItems:'flex-start',flexWrap:'wrap'}}>
           <div style={{flex:1,minWidth:'300px'}}>
-            <div style={{fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'10px'}}>Costos Indirectos</div>
+            <div style={{fontSize:'11px',fontWeight:'800',color:'#374151',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'10px'}}>Costos Indirectos</div>
             {(obra.indirectos||[]).map(ind=>(
-              <div key={ind.id} style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px',background:'#f8fafc',borderRadius:'7px',padding:'7px 10px',border:ind.activo?'1px solid #e0d7ff':'1px solid #f1f5f9'}}>
-                <input type="checkbox" checked={!!ind.activo} onChange={e=>updInd(ind.id,'activo',e.target.checked)} style={{cursor:'pointer',accentColor:'#7c3aed'}}/>
-                <input value={ind.label||''} onChange={e=>updInd(ind.id,'label',e.target.value)} style={{background:'none',border:'none',color:ind.activo?'#1e293b':'#94a3b8',fontSize:'12px',fontWeight:'600',flex:1,outline:'none'}}/>
-                <input type="number" value={ind.pct||0} min="0" max="100" step="0.5" onChange={e=>updInd(ind.id,'pct',e.target.value)} style={{width:'48px',background:'white',border:'1px solid #e2e8f0',borderRadius:'4px',color:'#7c3aed',fontSize:'13px',fontWeight:'700',padding:'2px 4px',textAlign:'right',outline:'none'}}/>
-                <span style={{color:'#94a3b8',fontSize:'12px',width:'14px'}}>%</span>
-                {ind.activo&&(ind.pct>0)&&<span style={{fontSize:'11px',fontFamily:'monospace',color:'#7c3aed',minWidth:'90px',textAlign:'right'}}>{fmtRD(grandTotal*(parseFloat(ind.pct)||0)/100)}</span>}
-                <button onClick={()=>delInd(ind.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#cbd5e1',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#cbd5e1'}>✕</button>
+              <div key={ind.id} style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px',background:'#f9fafb',borderRadius:'7px',padding:'7px 10px',border:ind.activo?'1px solid #c7d2fe':'1px solid #f1f5f9'}}>
+                <input type="checkbox" checked={!!ind.activo} onChange={e=>updInd(ind.id,'activo',e.target.checked)} style={{cursor:'pointer',accentColor:'#6366f1'}}/>
+                <input value={ind.label||''} onChange={e=>updInd(ind.id,'label',e.target.value)} style={{background:'none',border:'none',color:ind.activo?'#111827':'#9ca3af',fontSize:'12px',fontWeight:'600',flex:1,outline:'none'}}/>
+                <input type="number" value={ind.pct||0} min="0" max="100" step="0.5" onChange={e=>updInd(ind.id,'pct',e.target.value)} style={{width:'48px',background:'white',border:'1px solid #e5e7eb',borderRadius:'4px',color:'#6366f1',fontSize:'13px',fontWeight:'700',padding:'2px 4px',textAlign:'right',outline:'none'}}/>
+                <span style={{color:'#9ca3af',fontSize:'12px',width:'14px'}}>%</span>
+                {ind.activo&&(ind.pct>0)&&<span style={{fontSize:'11px',fontFamily:'monospace',color:'#6366f1',minWidth:'90px',textAlign:'right'}}>{fmt(grandTotal*(parseFloat(ind.pct)||0)/100)}</span>}
+                <button onClick={()=>delInd(ind.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#d1d5db',fontSize:'13px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#d1d5db'}>x</button>
               </div>
             ))}
-            <button onClick={addInd} style={{background:'none',border:'1px dashed #e2e8f0',borderRadius:'6px',padding:'5px 12px',cursor:'pointer',fontSize:'11px',color:'#94a3b8',fontWeight:'700',marginTop:'4px'}} onMouseEnter={e=>{e.currentTarget.style.borderColor='#7c3aed';e.currentTarget.style.color='#7c3aed';}} onMouseLeave={e=>{e.currentTarget.style.borderColor='#e2e8f0';e.currentTarget.style.color='#94a3b8';}}>+ Agregar indirecto</button>
+            <button onClick={addInd} style={{background:'none',border:'1px dashed #e5e7eb',borderRadius:'6px',padding:'5px 12px',cursor:'pointer',fontSize:'11px',color:'#9ca3af',fontWeight:'700',marginTop:'4px'}} onMouseEnter={e=>{e.currentTarget.style.borderColor='#6366f1';e.currentTarget.style.color='#6366f1';}} onMouseLeave={e=>{e.currentTarget.style.borderColor='#e5e7eb';e.currentTarget.style.color='#9ca3af';}}>+ Agregar indirecto</button>
           </div>
-          <div style={{minWidth:'300px'}}>
+          <div style={{minWidth:'320px'}}>
             <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
-              <div style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',background:'#f8fafc',borderRadius:'5px'}}>
-                <span style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>Costo Directo</span>
-                <span style={{fontFamily:'monospace',fontWeight:'700',color:'#1e293b'}}>{fmtRD(grandTotal)}</span>
+              <div style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',background:'#f9fafb',borderRadius:'5px'}}>
+                <span style={{fontSize:'12px',color:'#374151',fontWeight:'600'}}>Costo Directo</span>
+                <span style={{fontFamily:'monospace',fontWeight:'700',color:'#111827'}}>{fmt(grandTotal)}</span>
               </div>
               {(obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).map(i=>(
                 <div key={i.id} style={{display:'flex',justifyContent:'space-between',padding:'5px 10px',borderRadius:'5px'}}>
-                  <span style={{fontSize:'11px',color:'#64748b'}}>{i.label} ({i.pct}%)</span>
-                  <span style={{fontFamily:'monospace',color:'#1e293b',fontSize:'11px'}}>{fmtRD(grandTotal*(parseFloat(i.pct)||0)/100)}</span>
+                  <span style={{fontSize:'11px',color:'#6b7280'}}>{i.label} ({i.pct}%)</span>
+                  <span style={{fontFamily:'monospace',color:'#374151',fontSize:'11px'}}>{fmt(grandTotal*(parseFloat(i.pct)||0)/100)}</span>
                 </div>
               ))}
-              <div style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',background:'#f8fafc',borderRadius:'5px',alignItems:'center'}}>
-                <span style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>ITBIS</span>
+              <div style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',background:'#f9fafb',borderRadius:'5px',alignItems:'center'}}>
+                <span style={{fontSize:'12px',color:'#374151',fontWeight:'600'}}>ITBIS</span>
                 <div style={{display:'flex',alignItems:'center',gap:'5px'}}>
-                  <input type="number" value={obra.iva||0} min={0} max={100} onChange={e=>updateObra({iva:parseFloat(e.target.value)||0})} style={{width:'42px',border:'1px solid #e2e8f0',borderRadius:'4px',padding:'2px 4px',fontSize:'12px',textAlign:'right',outline:'none'}}/>
-                  <span style={{fontSize:'11px',color:'#94a3b8'}}>%</span>
-                  <span style={{fontFamily:'monospace',fontWeight:'700',color:'#1e293b',marginLeft:'4px'}}>{fmtRD(ivaAmt)}</span>
+                  <input type="number" value={obra.iva||0} min={0} max={100} onChange={e=>updateObra({iva:parseFloat(e.target.value)||0})} style={{width:'42px',border:'1px solid #e5e7eb',borderRadius:'4px',padding:'2px 4px',fontSize:'12px',textAlign:'right',outline:'none'}}/>
+                  <span style={{fontSize:'11px',color:'#9ca3af'}}>%</span>
+                  <span style={{fontFamily:'monospace',fontWeight:'700',color:'#111827',marginLeft:'4px'}}>{fmt(ivaAmt)}</span>
                 </div>
               </div>
-              <div style={{display:'flex',justifyContent:'space-between',padding:'10px 12px',background:'#7c3aed',borderRadius:'8px',marginTop:'2px'}}>
-                <span style={{fontSize:'13px',color:'white',fontWeight:'700'}}>TOTAL GENERAL</span>
-                <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'15px'}}>{fmtRD(totalFinal)}</span>
+              <div style={{display:'flex',justifyContent:'space-between',padding:'10px 12px',background:'#1f2937',borderRadius:'8px',marginTop:'2px'}}>
+                <span style={{fontSize:'13px',color:'white',fontWeight:'700'}}>TOTAL <span style={{color:'#6b7280',fontSize:'11px',fontWeight:'600'}}>({obra.moneda||'RD$'})</span></span>
+                <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'15px'}}>{fmt(totalFinal)}</span>
               </div>
             </div>
           </div>
@@ -3456,29 +3332,32 @@ const PresupuestoObraView = () => {
     </div>
   );
 
-  // ═══════════════════ VISTA ARBOL ════════════════════════════════════════════
+  // ══════════════════════ VISTA ARBOL ════════════════════════════════════════
   const VArbol = () => {
-    const selCap=(obra.capitulos||[]).find(c=>c.id===arbolFoco.capId);
+    const selCap=caps.find(c=>c.id===arbolFoco.capId);
     const selSc=selCap&&(selCap.subcapitulos||[]).find(s=>s.id===arbolFoco.subcapId);
     return (
       <div style={{flex:1,display:'flex',overflow:'hidden',minHeight:0}}>
-        <div style={{width:'270px',flexShrink:0,background:'#0f172a',borderRight:'1px solid #1e293b',overflowY:'auto'}}>
-          <div style={{padding:'10px 14px',borderBottom:'1px solid #1e293b',fontSize:'10px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'0.08em'}}>Estructura</div>
-          {(obra.capitulos||[]).map(c=>{
-            const cSel=arbolFoco.capId===c.id;
+        <div style={{width:'280px',flexShrink:0,background:'#111827',borderRight:'1px solid #1f2937',overflowY:'auto'}}>
+          <div style={{padding:'10px 14px',borderBottom:'1px solid #1f2937',fontSize:'10px',fontWeight:'800',color:'#4b5563',textTransform:'uppercase',letterSpacing:'0.08em'}}>{obra.nombre}</div>
+          {caps.map((c,ci)=>{
+            const cSel=arbolFoco.capId===c.id;const cod=String(ci+1).padStart(2,'0');
             return (
               <div key={c.id}>
-                <div onClick={()=>setArbolFoco({capId:c.id,subcapId:null})} style={{display:'flex',alignItems:'center',padding:'8px 14px',cursor:'pointer',background:cSel&&!arbolFoco.subcapId?'#1e293b':'transparent',borderLeft:'3px solid '+(cSel?c.color:'transparent'),gap:'6px'}}>
-                  <span onClick={e=>{e.stopPropagation();togCap(c.id);}} style={{color:'#475569',fontSize:'10px',cursor:'pointer'}}>{c.abierto?'▼':'▶'}</span>
-                  <span style={{fontSize:'12px',fontWeight:'700',color:cSel?'white':'#94a3b8',flex:1,lineHeight:'1.3'}}>{c.nombre}</span>
-                  <span style={{fontSize:'10px',fontFamily:'monospace',color:c.color,fontWeight:'700'}}>{fmtRD(getCT(c))}</span>
+                <div onClick={()=>setArbolFoco({capId:c.id,subcapId:null})} style={{display:'flex',alignItems:'center',padding:'8px 14px',cursor:'pointer',background:cSel&&!arbolFoco.subcapId?'#1f2937':'transparent',borderLeft:'3px solid '+(cSel?c.color:'transparent'),gap:'6px'}}>
+                  <span onClick={e=>{e.stopPropagation();togCap(c.id);}} style={{color:'#4b5563',fontSize:'10px',cursor:'pointer'}}>{c.abierto?'v':'>'}</span>
+                  <span style={{fontSize:'11px',fontFamily:'monospace',color:cSel?c.color:'#6b7280',fontWeight:'800',marginRight:'4px',flexShrink:0}}>{cod}</span>
+                  <span style={{fontSize:'12px',fontWeight:'700',color:cSel?'white':'#9ca3af',flex:1,lineHeight:'1.3'}}>{c.nombre}</span>
+                  <span style={{fontSize:'10px',fontFamily:'monospace',color:cSel?c.color:'#4b5563',fontWeight:'700',flexShrink:0}}>{fmt(getCT(c))}</span>
                 </div>
-                {c.abierto&&(c.subcapitulos||[]).map(sc=>{
+                {c.abierto&&(c.subcapitulos||[]).map((sc,si)=>{
                   const scSel=arbolFoco.capId===c.id&&arbolFoco.subcapId===sc.id;
+                  const scod=cod+'.'+String(si+1).padStart(2,'0');
                   return (
-                    <div key={sc.id} onClick={()=>setArbolFoco({capId:c.id,subcapId:sc.id})} style={{display:'flex',alignItems:'center',padding:'6px 14px 6px 26px',cursor:'pointer',background:scSel?'#1e3a5f':'transparent',borderLeft:'3px solid '+(scSel?'#3b82f6':'transparent'),gap:'5px'}}>
-                      <span style={{fontSize:'12px',fontWeight:'600',color:scSel?'#93c5fd':'#64748b',flex:1,lineHeight:'1.3'}}>{sc.nombre}</span>
-                      <span style={{fontSize:'10px',fontFamily:'monospace',color:scSel?'#93c5fd':'#475569'}}>{fmtRD(getSCT(sc))}</span>
+                    <div key={sc.id} onClick={()=>setArbolFoco({capId:c.id,subcapId:sc.id})} style={{display:'flex',alignItems:'center',padding:'5px 14px 5px 28px',cursor:'pointer',background:scSel?'#1e3a5f':'transparent',borderLeft:'3px solid '+(scSel?'#6366f1':'transparent'),gap:'5px'}}>
+                      <span style={{fontSize:'10px',fontFamily:'monospace',color:scSel?'#93c5fd':'#4b5563',fontWeight:'700',marginRight:'3px',flexShrink:0}}>{scod}</span>
+                      <span style={{fontSize:'11px',fontWeight:'600',color:scSel?'#93c5fd':'#6b7280',flex:1,lineHeight:'1.3'}}>{sc.nombre}</span>
+                      <span style={{fontSize:'10px',fontFamily:'monospace',color:scSel?'#93c5fd':'#374151',flexShrink:0}}>{fmt(getSCT(sc))}</span>
                     </div>
                   );
                 })}
@@ -3486,132 +3365,152 @@ const PresupuestoObraView = () => {
             );
           })}
         </div>
-        <div style={{flex:1,overflowY:'auto',background:'#f8fafc',display:'flex',flexDirection:'column'}}>
-          {!arbolFoco.capId&&(
-            <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'#94a3b8',gap:'10px'}}>
-              <Folder size={44} style={{opacity:0.15}}/>
-              <div style={{fontSize:'14px',fontWeight:'600',color:'#64748b'}}>Selecciona un elemento a la izquierda</div>
-            </div>
-          )}
+        <div style={{flex:1,overflowY:'auto',background:'#f9fafb',display:'flex',flexDirection:'column'}}>
+          {!arbolFoco.capId&&(<div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'#9ca3af',gap:'10px'}}><Folder size={44} style={{opacity:0.15}}/><div style={{fontSize:'14px',fontWeight:'600',color:'#6b7280'}}>Selecciona un elemento</div></div>)}
           {arbolFoco.capId&&!arbolFoco.subcapId&&selCap&&(
             <div style={{padding:'20px'}}>
-              <div style={{fontWeight:'800',fontSize:'16px',color:'#0f172a',marginBottom:'4px',borderLeft:'4px solid '+selCap.color,paddingLeft:'12px'}}>{selCap.nombre}</div>
-              <div style={{fontSize:'12px',color:'#64748b',marginBottom:'20px',paddingLeft:'16px'}}>Total: <strong style={{fontFamily:'monospace',color:selCap.color}}>{fmtRD(getCT(selCap))}</strong></div>
+              <div style={{fontWeight:'800',fontSize:'16px',color:'#111827',marginBottom:'4px',borderLeft:'4px solid '+selCap.color,paddingLeft:'12px'}}>{selCap.nombre}</div>
+              <div style={{fontSize:'12px',color:'#6b7280',marginBottom:'20px',paddingLeft:'16px'}}>Total: <strong style={{fontFamily:'monospace',color:selCap.color}}>{fmt(getCT(selCap))}</strong></div>
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:'12px'}}>
-                {(selCap.subcapitulos||[]).map(sc=>(
-                  <div key={sc.id} onClick={()=>setArbolFoco({capId:selCap.id,subcapId:sc.id})} style={{background:'white',borderRadius:'10px',padding:'16px',border:'1px solid #e2e8f0',cursor:'pointer',transition:'all 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,0.1)';e.currentTarget.style.borderColor='#7c3aed';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.borderColor='#e2e8f0';}}>
-                    <div style={{fontWeight:'700',fontSize:'13px',color:'#0f172a',marginBottom:'6px'}}>{sc.nombre}</div>
-                    <div style={{fontSize:'11px',color:'#64748b',marginBottom:'8px'}}>{(sc.partidas||[]).length} partida(s)</div>
-                    <div style={{fontFamily:'monospace',fontWeight:'800',color:'#7c3aed',fontSize:'14px'}}>{fmtRD(getSCT(sc))}</div>
-                  </div>
-                ))}
+                {(selCap.subcapitulos||[]).map((sc,si)=>{
+                  const ci2=caps.findIndex(x=>x.id===selCap.id)+1;
+                  const scod=String(ci2).padStart(2,'0')+'.'+String(si+1).padStart(2,'0');
+                  return (
+                    <div key={sc.id} onClick={()=>setArbolFoco({capId:selCap.id,subcapId:sc.id})} style={{background:'white',borderRadius:'10px',padding:'16px',border:'1px solid #e5e7eb',cursor:'pointer',transition:'all 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,0.1)';e.currentTarget.style.borderColor='#6366f1';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.borderColor='#e5e7eb';}}>
+                      <div style={{fontFamily:'monospace',fontSize:'11px',color:'#6b7280',fontWeight:'700',marginBottom:'4px'}}>{scod}</div>
+                      <div style={{fontWeight:'700',fontSize:'13px',color:'#111827',marginBottom:'6px'}}>{sc.nombre}</div>
+                      <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'8px'}}>{(sc.partidas||[]).length} partida(s)</div>
+                      <div style={{fontFamily:'monospace',fontWeight:'800',color:'#6366f1',fontSize:'14px'}}>{fmt(getSCT(sc))}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
-          {arbolFoco.capId&&arbolFoco.subcapId&&selSc&&(
-            <div style={{padding:'16px',flex:1,display:'flex',flexDirection:'column'}}>
-              <div style={{marginBottom:'12px'}}>
-                <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'700',textTransform:'uppercase'}}>{selCap&&selCap.nombre}</div>
-                <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a',marginTop:'2px'}}>{selSc.nombre}</div>
-                <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>Total: <strong style={{fontFamily:'monospace',color:'#7c3aed'}}>{fmtRD(getSCT(selSc))}</strong></div>
-              </div>
-              <div style={{background:'white',borderRadius:'10px',border:'1px solid #e2e8f0',overflow:'hidden',marginBottom:'12px'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
-                  <thead><tr style={{background:'#1e293b',color:'white'}}>
-                    {['Codigo','Descripcion','Ud.','Cantidad','P.U.','Total'].map(h=><th key={h} style={{padding:'7px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',textAlign:['Cantidad','P.U.','Total'].includes(h)?'right':'left'}}>{h}</th>)}
-                  </tr></thead>
-                  <tbody>
-                    {(selSc.partidas||[]).map((p,pi)=>{
-                      const cant=calcCantidad(p),pu=calcPU(p),tot=cant*pu;
-                      return (
-                        <tr key={p.id} style={{borderBottom:'1px solid #f1f5f9',background:pi%2===0?'white':'#f8fafc',cursor:'pointer'}} onClick={()=>setModalPartida({ci:selCap.id,si:selSc.id,pi:p.id})}>
-                          <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#1e40af',fontWeight:'700',fontSize:'11px'}}>{p.codigo||'—'}</td>
-                          <td style={{padding:'7px 10px',fontWeight:'600',color:'#0f172a'}}>{p.desc}</td>
-                          <td style={{padding:'7px 10px',textAlign:'center',color:'#475569'}}>{p.unidad}</td>
-                          <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#1e293b'}}>{fmtN(cant,4)}</td>
-                          <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',color:'#1e293b'}}>{fmtRD(pu)}</td>
-                          <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#7c3aed'}}>{fmtRD(tot)}</td>
-                        </tr>
-                      );
-                    })}
-                    {(selSc.partidas||[]).length===0&&<tr><td colSpan={6} style={{padding:'20px',textAlign:'center',color:'#94a3b8',fontSize:'12px'}}>Sin partidas</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-              <button onClick={()=>addPart(selCap.id,selSc.id)} style={{padding:'8px 16px',background:'white',color:'#7c3aed',border:'2px dashed #c4b5fd',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',width:'100%',marginBottom:'12px'}}>+ Agregar partida</button>
-              <div style={{marginTop:'auto',borderTop:'2px solid #e2e8f0',paddingTop:'12px'}}>
-                <div style={{display:'flex',flexDirection:'column',gap:'4px',maxWidth:'300px',marginLeft:'auto'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',padding:'5px 8px',background:'#f8fafc',borderRadius:'5px'}}>
-                    <span style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>Subcapitulo</span>
-                    <span style={{fontFamily:'monospace',fontWeight:'700',color:'#1e293b'}}>{fmtRD(getSCT(selSc))}</span>
-                  </div>
-                  <div style={{display:'flex',justifyContent:'space-between',padding:'8px 10px',background:'#7c3aed',borderRadius:'7px'}}>
-                    <span style={{fontSize:'12px',color:'white',fontWeight:'700'}}>Total Obra c/ITBIS</span>
-                    <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'14px'}}>{fmtRD(totalFinal)}</span>
+          {arbolFoco.capId&&arbolFoco.subcapId&&selSc&&(()=>{
+            const ci2=caps.findIndex(x=>x.id===selCap.id)+1;
+            const si2=(selCap.subcapitulos||[]).findIndex(s=>s.id===selSc.id)+1;
+            const scod=String(ci2).padStart(2,'0')+'.'+String(si2).padStart(2,'0');
+            return (
+              <div style={{padding:'16px',flex:1,display:'flex',flexDirection:'column'}}>
+                <div style={{marginBottom:'12px'}}>
+                  <div style={{fontSize:'10px',color:'#9ca3af',fontWeight:'700',textTransform:'uppercase'}}>{selCap.nombre}</div>
+                  <div style={{fontWeight:'800',fontSize:'15px',color:'#111827',marginTop:'2px'}}>{scod} {selSc.nombre}</div>
+                  <div style={{fontSize:'12px',color:'#6b7280',marginTop:'2px'}}>Total: <strong style={{fontFamily:'monospace',color:'#6366f1'}}>{fmt(getSCT(selSc))}</strong></div>
+                </div>
+                <div style={{background:'white',borderRadius:'10px',border:'1px solid #e5e7eb',overflow:'hidden',marginBottom:'12px'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                    <thead><tr style={{background:'#1f2937',color:'#9ca3af'}}>
+                      {['Codigo','Descripcion','Ud.','Cantidad','P.U.','Total'].map(h=><th key={h} style={{padding:'7px 10px',fontWeight:'700',fontSize:'10px',textTransform:'uppercase',textAlign:['Cantidad','P.U.','Total'].includes(h)?'right':'left'}}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {(selSc.partidas||[]).map((p,pi)=>{
+                        const pcode=scod+'.'+String(pi+1).padStart(3,'0');
+                        const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;
+                        return (
+                          <tr key={p.id} style={{borderBottom:'1px solid #f3f4f6',background:pi%2===0?'white':'#f9fafb'}}>
+                            <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#4b5563',fontWeight:'700',fontSize:'11px'}}>{pcode}</td>
+                            <td style={{padding:'7px 10px',fontWeight:'600',color:'#111827'}}>{p.desc}</td>
+                            <td style={{padding:'7px 10px',textAlign:'center',color:'#6b7280'}}>{p.unidad}</td>
+                            <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#111827'}}>{fmtN(cant,4)}</td>
+                            <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',color:'#374151'}}>{fmt(pu)}</td>
+                            <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#6366f1'}}>{fmt(tot)}</td>
+                          </tr>
+                        );
+                      })}
+                      {!(selSc.partidas||[]).length&&<tr><td colSpan={6} style={{padding:'20px',textAlign:'center',color:'#9ca3af',fontSize:'12px'}}>Sin partidas</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <button onClick={()=>addPart(selCap.id,selSc.id)} style={{padding:'8px 16px',background:'white',color:'#6366f1',border:'2px dashed #c7d2fe',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',width:'100%',marginBottom:'12px'}}>+ Agregar partida</button>
+                <div style={{marginTop:'auto',borderTop:'2px solid #e5e7eb',paddingTop:'12px'}}>
+                  <div style={{display:'flex',flexDirection:'column',gap:'4px',maxWidth:'300px',marginLeft:'auto'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',padding:'5px 8px',background:'#f9fafb',borderRadius:'5px'}}>
+                      <span style={{fontSize:'12px',color:'#6b7280',fontWeight:'600'}}>Subcapitulo</span>
+                      <span style={{fontFamily:'monospace',fontWeight:'700',color:'#111827'}}>{fmt(getSCT(selSc))}</span>
+                    </div>
+                    <div style={{display:'flex',justifyContent:'space-between',padding:'8px 10px',background:'#1f2937',borderRadius:'7px'}}>
+                      <span style={{fontSize:'12px',color:'white',fontWeight:'700'}}>Total Obra</span>
+                      <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'14px'}}>{fmt(totalFinal)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
     );
   };
 
-  // ═══════════════════ RENDER EDITOR ══════════════════════════════════════════
+  // ══════════════════════ RENDER EDITOR ══════════════════════════════════════
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100%',background:'#f8fafc'}}>
-      <header style={{background:'white',borderBottom:'1px solid #e2e8f0',padding:'8px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.06)',gap:'10px'}}>
+    <div style={{display:'flex',flexDirection:'column',height:'100%',background:'#f9fafb'}}>
+      {pasteNotif&&(
+        <div style={{position:'fixed',bottom:'24px',left:'50%',transform:'translateX(-50%)',background:'#1f2937',color:'white',padding:'10px 22px',borderRadius:'10px',fontWeight:'700',fontSize:'13px',zIndex:9999,boxShadow:'0 4px 20px rgba(0,0,0,0.35)',border:'1px solid #374151',display:'flex',alignItems:'center',gap:'8px'}}>
+          <span style={{color:'#34d399'}}>checked {pasteNotif}</span>
+        </div>
+      )}
+
+      <header style={{background:'#1f2937',borderBottom:'1px solid #374151',padding:'8px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.3)',gap:'10px'}}>
         <div style={{display:'flex',alignItems:'center',gap:'10px',minWidth:0}}>
-          <button onClick={()=>{guardarObra(obra);setPantalla('inicio');}} style={{background:'none',border:'none',cursor:'pointer',color:'#64748b',display:'flex',alignItems:'center',gap:'4px',fontWeight:'700',fontSize:'12px',padding:'5px 8px',borderRadius:'6px',whiteSpace:'nowrap'}} onMouseEnter={e=>e.currentTarget.style.background='#f1f5f9'} onMouseLeave={e=>e.currentTarget.style.background='none'}>
+          <button onClick={()=>{guardarObra(obra);setPantalla('inicio');}} style={{background:'rgba(255,255,255,0.08)',border:'1px solid #374151',cursor:'pointer',color:'#9ca3af',display:'flex',alignItems:'center',gap:'4px',fontWeight:'700',fontSize:'12px',padding:'5px 10px',borderRadius:'6px',whiteSpace:'nowrap'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.15)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'}>
             <ArrowLeft size={13}/> Obras
           </button>
-          <div style={{width:'1px',height:'20px',background:'#e2e8f0'}}/>
-          <ClipboardList size={16} style={{color:'#7c3aed',flexShrink:0}}/>
+          <ClipboardList size={16} style={{color:'#6366f1',flexShrink:0}}/>
           {editNombre
-            ?<input autoFocus value={obra.nombre||''} onChange={e=>updateObra({nombre:e.target.value})} onBlur={()=>setEditNombre(false)} onKeyDown={e=>e.key==='Enter'&&setEditNombre(false)} style={{fontWeight:'700',fontSize:'14px',border:'2px solid #7c3aed',borderRadius:'6px',padding:'2px 8px',outline:'none',color:'#0f172a',minWidth:'200px'}}/>
+            ?<input autoFocus value={obra.nombre||''} onChange={e=>updateObra({nombre:e.target.value})} onBlur={()=>setEditNombre(false)} onKeyDown={e=>e.key==='Enter'&&setEditNombre(false)} style={{fontWeight:'700',fontSize:'14px',border:'2px solid #6366f1',borderRadius:'6px',padding:'2px 8px',outline:'none',color:'#111827',minWidth:'200px',background:'white'}}/>
             :<div onClick={()=>setEditNombre(true)} style={{cursor:'pointer',display:'flex',alignItems:'center',gap:'5px',minWidth:0}}>
-              <span style={{fontWeight:'700',fontSize:'14px',color:'#0f172a',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'240px'}}>{obra.nombre}</span>
-              <Edit2 size={11} style={{color:'#cbd5e1',flexShrink:0}}/>
+              <span style={{fontWeight:'700',fontSize:'14px',color:'white',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'240px'}}>{obra.nombre}</span>
+              <Edit2 size={11} style={{color:'#6b7280',flexShrink:0}}/>
             </div>}
         </div>
         <div style={{display:'flex',alignItems:'center',gap:'6px',flexShrink:0}}>
-          <div style={{display:'flex',background:'#f1f5f9',borderRadius:'8px',padding:'2px',gap:'2px'}}>
+          {/* Moneda */}
+          <div style={{position:'relative'}} ref={monedaRef}>
+            <button onClick={()=>setShowMoneda(v=>!v)} style={{padding:'5px 10px',background:'rgba(255,255,255,0.08)',color:'#d1d5db',border:'1px solid #374151',borderRadius:'7px',fontWeight:'800',fontSize:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+              {obra.moneda||'RD$'} ▾
+            </button>
+            {showMoneda&&(
+              <div style={{position:'absolute',right:0,top:'110%',background:'#1f2937',border:'1px solid #374151',borderRadius:'8px',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',zIndex:300,overflow:'hidden',minWidth:'110px'}}>
+                {MONEDAS.map(m=>(
+                  <button key={m} onClick={()=>{updateObra({moneda:m});setShowMoneda(false);}} style={{width:'100%',padding:'9px 14px',border:'none',background:(obra.moneda||'RD$')===m?'#374151':'transparent',textAlign:'left',cursor:'pointer',fontSize:'12px',fontWeight:'700',color:(obra.moneda||'RD$')===m?'white':'#9ca3af',display:'block'}} onMouseEnter={e=>e.currentTarget.style.background='#374151'} onMouseLeave={e=>e.currentTarget.style.background=(obra.moneda||'RD$')===m?'#374151':'transparent'}>{m}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Toggle vista */}
+          <div style={{display:'flex',background:'rgba(255,255,255,0.06)',borderRadius:'8px',padding:'2px',gap:'2px',border:'1px solid #374151'}}>
             {[['presupuesto','Presupuesto'],['arbol','Arbol']].map(([v,l])=>(
-              <button key={v} onClick={()=>setVista(v)} style={{padding:'5px 12px',border:'none',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',background:vista===v?'white':'transparent',color:vista===v?'#7c3aed':'#64748b',boxShadow:vista===v?'0 1px 3px rgba(0,0,0,0.1)':'none',transition:'all 0.15s'}}>{l}</button>
+              <button key={v} onClick={()=>setVista(v)} style={{padding:'5px 12px',border:'none',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',background:vista===v?'#374151':'transparent',color:vista===v?'white':'#6b7280',transition:'all 0.15s'}}>{l}</button>
             ))}
           </div>
-          <div style={{width:'1px',height:'22px',background:'#e2e8f0'}}/>
-          <button onClick={()=>{setShowPaste(true);setPasteDest({capId:(obra.capitulos||[])[0]?.id||'',subcapId:(obra.capitulos||[])[0]?.subcapitulos?.[0]?.id||''}); }} style={{padding:'6px 11px',background:'#f0fdf4',color:'#16a34a',border:'1px solid #bbf7d0',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>📋 Pegar Excel</button>
-          <button onClick={()=>setShowBC3(true)} style={{padding:'6px 11px',background:'#eff6ff',color:'#2563eb',border:'1px solid #bfdbfe',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>BC3</button>
-          <button onClick={addCap} style={{padding:'6px 11px',background:'#f5f3ff',color:'#7c3aed',border:'1px solid #c4b5fd',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Capitulo</button>
-          <div style={{width:'1px',height:'22px',background:'#e2e8f0'}}/>
-          <div style={{display:'flex',gap:'12px',borderRight:'1px solid #e2e8f0',paddingRight:'10px'}}>
+          <div style={{width:'1px',height:'22px',background:'#374151'}}/>
+          <div style={{padding:'4px 10px',background:'rgba(16,185,129,0.12)',border:'1px solid #064e3b',borderRadius:'7px',fontSize:'10px',fontWeight:'700',color:'#34d399'}}>Ctrl+V pega Excel</div>
+          <button onClick={()=>setShowBC3(true)} style={{padding:'6px 11px',background:'rgba(255,255,255,0.07)',color:'#9ca3af',border:'1px solid #374151',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>BC3</button>
+          <button onClick={addCap} style={{padding:'6px 11px',background:'rgba(99,102,241,0.18)',color:'#a5b4fc',border:'1px solid #4338ca',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Capitulo</button>
+          <div style={{width:'1px',height:'22px',background:'#374151'}}/>
+          <div style={{display:'flex',gap:'14px',borderRight:'1px solid #374151',paddingRight:'10px'}}>
             <div style={{textAlign:'right'}}>
-              <div style={{fontSize:'9px',color:'#94a3b8',fontWeight:'700',textTransform:'uppercase'}}>Costo Directo</div>
-              <div style={{fontSize:'12px',fontWeight:'700',color:'#1e293b',fontFamily:'monospace'}}>{fmtRD(grandTotal)}</div>
+              <div style={{fontSize:'9px',color:'#6b7280',fontWeight:'700',textTransform:'uppercase'}}>Costo Directo</div>
+              <div style={{fontSize:'12px',fontWeight:'700',color:'#d1d5db',fontFamily:'monospace'}}>{fmt(grandTotal)}</div>
             </div>
             <div style={{textAlign:'right'}}>
-              <div style={{fontSize:'9px',color:'#7c3aed',fontWeight:'700',textTransform:'uppercase'}}>Total+ITBIS</div>
-              <div style={{fontSize:'15px',fontWeight:'800',color:'#7c3aed',fontFamily:'monospace'}}>{fmtRD(totalFinal)}</div>
+              <div style={{fontSize:'9px',color:'#6366f1',fontWeight:'700',textTransform:'uppercase'}}>Total+ITBIS</div>
+              <div style={{fontSize:'15px',fontWeight:'800',color:'white',fontFamily:'monospace'}}>{fmt(totalFinal)}</div>
             </div>
           </div>
-          <button onClick={()=>guardarObra(obra)} style={{padding:'7px 12px',background:'#0f172a',color:'white',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+          <button onClick={()=>guardarObra(obra)} style={{padding:'7px 12px',background:'#374151',color:'#d1d5db',border:'1px solid #4b5563',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}} onMouseEnter={e=>e.currentTarget.style.background='#4b5563'} onMouseLeave={e=>e.currentTarget.style.background='#374151'}>
             <Save size={13}/> Guardar
           </button>
           <div style={{position:'relative'}} ref={exportRef}>
-            <button onClick={()=>setShowExport(v=>!v)} style={{padding:'7px 12px',background:'#7c3aed',color:'white',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
-              <Download size={13}/> Exportar ▾
+            <button onClick={()=>setShowExport(v=>!v)} style={{padding:'7px 12px',background:'#6366f1',color:'white',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+              <Download size={13}/> Exportar
             </button>
             {showExport&&(
-              <div style={{position:'absolute',right:0,top:'110%',background:'white',border:'1px solid #e2e8f0',borderRadius:'10px',boxShadow:'0 8px 24px rgba(0,0,0,0.12)',zIndex:300,minWidth:'175px',overflow:'hidden'}}>
-                {[
-                  {label:'📄 PDF / Imprimir',action:exportarPDF},
-                  {label:'📊 CSV / Excel',action:exportarCSV},
-                  {label:'🗂 BC3 Export',action:exportarBC3},
-                  {label:'💾 Guardar .obra.json',action:descargarObra},
-                ].map(item=>(
-                  <button key={item.label} onClick={()=>{item.action();setShowExport(false);}} style={{width:'100%',padding:'11px 16px',border:'none',background:'none',textAlign:'left',cursor:'pointer',fontSize:'12px',fontWeight:'600',color:'#0f172a',borderBottom:'1px solid #f1f5f9',display:'block'}} onMouseEnter={e=>e.currentTarget.style.background='#f8fafc'} onMouseLeave={e=>e.currentTarget.style.background='none'}>{item.label}</button>
+              <div style={{position:'absolute',right:0,top:'110%',background:'#1f2937',border:'1px solid #374151',borderRadius:'10px',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',zIndex:300,minWidth:'180px',overflow:'hidden'}}>
+                {[{label:'PDF / Imprimir',action:exportarPDF},{label:'CSV / Excel',action:exportarCSV},{label:'BC3 Export',action:exportarBC3},{label:'Guardar .obra.json',action:descargarObra}].map(item=>(
+                  <button key={item.label} onClick={()=>{item.action();setShowExport(false);}} style={{width:'100%',padding:'11px 16px',border:'none',background:'none',textAlign:'left',cursor:'pointer',fontSize:'12px',fontWeight:'600',color:'#d1d5db',borderBottom:'1px solid #374151',display:'block'}} onMouseEnter={e=>e.currentTarget.style.background='#374151'} onMouseLeave={e=>e.currentTarget.style.background='none'}>{item.label}</button>
                 ))}
               </div>
             )}
@@ -3619,131 +3518,46 @@ const PresupuestoObraView = () => {
         </div>
       </header>
 
-      {(obra.capitulos||[]).length===0&&(
-        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'16px',color:'#94a3b8'}}>
-          <ClipboardList size={56} style={{opacity:0.1}}/>
-          <div style={{fontSize:'17px',fontWeight:'600',color:'#64748b'}}>Obra vacia — agrega el primer capitulo</div>
-          <div style={{display:'flex',gap:'10px'}}>
-            <button onClick={addCap} style={{padding:'10px 22px',background:'#7c3aed',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar Capitulo</button>
-            <button onClick={()=>setShowPaste(true)} style={{padding:'10px 22px',background:'white',color:'#16a34a',border:'2px solid #bbf7d0',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>📋 Pegar desde Excel</button>
+      {caps.length===0&&(
+        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'16px',color:'#9ca3af',background:'#111827'}}>
+          <ClipboardList size={56} style={{opacity:0.1,color:'#6366f1'}}/>
+          <div style={{fontSize:'17px',fontWeight:'600',color:'#6b7280'}}>Obra vacia — pega desde Excel o agrega un capitulo</div>
+          <div style={{fontSize:'12px',color:'#4b5563',background:'#1f2937',border:'1px solid #374151',borderRadius:'8px',padding:'10px 18px',maxWidth:'500px',textAlign:'center',lineHeight:'1.7'}}>
+            Presiona <strong style={{color:'#9ca3af'}}>Ctrl+V</strong> para pegar un presupuesto completo de Excel. El sistema detecta Capitulos, Subcapitulos y Partidas en orden exacto.
           </div>
+          <button onClick={addCap} style={{padding:'10px 22px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar Capitulo</button>
         </div>
       )}
 
-      {(obra.capitulos||[]).length>0&&(
+      {caps.length>0&&(
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
           {vista==='presupuesto'&&<VPresupuesto/>}
           {vista==='arbol'&&<VArbol/>}
         </div>
       )}
 
-      {modalPartida&&<ModalPartida info={modalPartida}/>}
-
-      {/* MODAL PEGAR EXCEL */}
-      {showPaste&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:'white',borderRadius:'14px',width:'720px',maxHeight:'90vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.3)'}}>
-            <div style={{padding:'16px 20px',borderBottom:'1px solid #e2e8f0',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div>
-                <div style={{fontWeight:'800',fontSize:'16px',color:'#0f172a'}}>📋 Pegar desde Excel</div>
-                <div style={{fontSize:'11px',color:'#94a3b8',marginTop:'2px'}}>Copia y pega directamente desde Excel. Detecta capitulos, subcapitulos y partidas automaticamente.</div>
-              </div>
-              <button onClick={()=>setShowPaste(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#94a3b8',fontSize:'22px'}}>✕</button>
-            </div>
-            <div style={{padding:'16px 20px',flex:1,overflow:'auto',display:'flex',flexDirection:'column',gap:'14px'}}>
-              <div>
-                <label style={{fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',display:'block',marginBottom:'4px'}}>Pega aqui tu Excel (Ctrl+V)</label>
-                <textarea value={pasteText} onChange={e=>{setPasteText(e.target.value);setPasteRows(parsePaste(e.target.value).caps);}} style={{width:'100%',height:'130px',padding:'10px',border:'2px solid #e2e8f0',borderRadius:'8px',fontSize:'12px',fontFamily:'monospace',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:'1.6'}} placeholder={'PRELIMINARES\n1.01\tLimpieza terreno\tm2\t150\t125\n1.02\tReplanteo\tm2\t150\t85\n\nESTRUCTURA\n2.01\tColumnas\tm3\t12.5\t8200'}/>
-              </div>
-              {pasteRows.length>0&&(
-                <div>
-                  <div style={{fontSize:'11px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase'}}>Vista previa — {pasteRows.length} capitulo(s) · {pasteRows.reduce((s,c)=>s+c.subcapitulos.reduce((ss,sc)=>ss+sc.partidas.length,0),0)} partidas</div>
-                  <div style={{border:'1px solid #e2e8f0',borderRadius:'8px',overflow:'hidden',maxHeight:'200px',overflowY:'auto'}}>
-                    {pasteRows.map((cap,ci)=>(
-                      <div key={ci}>
-                        <div style={{padding:'5px 12px',background:'#1e293b',color:'white',fontWeight:'700',fontSize:'11px',borderLeft:'3px solid '+cap.color}}>{cap.nombre}</div>
-                        {cap.subcapitulos.map((sc,si)=>sc.partidas.map((p,pi)=>(
-                          <div key={pi} style={{display:'grid',gridTemplateColumns:'60px 1fr 50px 70px 70px 70px',padding:'4px 12px 4px 24px',borderBottom:'1px solid #f1f5f9',fontSize:'11px',background:pi%2===0?'white':'#f8fafc',gap:'8px',alignItems:'center'}}>
-                            <span style={{fontFamily:'monospace',color:'#1e40af',fontWeight:'700'}}>{p.codigo||''}</span>
-                            <span style={{fontWeight:'600',color:'#0f172a',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.desc}</span>
-                            <span style={{color:'#475569'}}>{p.unidad}</span>
-                            <span style={{textAlign:'right',fontFamily:'monospace'}}>{fmtN(calcCantidad(p),2)}</span>
-                            <span style={{textAlign:'right',fontFamily:'monospace'}}>{fmtRD(calcPU(p))}</span>
-                            {calcPU(p)===0&&<span style={{fontSize:'8px',background:'#fef3c7',color:'#b45309',padding:'1px 4px',borderRadius:'3px',fontWeight:'800',textAlign:'center'}}>SIN P.U.</span>}
-                          </div>
-                        )))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {pasteRows.length===0&&pasteText.trim()&&(
-                <div style={{padding:'14px',background:'#fef3c7',borderRadius:'8px',fontSize:'12px',color:'#92400e',fontWeight:'600'}}>
-                  No se detectaron datos. Intenta con formato: Codigo[TAB]Descripcion[TAB]Unidad[TAB]Cantidad[TAB]PU
-                </div>
-              )}
-              {/* Opcion destino especifico */}
-              {pasteRows.length>0&&(obra.capitulos||[]).length>0&&(
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',borderTop:'1px solid #e2e8f0',paddingTop:'12px'}}>
-                  <div>
-                    <label style={{fontSize:'10px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',display:'block',marginBottom:'4px'}}>O pegar en subcapitulo especifico:</label>
-                    <select value={pasteDest.capId} onChange={e=>{const c=(obra.capitulos||[]).find(c=>c.id===e.target.value);setPasteDest({capId:e.target.value,subcapId:c?.subcapitulos?.[0]?.id||''}); }} style={{width:'100%',padding:'7px 10px',border:'1px solid #e2e8f0',borderRadius:'6px',fontSize:'12px',outline:'none'}}>
-                      <option value="">— Cap. destino —</option>
-                      {(obra.capitulos||[]).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{fontSize:'10px',fontWeight:'700',color:'transparent',display:'block',marginBottom:'4px'}}>_</label>
-                    <select value={pasteDest.subcapId} onChange={e=>setPasteDest(p=>({...p,subcapId:e.target.value}))} style={{width:'100%',padding:'7px 10px',border:'1px solid #e2e8f0',borderRadius:'6px',fontSize:'12px',outline:'none'}}>
-                      <option value="">— Subcap. destino —</option>
-                      {((obra.capitulos||[]).find(c=>c.id===pasteDest.capId)?.subcapitulos||[]).map(sc=><option key={sc.id} value={sc.id}>{sc.nombre}</option>)}
-                    </select>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div style={{padding:'14px 20px',borderTop:'1px solid #e2e8f0',display:'flex',justifyContent:'space-between',alignItems:'center',gap:'10px'}}>
-              <button onClick={()=>setShowPaste(false)} style={{padding:'8px 20px',background:'white',color:'#64748b',border:'1px solid #e2e8f0',borderRadius:'8px',fontWeight:'600',fontSize:'13px',cursor:'pointer'}}>Cancelar</button>
-              <div style={{display:'flex',gap:'10px'}}>
-                {(obra.capitulos||[]).length>0&&pasteDest.capId&&pasteDest.subcapId&&pasteRows.length>0&&(
-                  <button onClick={()=>confirmPaste('subcap')} style={{padding:'8px 18px',background:'#0ea5e9',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Pegar en subcap. seleccionado</button>
-                )}
-                <button onClick={()=>confirmPaste('caps')} disabled={pasteRows.length===0} style={{padding:'8px 20px',background:pasteRows.length>0?'#16a34a':'#94a3b8',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:pasteRows.length>0?'pointer':'default'}}>
-                  Importar como capitulos ({pasteRows.length>0?pasteRows.reduce((s,c)=>s+c.subcapitulos.reduce((ss,sc)=>ss+sc.partidas.length,0),0):0} partidas)
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL BC3 */}
       {showBC3&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:'white',borderRadius:'14px',width:'600px',maxHeight:'88vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.3)'}}>
-            <div style={{padding:'16px 20px',borderBottom:'1px solid #e2e8f0',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{fontWeight:'800',fontSize:'16px',color:'#0f172a'}}>Importar BC3</div>
-              <button onClick={()=>setShowBC3(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#94a3b8',fontSize:'20px'}}>✕</button>
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1f2937',border:'1px solid #374151',borderRadius:'14px',width:'600px',maxHeight:'88vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.6)'}}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid #374151',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:'800',fontSize:'16px',color:'white'}}>Importar BC3</div>
+              <button onClick={()=>setShowBC3(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:'20px'}}>x</button>
             </div>
             <div style={{padding:'16px 20px',flex:1,overflow:'auto'}}>
-              <div style={{background:'#f8fafc',borderRadius:'8px',padding:'10px',marginBottom:'12px',fontSize:'11px',color:'#64748b',border:'1px solid #e2e8f0'}}>
-                ~C|codigo|ud|Capitulo|0| · ~V|codigo|ud|Partida|precio||
-              </div>
-              <textarea value={bc3Text} onChange={e=>setBc3Text(e.target.value)} style={{width:'100%',height:'260px',padding:'10px',border:'2px solid #e2e8f0',borderRadius:'8px',fontSize:'11px',fontFamily:'monospace',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:'1.6'}} placeholder={'~C|01|Ud|PRELIMINARES|0|\n~V|1.01|m2|Limpieza terreno|125.00||\n~D|1.01|||150.00|'}/>
+              <div style={{background:'#111827',borderRadius:'8px',padding:'10px',marginBottom:'12px',fontSize:'11px',color:'#6b7280',border:'1px solid #374151'}}>~C|cod|ud|Capitulo|0| · ~V|cod|ud|Partida|precio||</div>
+              <textarea value={bc3Text} onChange={e=>setBc3Text(e.target.value)} style={{width:'100%',height:'260px',padding:'10px',border:'1px solid #374151',borderRadius:'8px',fontSize:'11px',fontFamily:'monospace',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:'1.6',background:'#111827',color:'#d1d5db'}} placeholder={'~C|01|Ud|PRELIMINARES|0|\n~V|1.01|m2|Limpieza|125.00||'}/>
             </div>
-            <div style={{padding:'14px 20px',borderTop:'1px solid #e2e8f0',display:'flex',justifyContent:'flex-end',gap:'10px'}}>
-              <button onClick={()=>setShowBC3(false)} style={{padding:'8px 20px',background:'white',color:'#64748b',border:'1px solid #e2e8f0',borderRadius:'8px',fontWeight:'600',fontSize:'13px',cursor:'pointer'}}>Cancelar</button>
-              <button onClick={importarBC3} style={{padding:'8px 20px',background:'#2563eb',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Importar BC3</button>
+            <div style={{padding:'14px 20px',borderTop:'1px solid #374151',display:'flex',justifyContent:'flex-end',gap:'10px'}}>
+              <button onClick={()=>setShowBC3(false)} style={{padding:'8px 20px',background:'transparent',color:'#6b7280',border:'1px solid #374151',borderRadius:'8px',fontWeight:'600',fontSize:'13px',cursor:'pointer'}}>Cancelar</button>
+              <button onClick={importarBC3} style={{padding:'8px 20px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Importar BC3</button>
             </div>
           </div>
         </div>
       )}
-
       <input ref={fileRef} type="file" accept=".json,.obra.json" style={{display:'none'}} onChange={abrirArchivo}/>
     </div>
   );
 };
-
 // ==================== VISTA: BIBLIOTECA ====================
 const BibliotecaView = () => {
   const CATEGORIAS = ['Todo', 'Estructura', 'Albañilería', 'Instalaciones', 'Acabados', 'Equipos', 'Normativas', 'Planos Tipo'];
