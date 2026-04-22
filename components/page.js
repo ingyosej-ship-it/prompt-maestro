@@ -3011,297 +3011,336 @@ const PresupuestoObraView = () => {
   };
 
   // ── Parsear UNA fila de insumo APU ──────────────────────────────────────
+  const _parseInsumoRow = cols => {
+    if(!cols.some(c=>c)) return null;
+    let cod='', desc='', cantidad='', unidad='ud', pu='', itbis=0, rendimiento=1;
 
-  // ══════════════════════════════════════════════════════════════════════
-  //  UTILIDADES DE PARSEO EXCEL — usadas por ambas funciones de paste
-  // ══════════════════════════════════════════════════════════════════════
+    // 1. Identificar columnas por tipo
+    const numCols=[];   // {idx, val}
+    const txtCols=[];   // {idx, val}
+    for(let i=0;i<cols.length;i++){
+      const c=(cols[i]||'').trim();
+      if(!c) continue;
+      if(_isNum(c)) numCols.push({idx:i, val:_cleanNum2(c)});
+      else txtCols.push({idx:i, val:c});
+    }
 
-  // Convierte texto de celda a número limpio (acepta 1.234,56 y 1,234.56)
-  const parseXlNum = s => {
-    if(!s&&s!==0) return null;
-    let str=String(s).trim().replace(/[RD$€£\s]/g,'');
-    if(!str||!/\d/.test(str)) return null;
-    if(/[a-záéíóúñA-ZÁÉÍÓÚÑ]/.test(str)) return null; // texto con letras = no es número
-    const hasComa=str.includes(','), hasPunto=str.includes('.');
-    if(hasComa&&hasPunto){
-      const lc=str.lastIndexOf(','), lp=str.lastIndexOf('.');
-      str = lc>lp ? str.replace(/\./g,'').replace(',','.') : str.replace(/,/g,'');
-    } else if(hasComa){ str=str.replace(',','.'); }
-    str=str.replace(/[^\d.\-]/g,'');
-    const n=parseFloat(str);
-    return isNaN(n)?null:n;
-  };
-
-  // Verdadero solo si la celda ES un número (sin letras)
-  const isXlNum = s => parseXlNum(s)!==null;
-
-  // Detectar cabecera: al menos 2 palabras clave de encabezado
-  const isHeaderRow = cols => {
-    const kw=new Set(['COD','CODIGO','COD.','CODINSUMO','DESCRIPCION','DESCRIPCIÓN','DESC','CANTIDAD','CANT','UNIDAD','UNID','UD','UND','PRECIO','COSTO','PU','P.U.','VALOR','TOTAL','ITBIS','IVA','RENDTO','RENDIMIENTO','NATURALEZA','NAT','NATURALEZ']);
-    return cols.filter(c=>kw.has((c||'').toUpperCase().trim().replace(/[.\s]/g,''))).length>=2;
-  };
-
-  // Construir mapa de columnas desde fila encabezado: {cod, nat, desc, cant, ud, pu, itbis, rendto, valor}
-  const buildColMap = headerCols => {
-    const map={cod:-1, nat:-1, desc:-1, cant:-1, ud:-1, pu:-1, itbis:-1, rendto:-1, valor:-1};
-    headerCols.forEach((h,i)=>{
-      const u=(h||'').toUpperCase().trim().replace(/[.\s_]/g,'');
-      if(['COD','CODIGO','CODINSUMO','COD'].includes(u)) map.cod=i;
-      else if(['NAT','NATURALEZA','NATURALEZ','TIPO'].includes(u)) map.nat=i;
-      else if(['DESC','DESCRIPCION','DESCRIPCIÓN','DESCRIPCION'].includes(u)) map.desc=i;
-      else if(['CANT','CANTIDAD'].includes(u)) map.cant=i;
-      else if(['UD','UND','UNIDAD','UNID'].includes(u)) map.ud=i;
-      else if(['PU','P.U.','COSTO','PRECIO','PRECIOUN','COSTOUN','PRECIOUNIT'].includes(u)) map.pu=i;
-      else if(['ITBIS','IVA','TAX'].includes(u)) map.itbis=i;
-      else if(['RENDTO','RENDIMIENTO'].includes(u)) map.rendto=i;
-      else if(['VALOR','TOTAL','SUBTOTAL'].includes(u)) map.valor=i;
-    });
-    return map;
-  };
-
-  // Extraer valor seguro de columna ('' si no existe o fuera de rango)
-  const xlGet = (cols, idx) => idx>=0&&idx<cols.length ? (cols[idx]||'').trim() : '';
-
-  // ── PASTE APU — pega insumos en análisis de costo ──────────────────────
-  // Formato estándar RD: COD | NAT? | DESCRIPCION | CANTIDAD | UD | COSTO | ITBIS? | RENDTO? | VALOR?
-  const handleApuExcelPaste = (capId, scId, pId, text) => {
-    if(!text||!text.trim()) return;
-    const lines=_splitLines(text).filter(l=>l.trim());
-    if(!lines.length) return;
-
-    // ── Paso 1: detectar separador ──
-    const sep = lines[0].includes('\t') ? '\t' : ';';
-    const split = l => l.split(sep).map(c=>c.replace(/^"|"$/g,'').trim());
-
-    // ── Paso 2: detectar encabezado y construir mapa ──
-    const firstCols=split(lines[0]);
-    const hasHeader=isHeaderRow(firstCols);
-    let map = hasHeader ? buildColMap(firstCols) : null;
-
-    // Si no hay encabezado, usar posiciones fijas estándar:
-    // 0=COD, 1=NAT(opcional), 2=DESC, 3=CANT, 4=UD, 5=COSTO, 6=ITBIS, 7=RENDTO, 8=VALOR
-    // Pero si col0 parece descripción (texto largo, no código), desplazar
-    if(!map){
-      const c0=firstCols[0]||'';
-      const c0IsCod=/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0.trim())||/^\d{3,}$/.test(c0.trim());
-      if(c0IsCod){
-        map={cod:0, nat:1, desc:2, cant:3, ud:4, pu:5, itbis:6, rendto:7, valor:8};
-      } else {
-        // Sin código en col0 → col0=DESC, col1=CANT, col2=UD, col3=PU
-        map={cod:-1, nat:-1, desc:0, cant:1, ud:2, pu:3, itbis:-1, rendto:-1, valor:-1};
+    // 2. Extraer código (primer texto que luce como código: XX.0000 o letras+dígitos)
+    let codIdx=-1;
+    for(let i=0;i<txtCols.length;i++){
+      const t=txtCols[i].val;
+      if(/^[A-Za-z]{1,6}[\.\-]\d+/i.test(t)||/^[A-Za-z]{2,}\d{3,}/i.test(t)||/^\d{3,}$/.test(t)){
+        cod=t; codIdx=i; break;
       }
     }
 
-    const dataLines = hasHeader ? lines.slice(1) : lines;
+    // 3. Extraer descripción (primer texto largo NO código, NO naturaleza abreviada)
+    let descIdx=-1;
+    for(let i=0;i<txtCols.length;i++){
+      if(i===codIdx) continue;
+      const t=txtCols[i].val;
+      const upper=t.toUpperCase().replace(/[.\s_]/g,'');
+      if(NAT_ABREVS.has(upper)) continue; // saltar naturaleza
+      if(t.length>=2){ desc=t; descIdx=i; break; }
+    }
+    // Si hay más texto después de la descripción y antes de números, podría ser unidad
+    for(let i=descIdx+1;i<txtCols.length;i++){
+      const t=txtCols[i].val;
+      const upper=t.toUpperCase().replace(/[.\s_]/g,'');
+      if(NAT_ABREVS.has(upper)) continue;
+      if(t.length>=1&&t.length<=8&&!desc.includes(t)){ unidad=t; break; }
+    }
+
+    // 4. Asignar números: CANT, PU (y opcionalmente VALOR para verificar)
+    // Orden esperado: CANT → UD(texto) → PU → ITBIS → RENDTO → VALOR
+    if(numCols.length===0) { if(!desc&&!cod) return null; return {id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu,itbis,rendimiento}; }
+    if(numCols.length===1){ pu=String(numCols[0].val); cantidad='1'; }
+    else if(numCols.length===2){ cantidad=String(numCols[0].val); pu=String(numCols[1].val); }
+    else {
+      cantidad=String(numCols[0].val);
+      const cantV=numCols[0].val;
+      const totalV=numCols[numCols.length-1].val;
+      // Buscar el PU: número tal que cant × pu ≈ total (tolerancia 5%)
+      let foundPU=false;
+      for(let k=1;k<numCols.length-1;k++){
+        const candidate=numCols[k].val;
+        if(cantV>0&&Math.abs(cantV*candidate-totalV)/Math.max(Math.abs(totalV),1)<0.10){
+          pu=String(candidate); foundPU=true; break;
+        }
+      }
+      if(!foundPU) pu=String(numCols[numCols.length-2].val); // penúltimo por defecto
+      // ITBIS: si hay número entre 0 y 100 que no sea cant ni pu
+      for(let k=1;k<numCols.length-1;k++){
+        const v=numCols[k].val;
+        if(v>0&&v<=100&&String(v)!==pu&&String(v)!==cantidad){
+          // Candidato a ITBIS si está en columna ITBIS conocida (columna ≥ PU idx)
+          // Simple heurística: si es 18 o número pequeño <= 50, es ITBIS
+          if(v===18||v===16||v===0){ itbis=v; break; }
+        }
+      }
+    }
+
+    if(!desc&&!cod) return null;
+    return {id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu:String(pu),itbis,rendimiento};
+  };
+
+  // ── PASTE EN ANÁLISIS DE COSTO (APU) ────────────────────────────────────
+  //  Orden de columnas del APU en ProCalc (igual al Excel de análisis RD):
+  //  COD | NAT? | DESCRIPCION | CANTIDAD | UNIDAD | COSTO/PU | ITBIS? | RENDTO? | VALOR?
+  //
+  //  REGLA PRINCIPAL: si el Excel no trae precio → pu queda en '' (vacío, NO se inventa)
+  //  Cantidad y unidad son opcionales — se pueden agregar manual después
+  // ──────────────────────────────────────────────────────────────────────────
+  const handleApuExcelPaste = (capId, scId, pId, text) => {
+    if(!text||!text.trim()) return;
+    const rawLines=_splitLines(text);
+    const lines=rawLines.filter(l=>l.trim());
+    if(!lines.length) return;
+
+    // Detectar si la primera fila no vacía es encabezado
+    const firstDataLine=lines.find(l=>l.trim());
+    const firstCols=firstDataLine?_splitCols(firstDataLine):[];
+    const skipFirst=_isHeader(firstCols);
+
+    // Mapear posición de columnas desde el encabezado si existe
+    let colMap={cod:0, nat:-1, desc:1, cant:2, ud:3, costo:4, itbis:-1, rendto:-1};
+    if(skipFirst){
+      firstCols.forEach((h,i)=>{
+        const u=(h||'').toUpperCase().replace(/[.\s_]/g,'');
+        if(['COD','CODIGO','CODINSUMO'].includes(u)) colMap.cod=i;
+        else if(['NAT','NATURALEZA','TIPO'].includes(u)) colMap.nat=i;
+        else if(['DESC','DESCRIPCION','DESCRIPCION'].includes(u)) colMap.desc=i;
+        else if(['CANT','CANTIDAD'].includes(u)) colMap.cant=i;
+        else if(['UD','UNIDAD','UND'].includes(u)) colMap.ud=i;
+        else if(['COSTO','PU','PRECIO','PRECIOUN','P.U.'].includes(u)) colMap.costo=i;
+        else if(['ITBIS','IVA','TAX'].includes(u)) colMap.itbis=i;
+        else if(['RENDTO','RENDIMIENTO'].includes(u)) colMap.rendto=i;
+      });
+    }
+
+    const getCol=(cols,idx)=>idx>=0&&idx<cols.length?(cols[idx]||'').trim():'';
+
     const newComps=[];
+    const dataLines=skipFirst?lines.slice(1):lines;
 
     for(const line of dataLines){
       if(!line.trim()) continue;
-      const cols=split(line);
-      if(!cols.some(c=>c)) continue;
+      const cols=_splitCols(line);
+      if(!cols.some(c=>c.trim())) continue;
 
-      // ── Extraer cada campo ──
-      let cod  = xlGet(cols, map.cod);
-      let desc = xlGet(cols, map.desc);
-      let cant = xlGet(cols, map.cant);
-      let ud   = xlGet(cols, map.ud);
-      let pu   = xlGet(cols, map.pu);
-      let itbis= parseXlNum(xlGet(cols, map.itbis))||0;
-      let rend = parseXlNum(xlGet(cols, map.rendto))||1;
-      if(rend<=0) rend=1;
+      const rawCod  = getCol(cols, colMap.cod);
+      const rawDesc = getCol(cols, colMap.desc);
+      const rawCant = getCol(cols, colMap.cant);
+      const rawUd   = getCol(cols, colMap.ud);
+      const rawCosto= getCol(cols, colMap.costo);
 
-      // Si no había mapa de código pero col0 luce como código, extraerlo
-      if(!cod && map.cod<0){
+      // Saltar filas que son encabezados internos, totales o vacías
+      if(!rawDesc&&!rawCod) continue;
+      if(_isHeader(cols)) continue;
+      // Saltar si la descripción luce como total/subtotal
+      if(/^(total|subtotal|suma|grand)/i.test(rawDesc)) continue;
+
+      // Código: usar el de la columna, o intentar detectar en c0
+      let cod=rawCod;
+      if(!cod){
         const c0=(cols[0]||'').trim();
         if(/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0)||/^[A-Za-z]{2,}\d{3,}/.test(c0)) cod=c0;
       }
 
-      // Si desc vacía e hay texto en col0 y es largo, usarlo como desc
-      if(!desc && (cols[0]||'').trim().length>3 && !cod) desc=(cols[0]||'').trim();
-      if(!desc && (cols[0]||'').trim() && map.cod===0 && (cols[1]||'').trim()) desc=(cols[1]||'').trim();
-
-      // Validar que haya al menos descripción o código
+      const desc=rawDesc||getCol(cols,0)||'';
       if(!desc&&!cod) continue;
-      // Saltar filas que son subtotales/totales
-      if(/^(total|subtotal|grand|suma)/i.test(desc)) continue;
 
-      // Cantidad: solo si es número real
-      const cantNum = isXlNum(cant) ? parseXlNum(cant) : null;
-      const cantStr = cantNum!==null ? String(cantNum) : '';
+      // Cantidad: solo si es un número real, sino dejar vacío
+      const cantidad=_isNum(rawCant)&&rawCant?String(_cleanNum2(rawCant)||''):'';
 
-      // PU: solo el número que viene de la columna de costo — NUNCA inventar
-      const puNum = isXlNum(pu) ? parseXlNum(pu) : null;
-      let puStr = puNum!==null && puNum>0 ? String(puNum) : '';
+      // Unidad: texto corto
+      let unidad='ud';
+      if(rawUd&&!_isNum(rawUd)&&rawUd.length<=8) unidad=rawUd;
 
-      // Si no hay mapa de PU pero hay números en la fila, intentar con lógica posicional
-      if(!puStr && map.pu<0){
-        const allNums=cols.map((c,i)=>({i,v:parseXlNum(c)})).filter(x=>x.v!==null&&x.v>0&&isXlNum(cols[x.i]));
-        if(allNums.length===1) puStr=String(allNums[0].v);
-        else if(allNums.length===2&&cantStr){ puStr=String(allNums[1].v); } // 2 nums: cant+pu
-        // 3+ sin mapa → NO asignar PU (dejar vacío, usuario lo pone)
+      // PU: NUNCA inventar — solo si viene explícito y es un número real
+      let pu='';
+      if(_isNum(rawCosto)&&rawCosto){
+        const v=_cleanNum2(rawCosto);
+        if(v!==null&&v>0) pu=String(v);
+      }
+      // Si hay encabezado con colMap pero no trajo costo, intentar último número de la fila
+      // SOLO si hay 2+ números y el último se ve como precio (no se inventa, solo si está presente)
+      if(!pu&&colMap.costo<0){
+        const allNums=cols.map((c,i)=>({i,v:_cleanNum2(c),raw:c.trim()})).filter(x=>x.v!==null&&x.v>0&&_isNum(x.raw));
+        if(allNums.length>=2){
+          // penúltimo número = PU en formato RD estándar (último = total)
+          pu=String(allNums[allNums.length-2].v);
+        } else if(allNums.length===1&&!cantidad){
+          // un solo número = PU
+          pu=String(allNums[0].v);
+        }
+        // SI un solo número pero ya está como cantidad → PU queda vacío (se pone manual)
       }
 
-      newComps.push({
-        id:uid(), cod, naturaleza:'M',
-        desc:desc.trim(),
-        cantidad:cantStr, unidad:ud||'ud', pu:puStr,
-        itbis, rendimiento:rend
-      });
+      // ITBIS
+      let itbis=0;
+      if(colMap.itbis>=0){const v=_cleanNum2(getCol(cols,colMap.itbis));if(v&&v>0&&v<=100)itbis=v;}
+
+      // Rendimiento
+      let rendimiento=1;
+      if(colMap.rendto>=0){const v=_cleanNum2(getCol(cols,colMap.rendto));if(v&&v>0)rendimiento=v;}
+
+      newComps.push({id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu,itbis,rendimiento});
     }
 
     if(newComps.length>0){
       const p=getPart(capId,scId,pId);
       if(!p) return;
-      const withData=(p.componentes||[]).filter(c=>(c.cod&&c.cod.trim())||(c.desc&&c.desc.trim())||parseFloat(c.pu)>0);
+      const withData=(p.componentes||[]).filter(c=>
+        (c.cod&&c.cod.trim())||(c.desc&&c.desc.trim())||parseFloat(c.pu)>0
+      );
       updatePart(capId,scId,pId,{componentes:[...withData,...newComps]});
-      setPasteNotif(`✓ APU: ${newComps.length} insumo(s) — revisa cantidad y PU si hacen falta`);
+      setPasteNotif('✓ APU: '+newComps.length+' insumo(s) — edita cantidad y PU si hacen falta');
       setTimeout(()=>setPasteNotif(''),5000);
     } else {
-      setPasteNotif('⚠ Sin insumos detectados. ¿Tiene encabezados el Excel?');
+      setPasteNotif('⚠ No se detectaron insumos. Verifica el formato del Excel.');
       setTimeout(()=>setPasteNotif(''),4000);
     }
     setApuPaste(null); setApuPasteText('');
   };
 
-  // ── PASTE PRESUPUESTO — detecta caps/subcaps/partidas ─────────────────
-  // Formato código: 1.00/2.00 → CAPÍTULO · 1.01/6.03 → SUBCAPÍTULO · 1.01.001 → PARTIDA
+  // ──────────────────────────────────────────────────────────────────────────
+  //  PASTE PRESUPUESTO — detecta caps/subcaps/partidas manteniendo el orden
+  //  Reglas de código:
+  //   "1" / "01" / "1.00" / "2.00"   → CAPÍTULO   (entero o .00)
+  //   "1.01" / "6.03" / "1.02"       → SUBCAPÍTULO (dos niveles, decimales ≠ 0)
+  //   "1.01.001" / "1.02.003"         → PARTIDA (tres niveles)
+  //   "SV.0028" / "MO.0053"           → PARTIDA (código alfanumérico)
+  //   Fila solo texto sin código      → según contexto: cap o subcap
+  // ──────────────────────────────────────────────────────────────────────────
   const handleSmartPaste = (txt) => {
     if(!txt||!txt.trim()||!obra) return;
     const lines=_splitLines(txt);
-    const sep=lines.find(l=>l.includes('\t'))?'\t':';';
-    const split=l=>l.split(sep).map(c=>c.replace(/^"|"$/g,'').trim());
-
     const newCaps=[], newIndirectos=[];
     let capActual=null, scActual=null;
 
-    // ── Detectar encabezado global (primera línea no vacía) ──
-    const firstLine=lines.find(l=>l.trim());
-    const firstCols=firstLine?split(firstLine):[];
-    const hasHeader=isHeaderRow(firstCols);
-    let colMap=null;
-    if(hasHeader){
-      // Construir mapa para presupuesto: buscar COD, DESC, UD, CANT, PU/COSTO
-      colMap={cod:-1,desc:-1,ud:-1,cant:-1,pu:-1};
-      firstCols.forEach((h,i)=>{
-        const u=(h||'').toUpperCase().trim().replace(/[.\s_]/g,'');
-        if(['COD','CODIGO'].includes(u)) colMap.cod=i;
-        else if(['DESC','DESCRIPCION','DESCRIPCIÓN'].includes(u)) colMap.desc=i;
-        else if(['UD','UND','UNIDAD','UNID'].includes(u)) colMap.ud=i;
-        else if(['CANT','CANTIDAD'].includes(u)) colMap.cant=i;
-        else if(['PU','P.U.','COSTO','PRECIO','PRECIOUN'].includes(u)) colMap.pu=i;
-      });
-    }
-
-    // tipoNum: "1"/"01"/"1.00" → 1, "1.01" → 2, "1.01.001" → 3+
-    const tipoNum=s=>{
+    // Clasifica código numérico punteado
+    const tipoNum = s => {
       const t=(s||'').trim();
       if(!/^\d+(\.\d+)*$/.test(t)) return 0;
-      const p=t.split('.');
-      if(p.length===1) return 1;
-      if(p.length===2&&/^0+$/.test(p[1])) return 1; // "1.00" → cap
-      return p.length;
+      const partes=t.split('.');
+      if(partes.length===1) return 1; // "1" "01"
+      if(partes.length===2){
+        // "1.00" → cap (segundo segmento todo ceros)
+        if(/^0+$/.test(partes[1])) return 1;
+        return 2; // "1.01" "6.03"
+      }
+      return 3; // "1.01.001" o más
     };
-    const esMayus=s=>{const t=(s||'').trim();return t.length>=3&&t===t.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]/.test(t)&&!/^\d/.test(t);};
+    const esMayus  = s=>{ const t=(s||'').trim(); return t.length>=3&&t===t.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]/.test(t)&&!/^\d/.test(t); };
+    // Contar celdas con números reales (no códigos)
+    const numReales = cols => cols.filter(c=>{
+      const t=(c||'').trim();
+      if(!t) return false;
+      // Excluir si tiene letras (código alfanumérico)
+      if(/[A-Za-záéíóúñ]/.test(t)) return false;
+      return _isNum(t)&&(_cleanNum2(t)||0)>0;
+    });
 
-    const dataLines=hasHeader?lines.slice(1):lines;
-
-    for(const raw of dataLines){
+    for(const raw of lines){
       if(!raw.trim()) continue;
-      const cols=split(raw);
+      const cols=_splitCols(raw);
+      if(_isHeader(cols)) continue;
       const nz=cols.filter(c=>c.trim()).length;
       if(nz===0) continue;
 
       const c0=(cols[0]||'').trim();
       const c1=(cols[1]||'').trim();
       const tipo=tipoNum(c0);
-
-      // Números reales en la fila (sin letras)
-      const numCols=cols.filter(c=>isXlNum(c)&&(parseXlNum(c)||0)>0);
+      const numCols=numReales(cols);
       const sinNums=numCols.length===0;
 
-      // INDIRECTOS: fila corta con %
-      if(nz<=4){
-        const pct=cols.find(c=>/^\d+(\.\d+)?%$/.test((c||'').trim()));
-        if(pct){const pv=parseFloat(pct)||0;const lbl=cols.find(c=>{const t=(c||'').trim();return t&&!/^\d/.test(t)&&t.length>2&&!/^\d+(\.\d+)?%$/.test(t);});if(pv>0&&pv<=100){newIndirectos.push({id:uid(),label:(lbl||'Indirecto').trim(),pct:pv,activo:true});continue;}}
+      // ── INDIRECTOS ──
+      const pctC=cols.find(c=>/^\d+(\.\d+)?%$/.test((c||'').trim()));
+      if(pctC&&nz<=4){
+        const pv=parseFloat(pctC)||0;
+        const lbl=cols.find(c=>{const t=(c||'').trim();return t&&!/^\d/.test(t)&&t.length>2&&!/^\d+(\.\d+)?%$/.test(t);})||'Indirecto';
+        if(pv>0&&pv<=100){newIndirectos.push({id:uid(),label:(lbl||'Indirecto').trim(),pct:pv,activo:true});continue;}
       }
 
-      // CAPÍTULO
-      if((tipo===1&&sinNums)||(tipo===0&&esMayus(c0)&&sinNums)){
-        const nombre=(c1&&!isXlNum(c1)?c1:c0).trim()||'Capítulo';
+      // ── CAPÍTULO: tipo 1 sin nums reales, o texto MAYÚSCULAS sin nums ──
+      const esCap=(tipo===1&&sinNums)||(tipo===0&&esMayus(c0)&&sinNums);
+      if(esCap){
+        // Guardar código original (ej. "1.00") y nombre de la segunda columna
         const codOrig=tipo===1?c0:'';
+        const nombre=(c1&&!_isNum(c1)?c1:c0).trim()||'Capítulo';
         capActual={...mkCap(nombre,CAP_COLORS[newCaps.length%CAP_COLORS.length],codOrig),subcapitulos:[]};
         newCaps.push(capActual); scActual=null; continue;
       }
-      // SUBCAPÍTULO
-      if((tipo===2&&sinNums)||(tipo===0&&sinNums&&capActual&&!esMayus(c0)&&c0.length>1&&nz<=3)){
+
+      // ── SUBCAPÍTULO: tipo 2 sin nums reales, o texto plano bajo un cap ──
+      const esSC=(tipo===2&&sinNums)||(tipo===0&&sinNums&&capActual&&!esMayus(c0)&&c0.length>1&&nz<=3);
+      if(esSC){
         if(!capActual){capActual={...mkCap(c0,CAP_COLORS[newCaps.length%CAP_COLORS.length],c0),subcapitulos:[]};newCaps.push(capActual);}
-        const nombre=(c1&&!isXlNum(c1)?c1:c0).trim()||'Subcapítulo';
         const codOrig=tipo===2?c0:'';
+        const nombre=(c1&&!_isNum(c1)?c1:c0).trim()||'Subcapítulo';
         scActual={...mkSubcap(nombre,codOrig),partidas:[]};
         capActual.subcapitulos.push(scActual); continue;
       }
 
-      // PARTIDA — extraer campos
-      let codigo='', desc='', unidad='ud', cantidad=0, puVal=0;
+      // ── PARTIDA ──
+      let codigo='',desc='',unidad='ud',cantidad=0,puVal=0;
+      // IMPORTANTE: usar solo números reales del Excel, NO inventar precios
+      const nNums=numCols.map(c=>_cleanNum2(c)).filter(n=>n!==null&&n>0);
+      const nTextos=cols.filter(c=>{const t=(c||'').trim();return t&&!_isNum(t)&&!NAT_ABREVS.has(t.toUpperCase().replace(/[.\s]/g,''));});
 
-      if(colMap){
-        // ── Usar mapa de encabezado ──
-        codigo = xlGet(cols,colMap.cod);
-        desc   = xlGet(cols,colMap.desc);
-        unidad = xlGet(cols,colMap.ud)||'ud';
-        const cantRaw=xlGet(cols,colMap.cant);
-        const puRaw =xlGet(cols,colMap.pu);
-        cantidad = isXlNum(cantRaw)?parseXlNum(cantRaw)||0:0;
-        puVal    = isXlNum(puRaw)&&parseXlNum(puRaw)>0 ? parseXlNum(puRaw) : 0;
-        if(!desc&&!codigo) continue;
-      } else {
-        // ── Sin encabezado: detección posicional ──
-        const nTextos=cols.filter(c=>{const t=(c||'').trim();return t&&!isXlNum(t)&&!NAT_ABREVS.has(t.toUpperCase().replace(/[.\s]/g,''));});
-        const nNums=numCols.map(c=>parseXlNum(c)).filter(n=>n!==null&&n>0);
-
-        if(tipo>=3||(tipo===2&&numCols.length>0)){
-          codigo=c0;
-          desc=(nTextos.find(t=>t!==c0&&t.length>2)||c1||'').trim();
-          // Unidad: texto corto antes del primer número
-          const priN=cols.findIndex(c=>isXlNum(c)&&(parseXlNum(c)||0)>0);
-          const udC=cols.slice(1,priN>1?priN:cols.length).find(c=>{const t=(c||'').trim();return t&&!isXlNum(t)&&t.length<=8&&t!==desc&&!NAT_ABREVS.has(t.toUpperCase());});
-          unidad=udC||'ud';
-        } else if(/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0)||/^[A-Za-z]{2,}\d{3,}/.test(c0)){
-          codigo=c0;
-          desc=(c1&&!isXlNum(c1)?c1:nTextos.find(t=>t!==c0&&t.length>1)||'').trim();
-          const udC=cols.find((c,i)=>i>1&&!isXlNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&!NAT_ABREVS.has(((c||'').trim()).toUpperCase()));
-          unidad=udC||'ud';
-        } else if(numCols.length>0){
-          const parece=c0.length<=18&&c1.length>3&&!isXlNum(c1)&&nz>=3;
-          if(parece){codigo=c0;desc=c1.trim();const udC=cols.find((c,i)=>i>1&&!isXlNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);unidad=udC||'ud';}
-          else{desc=(nTextos[0]||(c0&&!isXlNum(c0)?c0:'')||'').trim();const udC=cols.find((c,i)=>i>0&&!isXlNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);unidad=udC||'ud';}
-        } else continue;
-
-        if(!desc&&!codigo) continue;
-
-        // Asignar números: CANT, PU — solo lo que venga en el Excel
-        if(nNums.length===1){ cantidad=1; puVal=0; /* 1 num puede ser total, no asumir PU */ }
-        else if(nNums.length===2){ cantidad=nNums[0]; puVal=nNums[1]; }
-        else if(nNums.length>=3){
-          cantidad=nNums[0];
-          const total=nNums[nNums.length-1];
-          let found=false;
-          for(let k=1;k<nNums.length-1;k++){
-            if(cantidad>0&&total>0&&Math.abs(cantidad*nNums[k]-total)/total<0.12){puVal=nNums[k];found=true;break;}
-          }
-          if(!found) puVal=nNums[nNums.length-2];
+      // Función para extraer PU sin inventar:
+      // Regla: si hay ≥3 números, verificar cant×pu≈total (tolerancia 15%); penúltimo de lo contrario
+      // Si hay exactamente 2 números: cant + PU
+      // Si hay 1 número: ese es el PU (cantidad=1)
+      // Si hay 0 números: PU=0
+      const extractCantAndPU = (nums) => {
+        if(nums.length===0) return {c:1, p:0};
+        if(nums.length===1) return {c:1, p:nums[0]};
+        if(nums.length===2) return {c:nums[0], p:nums[1]};
+        // 3+: intentar cant × PU ≈ total
+        const total=nums[nums.length-1];
+        const cantV=nums[0];
+        for(let k=1;k<nums.length-1;k++){
+          if(cantV>0&&total>0&&Math.abs(cantV*nums[k]-total)/total<0.15) return {c:cantV,p:nums[k]};
         }
-      }
+        return {c:cantV, p:nums[nums.length-2]};
+      };
+
+      if(tipo>=3||(tipo===2&&numCols.length>0)){
+        codigo=c0;
+        desc=(nTextos.find(t=>t!==c0&&t.length>2)||c1||'').trim();
+        const primerNumIdx=cols.findIndex(c=>_isNum(c)&&(_cleanNum2(c)||0)>0);
+        const udC=cols.slice(1,primerNumIdx>1?primerNumIdx:cols.length).find(c=>{const t=(c||'').trim();return t&&!_isNum(t)&&t.length<=8&&t!==desc&&!NAT_ABREVS.has(t.toUpperCase());});
+        unidad=udC||'ud';
+        const {c,p}=extractCantAndPU(nNums); cantidad=c; puVal=p;
+      } else if(/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0)||/^[A-Za-z]{2,}\d{3,}/.test(c0)){
+        codigo=c0;
+        desc=(c1&&!_isNum(c1)?c1:nTextos.find(t=>t!==c0&&t.length>1)||'').trim();
+        const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&!NAT_ABREVS.has(((c||'').trim()).toUpperCase()));
+        unidad=udC||'ud';
+        const {c,p}=extractCantAndPU(nNums); cantidad=c; puVal=p;
+      } else if(numCols.length>0){
+        const parece=c0.length<=18&&c1.length>3&&!_isNum(c1)&&nz>=3;
+        if(parece){codigo=c0;desc=c1.trim();const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);unidad=udC||'ud';}
+        else{desc=(nTextos[0]||(c0&&!_isNum(c0)?c0:'')||'').trim();const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);unidad=udC||'ud';}
+        const {c,p}=extractCantAndPU(nNums); cantidad=c; puVal=p;
+      } else continue;
 
       if(!desc&&!codigo) continue;
       const np={
         ...mkPartida((desc||codigo||'').trim(),unidad,puVal,codigo),
         temporal:puVal===0,
-        cantManual:cantidad>0?String(cantidad):'',
-        mediciones:[{id:uid(),concepto:'',a:cantidad>0?String(cantidad):'1',b:'',c:'',d:'',formula:''}]
+        mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]
       };
-      if(!capActual){capActual={...mkCap(codigo||'Sin título',CAP_COLORS[newCaps.length%CAP_COLORS.length],''),subcapitulos:[]};newCaps.push(capActual);}
-      if(!scActual){scActual={...mkSubcap('Partidas',''),partidas:[]};capActual.subcapitulos.push(scActual);}
+      if(!capActual){
+        capActual={...mkCap('Sin Capítulo',CAP_COLORS[newCaps.length%CAP_COLORS.length],''),subcapitulos:[]};
+        newCaps.push(capActual);
+      }
+      if(!scActual){
+        scActual={...mkSubcap('Partidas',''),partidas:[]};
+        capActual.subcapitulos.push(scActual);
+      }
       scActual.partidas.push(np);
     }
 
@@ -3318,7 +3357,10 @@ const PresupuestoObraView = () => {
       notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';
     }
     if(notif){setPasteNotif(notif);setTimeout(()=>setPasteNotif(''),5000);}
-    else if(lines.some(l=>l.trim())){setPasteNotif('⚠ Sin partidas — agrega encabezados al Excel (COD, DESCRIPCION, UD, CANT, PU)');setTimeout(()=>setPasteNotif(''),6000);}
+    else if(lines.some(l=>l.trim())){
+      setPasteNotif('⚠ No se detectaron partidas. Verifica el formato del Excel.');
+      setTimeout(()=>setPasteNotif(''),5000);
+    }
   };
   const exportRef  = React.useRef(null);
   const fileRef    = React.useRef(null);
@@ -4649,11 +4691,7 @@ const PresupuestoObraView = () => {
               <div>
                 <div style={{fontSize:'11px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Opción 2 — Pegar texto BC3 directamente</div>
                 <div style={{background:'#111827',borderRadius:'7px',padding:'7px 10px',marginBottom:'8px',fontSize:'10px',color:'#6b7280',border:'1px solid #374151',fontFamily:'monospace'}}>
-                  {'~C|01|Ud|PRELIMINARES|0|'}
-                  <br/>
-                  {'~V|1.01|m2|Limpieza y desbroce|125.00||'}
-                  <br/>
-                  {'~D|1.01|||120.00|'}
+                  ~C|01|Ud|PRELIMINARES|0|<br/>~V|1.01|m2|Limpieza y desbroce|125.00||<br/>~D|1.01|||120.00|
                 </div>
                 <textarea value={bc3Text} onChange={e=>setBc3Text(e.target.value)}
                   style={{width:'100%',height:'160px',padding:'10px',border:'1px solid #374151',borderRadius:'8px',fontSize:'11px',fontFamily:'monospace',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:'1.6',background:'#111827',color:'#d1d5db'}}
