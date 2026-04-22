@@ -52,6 +52,81 @@ const TEMPLATES = [
   { id: 4, name: 'Remodelación de Baño', items: 25, category: 'Interiores', cost: 125000 },
 ];
 
+// Modelo base completo: Vivienda Económica RD
+const MODELO_VIVIENDA = (mkCapFn, mkSubFn, mkPartFn, mkMedFn, uid) => {
+  const p = (desc, ud, pu, med=1) => ({...mkPartFn(desc, ud, pu, ''), temporal:false, mediciones:[{id:uid(),concepto:'',a:String(med),b:'',c:'',d:'',formula:''}]});
+  return [
+    {...mkCapFn('01 - PRELIMINARES','#6366f1'), subcapitulos:[
+      {...mkSubFn('Trabajos Iniciales'), partidas:[
+        p('Limpieza y desbroce de terreno','m2',45,120),
+        p('Replanteo y nivelación','m2',38,120),
+        p('Demolición y retiro de escombros','m3',850,5),
+      ]},
+    ]},
+    {...mkCapFn('02 - CIMIENTOS','#ef4444'), subcapitulos:[
+      {...mkSubFn('Cimientos Corridos'), partidas:[
+        p('Excavación para cimientos','m3',320,18),
+        p('Hormigón ciclópeo 1:3:6 en cimientos','m3',4200,12),
+        p('Bloque de cimiento 8" violinado','m2',680,35),
+      ]},
+    ]},
+    {...mkCapFn('03 - ESTRUCTURA','#10b981'), subcapitulos:[
+      {...mkSubFn('Columnas y Vigas'), partidas:[
+        p('Columna 0.25×0.25m (hormigón 210 kg/cm²)','ml',2800,24),
+        p('Viga corona 0.20×0.25m','ml',1950,32),
+        p('Losa maciza e=0.12m','m2',3200,80),
+      ]},
+      {...mkSubFn('Acero de Refuerzo'), partidas:[
+        p('Acero grado 60, 3/8" (colocado)','qq',3800,15),
+        p('Acero grado 60, 1/2" (colocado)','qq',4200,12),
+      ]},
+    ]},
+    {...mkCapFn('04 - ALBAÑILERÍA','#f59e0b'), subcapitulos:[
+      {...mkSubFn('Muros'), partidas:[
+        p('Muro bloques 6" violinados','m2',850,160),
+        p('Repello exterior 1:4','m2',285,160),
+        p('Repello interior 1:5','m2',260,160),
+      ]},
+    ]},
+    {...mkCapFn('05 - TECHOS','#0ea5e9'), subcapitulos:[
+      {...mkSubFn('Cubierta'), partidas:[
+        p('Estructura metálica para techo','kg',85,450),
+        p('Zinc corrugado cal. 26','m2',320,80),
+        p('Canal y bajante PVC 4"','ml',42,18),
+      ]},
+    ]},
+    {...mkCapFn('06 - ACABADOS','#8b5cf6'), subcapitulos:[
+      {...mkSubFn('Pisos'), partidas:[
+        p('Piso cerámico 40×40cm','m2',650,80),
+        p('Torta de hormigón e=0.10m','m2',420,80),
+      ]},
+      {...mkSubFn('Paredes'), partidas:[
+        p('Cerámica pared baño 20×30cm','m2',780,35),
+        p('Pintura latex interior (2 manos)','m2',120,160),
+        p('Pintura exterior elastomérica','m2',185,160),
+      ]},
+    ]},
+    {...mkCapFn('07 - PUERTAS Y VENTANAS','#ec4899'), subcapitulos:[
+      {...mkSubFn('Carpintería'), partidas:[
+        p('Puerta principal metal 0.90×2.10m','ud',8500,1),
+        p('Puerta interior madera 0.80×2.10m','ud',4200,4),
+        p('Ventana aluminio y vidrio','m2',2800,18),
+      ]},
+    ]},
+    {...mkCapFn('08 - INSTALACIONES','#14b8a6'), subcapitulos:[
+      {...mkSubFn('Eléctricas'), partidas:[
+        p('Instalación eléctrica completa','glb',85000,1),
+        p('Panel eléctrico 12 circuitos','ud',9500,1),
+      ]},
+      {...mkSubFn('Sanitarias'), partidas:[
+        p('Instalación plomería completa','glb',65000,1),
+        p('Inodoro elongado','ud',7800,2),
+        p('Lavamanos con pedestal','ud',4500,2),
+      ]},
+    ]},
+  ];
+};
+
 const APU_DETAILS = {
   '3.01': {
     materials: [
@@ -3033,143 +3108,88 @@ const PresupuestoObraView = () => {
     const newCaps=[], newIndirectos=[];
     let capActual=null, scActual=null;
 
-    // ── Helpers ──
+    // nivelCod: "1"/"1.00" → 1(cap), "1.01"/"6.03" → 2(subcap), "1.01.001" → 3+(partida)
     const nivelCod = s => {
       const t=(s||'').trim();
-      // Solo códigos puramente numéricos con puntos: "01", "01.02", "01.02.003"
       if(!/^\d+(\.\d+)*$/.test(t)) return 0;
-      return t.split('.').length;
+      const parts=t.split('.');
+      if(parts.length===2&&parseInt(parts[1],10)===0) return 1; // "1.00" → cap
+      return parts.length;
     };
-    const esMayus = s => {
-      const t=(s||'').trim();
-      return t.length>=3 && t===t.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(t) && !/^\d/.test(t);
-    };
-    const todosNum = cols => cols.filter(c=>c.trim()).every(c=>_isNum(c));
-    const hayNum   = cols => cols.some(c=>_isNum(c)&&(_cleanNum2(c)||0)>0);
-    const celdas   = cols => cols.filter(c=>c.trim()).length;
+    const esMayus = s => { const t=(s||'').trim(); return t.length>=3&&t===t.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]/.test(t)&&!/^\d/.test(t); };
+    const hayNum  = cols => cols.some(c=>_isNum(c)&&(_cleanNum2(c)||0)>0);
+    const celdas  = cols => cols.filter(c=>c.trim()).length;
 
     for(const raw of lines){
       if(!raw.trim()) continue;
-      const cols = _splitCols(raw);
-      const c0=(cols[0]||'').trim(), c1=(cols[1]||'').trim(), c2=(cols[2]||'').trim();
-      const niv  = nivelCod(c0);
-      const conNum = hayNum(cols);
-      const sinNum = !conNum;
-      const nCeldas = celdas(cols);
-
-      // Saltar encabezados de tabla
+      const cols=_splitCols(raw);
+      const c0=(cols[0]||'').trim(), c1=(cols[1]||'').trim();
+      const niv=nivelCod(c0);
+      const conNum=hayNum(cols);
+      const sinNum=!conNum;
+      const nCeldas=celdas(cols);
       if(_isHeader(cols)) continue;
-      // Saltar filas totalmente vacías o con un solo valor de total
       if(nCeldas<=1) continue;
 
-      // ── INDIRECTOS: SOLO si la fila tiene ≤3 celdas Y contiene "XX%"
-      // (porcentaje explícito con símbolo %)
-      if(nCeldas<=3){
-        const pctC=cols.find(c=>/^\d+(\.\d+)?%$/.test(c.trim()));
-        if(pctC){
-          const pv=parseFloat(pctC)||0;
-          const lbl=cols.find(c=>c.trim()&&!/^\d/.test(c.trim())&&c.trim().length>2)||'Indirecto';
-          if(pv>0&&pv<=100){ newIndirectos.push({id:uid(),label:lbl.trim(),pct:pv,activo:true}); continue; }
-        }
-      }
+      // INDIRECTOS
+      if(nCeldas<=3){ const pctC=cols.find(c=>/^\d+(\.\d+)?%$/.test(c.trim())); if(pctC){const pv=parseFloat(pctC)||0;const lbl=cols.find(c=>c.trim()&&!/^\d/.test(c.trim())&&c.trim().length>2)||'Indirecto';if(pv>0&&pv<=100){newIndirectos.push({id:uid(),label:lbl.trim(),pct:pv,activo:true});continue;}}}
 
-      // ── CAPÍTULO: código de 1 nivel sin precio │ texto TODO MAYÚSCULAS sin precio ──
-      if(sinNum && ((niv===1)||(esMayus(c0)&&nCeldas<=3)||(niv===0&&esMayus(c0)))){
+      // CAPÍTULO
+      if((niv===1&&sinNum)||(esMayus(c0)&&sinNum)||(niv===0&&esMayus(c0)&&sinNum)){
         const nombre=(niv===1?(c1||c0):c0).trim()||'Capítulo';
         capActual={...mkCap(nombre,CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
         newCaps.push(capActual); scActual=null; continue;
       }
-
-      // ── SUBCAPÍTULO: código de 2 niveles sin precio │ texto corto sin precio dentro de cap ──
-      if(sinNum && (niv===2 || (niv===0&&capActual&&!esMayus(c0)&&nCeldas<=3&&c0.length>1))){
-        if(!capActual){
-          capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
-          newCaps.push(capActual);
-        }
+      // SUBCAPÍTULO
+      if((niv===2&&sinNum)||(niv===0&&sinNum&&capActual&&!esMayus(c0)&&nCeldas<=3&&c0.length>1)){
+        if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
         const nombre=(niv===2?(c1||c0):c0).trim()||'Subcapítulo';
         scActual={...mkSubcap(nombre),partidas:[]};
         capActual.subcapitulos.push(scActual); continue;
       }
 
-      // ── PARTIDA ── (cualquier fila con datos numéricos o código reconocible)
-      let codigo='', desc='', unidad='ud', cantidad=0, puVal=0;
-      // Solo valores realmente numéricos (no códigos ni texto con números)
+      // PARTIDA
+      let codigo='',desc='',unidad='ud',cantidad=0,puVal=0;
       const nums=cols.filter(c=>_isNum(c)).map(c=>_cleanNum2(c)).filter(n=>n!==null&&n>0);
       const textos=cols.filter(c=>c&&!_isNum(c)&&!NAT_ABREVS.has(c.toUpperCase().replace(/[.\s]/g,'')));
 
-      if(niv>=3 || (niv===2&&conNum)){
-        // Código numérico jerárquico: "01.02.003" o "6.03" con precio
+      if(niv>=3||(niv===2&&conNum)){
         codigo=c0;
         desc=(textos.find(t=>t!==c0&&t.length>2)||c1||'').trim();
-        // Unidad: texto corto entre columnas numéricas
-        const udCand=cols.find((c,i)=>i>0&&!_isNum(c)&&c.trim()&&c.trim().length<=6&&c.trim()!==desc);
-        unidad=udCand||'ud';
-        if(nums.length>=3){cantidad=nums[0]; puVal=nums[nums.length-2]||nums[1];}
-        else if(nums.length===2){cantidad=nums[0]; puVal=nums[1];}
-        else if(nums.length===1){puVal=nums[0]; cantidad=1;}
+        const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&c.trim()&&c.trim().length<=6&&c.trim()!==desc);
+        unidad=udC||'ud';
+        if(nums.length>=3){cantidad=nums[0];puVal=nums[nums.length-2]||nums[1];}
+        else if(nums.length===2){cantidad=nums[0];puVal=nums[1];}
+        else if(nums.length===1){puVal=nums[0];cantidad=1;}
       } else if(/^[A-Z]{1,5}[\.\-]\d+/i.test(c0)||/^[A-Z]{2,}\d{3,}/i.test(c0)){
-        // Código alfanumérico: "SV.0028", "MO.0053"
         codigo=c0;
         desc=(c1||textos.find(t=>t!==c0&&t.length>1)||'').trim();
-        const udCand=cols.find((c,i)=>i>1&&!_isNum(c)&&c.trim()&&c.trim().length<=6);
-        unidad=udCand||'ud';
-        if(nums.length>=2){cantidad=nums[0]; puVal=nums[nums.length-2]||nums[1];}
-        else if(nums.length===1){puVal=nums[0]; cantidad=1;}
+        const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&c.trim()&&c.trim().length<=6);
+        unidad=udC||'ud';
+        if(nums.length>=2){cantidad=nums[0];puVal=nums[nums.length-2]||nums[1];}
+        else if(nums.length===1){puVal=nums[0];cantidad=1;}
       } else if(conNum&&c0.length>=2){
-        // Fila plana: desc + nums, o cod_corto + desc + nums
         const parCod=c0.length<=16&&c1.length>3&&!_isNum(c1)&&nCeldas>=3;
-        if(parCod){
-          codigo=c0; desc=c1.trim();
-          const udCand=cols.find((c,i)=>i>1&&!_isNum(c)&&c.trim()&&c.trim().length<=8&&c.trim()!==desc);
-          unidad=udCand||'ud';
-        } else {
-          desc=(textos[0]||c0||'').trim();
-          const udCand=cols.find((c,i)=>i>0&&!_isNum(c)&&c.trim()&&c.trim().length<=8&&c.trim()!==desc);
-          unidad=udCand||'ud';
-        }
-        if(nums.length>=2){cantidad=nums[0]; puVal=nums[1];}
-        else if(nums.length===1){puVal=nums[0]; cantidad=1;}
+        if(parCod){codigo=c0;desc=c1.trim();const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&c.trim()&&c.trim().length<=8&&c.trim()!==desc);unidad=udC||'ud';}
+        else{desc=(textos[0]||c0||'').trim();const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&c.trim()&&c.trim().length<=8&&c.trim()!==desc);unidad=udC||'ud';}
+        if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}
+        else if(nums.length===1){puVal=nums[0];cantidad=1;}
       } else continue;
 
       if(!desc&&!codigo) continue;
-
-      const np={
-        ...mkPartida((desc||codigo||'').trim(), unidad, puVal, codigo),
-        temporal: puVal===0,
-        mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]
-      };
-
-      if(!capActual){
-        capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
-        newCaps.push(capActual);
-      }
-      if(!scActual){
-        scActual={...mkSubcap('Partidas'),partidas:[]};
-        capActual.subcapitulos.push(scActual);
-      }
+      const np={...mkPartida((desc||codigo||'').trim(),unidad,puVal,codigo),temporal:puVal===0,mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]};
+      if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
+      if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos.push(scActual);}
       scActual.partidas.push(np);
     }
-
-    // Garantizar subcap en cada cap
-    newCaps.forEach(c=>{ if(!c.subcapitulos.length) c.subcapitulos=[{...mkSubcap('Partidas'),partidas:[]}]; });
-
+    newCaps.forEach(c=>{if(!c.subcapitulos.length)c.subcapitulos=[{...mkSubcap('Partidas'),partidas:[]}];});
     const totalParts=newCaps.reduce((s,c)=>(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).length,s),0);
     const totalSC=newCaps.reduce((s,c)=>s+(c.subcapitulos||[]).length,0);
-
     let notif='';
-    if(newCaps.length>0||totalParts>0){
-      setCaps(prev=>[...prev,...newCaps]);
-      notif=`✓ ${newCaps.length} cap · ${totalSC} subcap · ${totalParts} partida(s)`;
-    }
-    if(newIndirectos.length>0){
-      updateObra({indirectos:[...(obra.indirectos||[]),...newIndirectos]});
-      notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';
-    }
+    if(newCaps.length>0||totalParts>0){setCaps(prev=>[...prev,...newCaps]);notif=`✓ ${newCaps.length} cap · ${totalSC} subcap · ${totalParts} partida(s)`;}
+    if(newIndirectos.length>0){updateObra({indirectos:[...(obra.indirectos||[]),...newIndirectos]});notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';}
     if(notif){setPasteNotif(notif);setTimeout(()=>setPasteNotif(''),5000);}
-    else if(!notif&&lines.some(l=>l.trim())){
-      setPasteNotif('⚠ No se detectaron partidas. Verifica el formato.');
-      setTimeout(()=>setPasteNotif(''),5000);
-    }
+    else if(lines.some(l=>l.trim())){setPasteNotif('⚠ No se detectaron partidas — verifica formato.');setTimeout(()=>setPasteNotif(''),5000);}
   };
   const exportRef  = React.useRef(null);
   const fileRef    = React.useRef(null);
@@ -3410,7 +3430,18 @@ const PresupuestoObraView = () => {
                   <div key={t.id} onClick={()=>{
                     const o=emptyObra();
                     o.nombre=t.name;
-                    o.capitulos=[{...mkCap('01 - '+t.category,CAP_COLORS[0]),subcapitulos:[{...mkSubcap('Partidas'),partidas:[]}]}];
+                    if(t.id===1){
+                      // Modelo real de vivienda económica
+                      o.capitulos=MODELO_VIVIENDA(
+                        (n,c)=>mkCap(n,c),
+                        (n)=>mkSubcap(n),
+                        (desc,ud,pu,cod)=>mkPartida(desc,ud,pu,cod),
+                        ()=>mkMed(),
+                        uid
+                      );
+                    } else {
+                      o.capitulos=[{...mkCap('01 - '+t.category,CAP_COLORS[0]),subcapitulos:[{...mkSubcap('Partidas'),partidas:[]}]}];
+                    }
                     setObra(o);guardarObra(o);setPantalla('editor');setModalModelos(false);
                   }}
                     style={{background:'#0f172a',border:'1px solid #334155',borderRadius:'10px',padding:'14px 16px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',transition:'all 0.1s'}}
@@ -3460,13 +3491,12 @@ const PresupuestoObraView = () => {
       const pu=calcPU(focoPart), cant=calcCant(focoPart), tot=cant*pu;
       return (
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          {/* Barra de foco — clic en cualquier parte vuelve atrás */}
+          {/* Barra de foco — DOBLE CLIC para volver al presupuesto */}
           <div
-            onClick={()=>{setApuOpen(null);setCodSugest(null);}}
-            style={{background:'#fef3c7',borderBottom:'2px solid #d97706',padding:'8px 16px',display:'flex',alignItems:'center',gap:'10px',flexShrink:0,cursor:'pointer',userSelect:'none'}}
-            title="Clic para volver al presupuesto"
+            onDoubleClick={()=>{setApuOpen(null);setCodSugest(null);}}
+            style={{background:'#fef3c7',borderBottom:'2px solid #d97706',padding:'8px 16px',display:'flex',alignItems:'center',gap:'10px',flexShrink:0,cursor:'default',userSelect:'none'}}
+            title="Doble clic para volver al presupuesto"
           >
-            <span style={{fontWeight:'800',color:'#d97706',fontSize:'16px'}}>←</span>
             <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:0}}>
               <span style={{fontSize:'10px',fontWeight:'700',color:'#d97706',textTransform:'uppercase',letterSpacing:'0.06em'}}>{obra.nombre} · Análisis de Precio Unitario</span>
               <span style={{fontWeight:'700',color:'#78350f',fontSize:'13px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
@@ -3526,11 +3556,10 @@ const PresupuestoObraView = () => {
                     </tr>
                     {/* APU insumos — siempre visible en modo foco */}
                     <tr><td colSpan={7} style={{padding:'0',borderBottom:'2px solid #d97706',borderLeft:'4px solid #d97706'}}>
-                      <div onClick={()=>{setApuOpen(null);setCodSugest(null);}} style={{padding:'6px 12px',fontSize:'11px',fontWeight:'700',color:'#92400e',display:'flex',alignItems:'center',gap:'8px',background:'#fef3c7',borderBottom:'1px solid #fde68a',cursor:'pointer',userSelect:'none'}} title="Clic para volver al presupuesto">
+                      <div onDoubleClick={()=>{setApuOpen(null);setCodSugest(null);}} style={{padding:'6px 12px',fontSize:'11px',fontWeight:'700',color:'#92400e',display:'flex',alignItems:'center',gap:'8px',background:'#fef3c7',borderBottom:'1px solid #fde68a',cursor:'default',userSelect:'none'}} title="Doble clic para cerrar">
                         <span style={{fontSize:'13px',color:'#d97706'}}>▼</span>
                         <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309',fontSize:'12px'}}>{pCode}</span>
                         <span style={{flex:1,color:'#78350f',fontWeight:'700'}}>{p.desc}</span>
-                        <span style={{fontSize:'10px',color:'#d97706',fontWeight:'400'}}>↑ clic para cerrar</span>
                         <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309'}}>P.U. = {fmt(pu2)}</span>
                       </div>
                       <div style={{overflowX:'auto'}}>
