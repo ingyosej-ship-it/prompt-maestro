@@ -3073,27 +3073,87 @@ const PresupuestoObraView = () => {
   };
 
   // ── PASTE EN ANÁLISIS DE COSTO (APU) ────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  //  PASTE APU — pega insumos en análisis de costo
+  //  Formato Excel esperado (en cualquier orden de columnas):
+  //  COD | NAT? | DESCRIPCION | CANTIDAD | UNIDAD | COSTO/PU | ITBIS? | RENDTO? | VALOR?
+  // ──────────────────────────────────────────────────────────────────────────
   const handleApuExcelPaste = (capId, scId, pId, text) => {
     if(!text||!text.trim()) return;
     const lines=_splitLines(text).filter(l=>l.trim());
     if(!lines.length) return;
 
+    // Para cada fila del Excel mapeamos columnas de forma inteligente
+    const parseRow = cols => {
+      if(!cols.some(c=>c.trim())) return null;
+
+      // Clasificar cada celda
+      const cells = cols.map((c,i)=>({i, v:c.trim(), isN:_isNum(c.trim()), n:_cleanNum2(c.trim())}));
+      const numCells  = cells.filter(x=>x.isN&&x.n!==null);
+      const txtCells  = cells.filter(x=>!x.isN&&x.v);
+
+      // Código: primera celda que luce como código de insumo
+      let cod='';
+      const codCell = txtCells.find(x=>/^[A-Za-z]{1,6}[\.\-]\d+/.test(x.v)||/^[A-Za-z]{2,}\d{3,}/.test(x.v));
+      if(codCell) cod=codCell.v;
+
+      // Naturaleza: celda NAT_ABREVS (ignorar al buscar desc)
+      const natCells = new Set(txtCells.filter(x=>NAT_ABREVS.has(x.v.toUpperCase().replace(/[.\s_]/g,''))).map(x=>x.i));
+
+      // Descripción: primer texto largo NO código NO naturaleza
+      let desc='';
+      const descCell = txtCells.find(x=>x.i!==(codCell&&codCell.i)&&!natCells.has(x.i)&&x.v.length>=2);
+      if(descCell) desc=descCell.v;
+
+      // Unidad: texto corto (1-8 chars) NO código NO desc NO naturaleza
+      let unidad='ud';
+      const udCell = txtCells.find(x=>
+        x.i!==(codCell&&codCell.i)&&
+        x.i!==(descCell&&descCell.i)&&
+        !natCells.has(x.i)&&
+        x.v.length>=1&&x.v.length<=8
+      );
+      if(udCell) unidad=udCell.v;
+
+      // Números: CANT, PU, [ITBIS, RENDTO, VALOR]
+      let cantidad='', pu='', itbis=0, rendimiento=1;
+      if(numCells.length===0){ if(!desc&&!cod) return null; }
+      else if(numCells.length===1){ pu=String(numCells[0].n); cantidad='1'; }
+      else if(numCells.length===2){ cantidad=String(numCells[0].n); pu=String(numCells[1].n); }
+      else {
+        // 3+ números → buscar PU como: cant × pu ≈ valor_total
+        cantidad=String(numCells[0].n);
+        const cantV=numCells[0].n;
+        const totalV=numCells[numCells.length-1].n;
+        let foundPU=false;
+        for(let k=1;k<numCells.length-1;k++){
+          const cand=numCells[k].n;
+          if(cantV>0&&totalV>0&&Math.abs(cantV*cand-totalV)/totalV<0.12){
+            pu=String(cand); foundPU=true; break;
+          }
+        }
+        if(!foundPU) pu=String(numCells[numCells.length-2].n);
+      }
+
+      if(!desc&&!cod) return null;
+      return {id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu,itbis,rendimiento};
+    };
+
     const newComps=[];
     for(const line of lines){
       const cols=_splitCols(line);
       if(_isHeader(cols)) continue;
-      const comp=_parseInsumoRow(cols);
+      const comp=parseRow(cols);
       if(comp) newComps.push(comp);
     }
 
     if(newComps.length>0){
       const p=getPart(capId,scId,pId);
       if(!p) return;
-      // Descartar TODAS las filas vacías (sin código, descripción ni PU)
+      // Eliminar filas vacías existentes, conservar solo las con datos
       const withData=(p.componentes||[]).filter(c=>
         (c.cod&&c.cod.trim())||(c.desc&&c.desc.trim())||parseFloat(c.pu)>0
       );
-      // Agregar los nuevos al final de los que ya tenían datos
       updatePart(capId,scId,pId,{componentes:[...withData,...newComps]});
       setPasteNotif('✓ APU: '+newComps.length+' insumo(s) pegado(s)');
       setTimeout(()=>setPasteNotif(''),4000);
@@ -3101,95 +3161,156 @@ const PresupuestoObraView = () => {
     setApuPaste(null); setApuPasteText('');
   };
 
-  // ── PASTE EN PRESUPUESTO — detecta caps/subcaps/partidas en orden ────────
+  // ──────────────────────────────────────────────────────────────────────────
+  //  PASTE PRESUPUESTO — detecta caps/subcaps/partidas manteniendo el orden
+  //  Reglas de código:
+  //   "1" / "01" / "1.00" / "2.00"   → CAPÍTULO   (entero o .00)
+  //   "1.01" / "6.03" / "1.02"       → SUBCAPÍTULO (dos niveles, decimales ≠ 0)
+  //   "1.01.001" / "1.02.003"         → PARTIDA (tres niveles)
+  //   "SV.0028" / "MO.0053"           → PARTIDA (código alfanumérico)
+  //   Fila solo texto sin código      → según contexto: cap o subcap
+  // ──────────────────────────────────────────────────────────────────────────
   const handleSmartPaste = (txt) => {
     if(!txt||!txt.trim()||!obra) return;
     const lines=_splitLines(txt);
     const newCaps=[], newIndirectos=[];
     let capActual=null, scActual=null;
 
-    // nivelCod: "1"/"1.00" → 1(cap), "1.01"/"6.03" → 2(subcap), "1.01.001" → 3+(partida)
-    const nivelCod = s => {
+    // Clasifica código numérico punteado
+    const tipoNum = s => {
       const t=(s||'').trim();
       if(!/^\d+(\.\d+)*$/.test(t)) return 0;
-      const parts=t.split('.');
-      if(parts.length===2&&parseInt(parts[1],10)===0) return 1; // "1.00" → cap
-      return parts.length;
+      const partes=t.split('.');
+      if(partes.length===1) return 1; // "1" "01"
+      if(partes.length===2){
+        // "1.00" → cap (segundo segmento todo ceros)
+        if(/^0+$/.test(partes[1])) return 1;
+        return 2; // "1.01" "6.03"
+      }
+      return 3; // "1.01.001" o más
     };
-    const esMayus = s => { const t=(s||'').trim(); return t.length>=3&&t===t.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]/.test(t)&&!/^\d/.test(t); };
-    const hayNum  = cols => cols.some(c=>_isNum(c)&&(_cleanNum2(c)||0)>0);
-    const celdas  = cols => cols.filter(c=>c.trim()).length;
+    const esMayus  = s=>{ const t=(s||'').trim(); return t.length>=3&&t===t.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]/.test(t)&&!/^\d/.test(t); };
+    // Contar celdas con números reales (no códigos)
+    const numReales = cols => cols.filter(c=>{
+      const t=(c||'').trim();
+      if(!t) return false;
+      // Excluir si tiene letras (código alfanumérico)
+      if(/[A-Za-záéíóúñ]/.test(t)) return false;
+      return _isNum(t)&&(_cleanNum2(t)||0)>0;
+    });
 
     for(const raw of lines){
       if(!raw.trim()) continue;
       const cols=_splitCols(raw);
-      const c0=(cols[0]||'').trim(), c1=(cols[1]||'').trim();
-      const niv=nivelCod(c0);
-      const conNum=hayNum(cols);
-      const sinNum=!conNum;
-      const nCeldas=celdas(cols);
       if(_isHeader(cols)) continue;
-      if(nCeldas<=1) continue;
+      const nz=cols.filter(c=>c.trim()).length;
+      if(nz===0) continue;
 
-      // INDIRECTOS
-      if(nCeldas<=3){ const pctC=cols.find(c=>/^\d+(\.\d+)?%$/.test(c.trim())); if(pctC){const pv=parseFloat(pctC)||0;const lbl=cols.find(c=>c.trim()&&!/^\d/.test(c.trim())&&c.trim().length>2)||'Indirecto';if(pv>0&&pv<=100){newIndirectos.push({id:uid(),label:lbl.trim(),pct:pv,activo:true});continue;}}}
+      const c0=(cols[0]||'').trim();
+      const c1=(cols[1]||'').trim();
+      const tipo=tipoNum(c0);
+      const numCols=numReales(cols);
+      const sinNums=numCols.length===0;
 
-      // CAPÍTULO
-      if((niv===1&&sinNum)||(esMayus(c0)&&sinNum)||(niv===0&&esMayus(c0)&&sinNum)){
-        const nombre=(niv===1?(c1||c0):c0).trim()||'Capítulo';
+      // ── INDIRECTOS ──
+      const pctC=cols.find(c=>/^\d+(\.\d+)?%$/.test((c||'').trim()));
+      if(pctC&&nz<=4){
+        const pv=parseFloat(pctC)||0;
+        const lbl=cols.find(c=>{const t=(c||'').trim();return t&&!/^\d/.test(t)&&t.length>2&&!/^\d+(\.\d+)?%$/.test(t);})||'Indirecto';
+        if(pv>0&&pv<=100){newIndirectos.push({id:uid(),label:(lbl||'Indirecto').trim(),pct:pv,activo:true});continue;}
+      }
+
+      // ── CAPÍTULO: tipo 1 sin nums reales, o texto MAYÚSCULAS sin nums ──
+      const esCap=(tipo===1&&sinNums)||(tipo===0&&esMayus(c0)&&sinNums);
+      if(esCap){
+        // Nombre: si hay segunda columna no numérica usarla, sino c0
+        const nombre=(c1&&!_isNum(c1)?c1:c0).trim()||c0||'Capítulo';
         capActual={...mkCap(nombre,CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
         newCaps.push(capActual); scActual=null; continue;
       }
-      // SUBCAPÍTULO
-      if((niv===2&&sinNum)||(niv===0&&sinNum&&capActual&&!esMayus(c0)&&nCeldas<=3&&c0.length>1)){
-        if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
-        const nombre=(niv===2?(c1||c0):c0).trim()||'Subcapítulo';
+
+      // ── SUBCAPÍTULO: tipo 2 sin nums reales, o texto plano bajo un cap ──
+      const esSC=(tipo===2&&sinNums)||(tipo===0&&sinNums&&capActual&&!esMayus(c0)&&c0.length>1&&nz<=3);
+      if(esSC){
+        if(!capActual){capActual={...mkCap(c0,CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
+        const nombre=(c1&&!_isNum(c1)?c1:c0).trim()||c0||'Subcapítulo';
         scActual={...mkSubcap(nombre),partidas:[]};
         capActual.subcapitulos.push(scActual); continue;
       }
 
-      // PARTIDA
+      // ── PARTIDA ──
       let codigo='',desc='',unidad='ud',cantidad=0,puVal=0;
-      const nums=cols.filter(c=>_isNum(c)).map(c=>_cleanNum2(c)).filter(n=>n!==null&&n>0);
-      const textos=cols.filter(c=>c&&!_isNum(c)&&!NAT_ABREVS.has(c.toUpperCase().replace(/[.\s]/g,'')));
+      const nNums=numCols.map(c=>_cleanNum2(c)).filter(n=>n!==null);
+      const nTextos=cols.filter(c=>{const t=(c||'').trim();return t&&!_isNum(t)&&!NAT_ABREVS.has(t.toUpperCase().replace(/[.\s]/g,''));});
 
-      if(niv>=3||(niv===2&&conNum)){
+      if(tipo>=3||(tipo===2&&numCols.length>0)){
+        // Código jerárquico numérico CON precio
         codigo=c0;
-        desc=(textos.find(t=>t!==c0&&t.length>2)||c1||'').trim();
-        const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&c.trim()&&c.trim().length<=6&&c.trim()!==desc);
+        desc=(nTextos.find(t=>t!==c0&&t.length>2)||c1||'').trim();
+        const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);
         unidad=udC||'ud';
-        if(nums.length>=3){cantidad=nums[0];puVal=nums[nums.length-2]||nums[1];}
-        else if(nums.length===2){cantidad=nums[0];puVal=nums[1];}
-        else if(nums.length===1){puVal=nums[0];cantidad=1;}
-      } else if(/^[A-Z]{1,5}[\.\-]\d+/i.test(c0)||/^[A-Z]{2,}\d{3,}/i.test(c0)){
+        if(nNums.length>=3){cantidad=nNums[0];puVal=nNums[nNums.length-2]||nNums[1];}
+        else if(nNums.length===2){cantidad=nNums[0];puVal=nNums[1];}
+        else if(nNums.length===1){puVal=nNums[0];cantidad=1;}
+      } else if(/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0)||/^[A-Za-z]{2,}\d{3,}/.test(c0)){
+        // Código alfanumérico SV.0028, MO.0053
         codigo=c0;
-        desc=(c1||textos.find(t=>t!==c0&&t.length>1)||'').trim();
-        const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&c.trim()&&c.trim().length<=6);
+        desc=(c1&&!_isNum(c1)?c1:nTextos.find(t=>t!==c0&&t.length>1)||'').trim();
+        const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&!NAT_ABREVS.has(((c||'').trim()).toUpperCase()));
         unidad=udC||'ud';
-        if(nums.length>=2){cantidad=nums[0];puVal=nums[nums.length-2]||nums[1];}
-        else if(nums.length===1){puVal=nums[0];cantidad=1;}
-      } else if(conNum&&c0.length>=2){
-        const parCod=c0.length<=16&&c1.length>3&&!_isNum(c1)&&nCeldas>=3;
-        if(parCod){codigo=c0;desc=c1.trim();const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&c.trim()&&c.trim().length<=8&&c.trim()!==desc);unidad=udC||'ud';}
-        else{desc=(textos[0]||c0||'').trim();const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&c.trim()&&c.trim().length<=8&&c.trim()!==desc);unidad=udC||'ud';}
-        if(nums.length>=2){cantidad=nums[0];puVal=nums[1];}
-        else if(nums.length===1){puVal=nums[0];cantidad=1;}
+        if(nNums.length>=2){cantidad=nNums[0];puVal=nNums[nNums.length-2]||nNums[1];}
+        else if(nNums.length===1){puVal=nNums[0];cantidad=1;}
+      } else if(numCols.length>0){
+        // Fila sin código reconocible pero con números
+        const parece=c0.length<=18&&c1.length>3&&!_isNum(c1)&&nz>=3;
+        if(parece){
+          codigo=c0; desc=c1.trim();
+          const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);
+          unidad=udC||'ud';
+        } else {
+          desc=(nTextos[0]||(c0&&!_isNum(c0)?c0:'')||'').trim();
+          const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);
+          unidad=udC||'ud';
+        }
+        if(nNums.length>=2){cantidad=nNums[0];puVal=nNums[1];}
+        else if(nNums.length===1){puVal=nNums[0];cantidad=1;}
       } else continue;
 
       if(!desc&&!codigo) continue;
-      const np={...mkPartida((desc||codigo||'').trim(),unidad,puVal,codigo),temporal:puVal===0,mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]};
-      if(!capActual){capActual={...mkCap('Importado',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
-      if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos.push(scActual);}
+      const np={
+        ...mkPartida((desc||codigo||'').trim(),unidad,puVal,codigo),
+        temporal:puVal===0,
+        mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]
+      };
+      // Agregar a cap/subcap actual (sin crear "Importado" innecesario si ya hay uno)
+      if(!capActual){
+        capActual={...mkCap(codigo||'Sin Capítulo',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
+        newCaps.push(capActual);
+      }
+      if(!scActual){
+        scActual={...mkSubcap(desc.slice(0,30)||'Partidas'),partidas:[]};
+        capActual.subcapitulos.push(scActual);
+      }
       scActual.partidas.push(np);
     }
+
     newCaps.forEach(c=>{if(!c.subcapitulos.length)c.subcapitulos=[{...mkSubcap('Partidas'),partidas:[]}];});
     const totalParts=newCaps.reduce((s,c)=>(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).length,s),0);
     const totalSC=newCaps.reduce((s,c)=>s+(c.subcapitulos||[]).length,0);
     let notif='';
-    if(newCaps.length>0||totalParts>0){setCaps(prev=>[...prev,...newCaps]);notif=`✓ ${newCaps.length} cap · ${totalSC} subcap · ${totalParts} partida(s)`;}
-    if(newIndirectos.length>0){updateObra({indirectos:[...(obra.indirectos||[]),...newIndirectos]});notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';}
+    if(newCaps.length>0||totalParts>0){
+      setCaps(prev=>[...prev,...newCaps]);
+      notif=`✓ ${newCaps.length} cap · ${totalSC} subcap · ${totalParts} partida(s)`;
+    }
+    if(newIndirectos.length>0){
+      updateObra({indirectos:[...(obra.indirectos||[]),...newIndirectos]});
+      notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';
+    }
     if(notif){setPasteNotif(notif);setTimeout(()=>setPasteNotif(''),5000);}
-    else if(lines.some(l=>l.trim())){setPasteNotif('⚠ No se detectaron partidas — verifica formato.');setTimeout(()=>setPasteNotif(''),5000);}
+    else if(lines.some(l=>l.trim())){
+      setPasteNotif('⚠ No se detectaron partidas. Verifica el formato del Excel.');
+      setTimeout(()=>setPasteNotif(''),5000);
+    }
   };
   const exportRef  = React.useRef(null);
   const fileRef    = React.useRef(null);
