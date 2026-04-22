@@ -2831,12 +2831,12 @@ const PresupuestoObraView = () => {
     id:uid(), codigo:codigo||'', desc:desc||'Nueva partida', unidad:unidad||'ud', puManual:puManual||0,
     mediciones:[mkMed()], componentes:[], temporal:true, showMed:false, showComp:false,
   });
-  const mkSubcap = (nombre) => ({id:uid(),nombre:nombre||'Nuevo Subcapitulo',abierto:true,partidas:[]});
-  const mkCap    = (nombre,color) => ({id:uid(),nombre:nombre||'Nuevo Capitulo',color:color||'#6366f1',abierto:true,subcapitulos:[mkSubcap()]});
+  const mkSubcap = (nombre,codigo) => ({id:uid(),codigo:codigo||'',nombre:nombre||'Nuevo Subcapitulo',abierto:true,partidas:[]});
+  const mkCap    = (nombre,color,codigo) => ({id:uid(),codigo:codigo||'',nombre:nombre||'Nuevo Capitulo',color:color||'#2563eb',abierto:true,subcapitulos:[mkSubcap()]});
 
-  const CAP_BG     = '#1f2937';
-  const SUBCAP_BG  = '#374151';
-  const CAP_COLORS = ['#6366f1','#ef4444','#10b981','#f59e0b','#0ea5e9','#8b5cf6','#f97316','#14b8a6','#ec4899','#64748b'];
+  const CAP_BG     = '#dbeafe';   // Azul claro para capítulos
+  const SUBCAP_BG  = '#f1f5f9';   // Gris azulado para subcapítulos
+  const CAP_COLORS = ['#2563eb','#0891b2','#059669','#d97706','#7c3aed','#dc2626','#0284c7','#65a30d','#c026d3','#475569'];
   const MONEDAS    = ['RD$','USD','EUR','HTG'];
 
   // customNAT debe declararse ANTES de NAT/getAllNAT para evitar ReferenceError
@@ -2988,7 +2988,11 @@ const PresupuestoObraView = () => {
     return /^-?[\d.,\s]+$/.test(sinMoneda);
   };
   const _splitLines = txt => txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
-  const _splitCols  = line => line.split('\t').map(c=>c.replace(/^"|"$/g,'').trim());
+  const _splitCols  = line => {
+    // Detectar separador: si hay tabs usar tabs, si hay ; usar ;
+    const sep = line.includes('\t') ? '\t' : line.includes(';') ? ';' : '\t';
+    return line.split(sep).map(c=>c.replace(/^"|"$/g,'').trim());
+  };
   const NAT_ABREVS  = new Set(['M','O','H','E','T','S','V','MAT','MO','MOB','M.O.','HER','EQP','TRP','SUB','VAR','MATERIAL','MANO','OBRA','EQUIPO','HERRAMIENTA','TRANSPORTE','SUBCONTRATO','VARIOS']);
 
   // ── Detectar si una columna es encabezado (texto descriptivo sin datos) ──
@@ -3223,57 +3227,67 @@ const PresupuestoObraView = () => {
       // ── CAPÍTULO: tipo 1 sin nums reales, o texto MAYÚSCULAS sin nums ──
       const esCap=(tipo===1&&sinNums)||(tipo===0&&esMayus(c0)&&sinNums);
       if(esCap){
-        // Nombre: si hay segunda columna no numérica usarla, sino c0
-        const nombre=(c1&&!_isNum(c1)?c1:c0).trim()||c0||'Capítulo';
-        capActual={...mkCap(nombre,CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
+        // Guardar código original (ej. "1.00") y nombre de la segunda columna
+        const codOrig=tipo===1?c0:'';
+        const nombre=(c1&&!_isNum(c1)?c1:c0).trim()||'Capítulo';
+        capActual={...mkCap(nombre,CAP_COLORS[newCaps.length%CAP_COLORS.length],codOrig),subcapitulos:[]};
         newCaps.push(capActual); scActual=null; continue;
       }
 
       // ── SUBCAPÍTULO: tipo 2 sin nums reales, o texto plano bajo un cap ──
       const esSC=(tipo===2&&sinNums)||(tipo===0&&sinNums&&capActual&&!esMayus(c0)&&c0.length>1&&nz<=3);
       if(esSC){
-        if(!capActual){capActual={...mkCap(c0,CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};newCaps.push(capActual);}
-        const nombre=(c1&&!_isNum(c1)?c1:c0).trim()||c0||'Subcapítulo';
-        scActual={...mkSubcap(nombre),partidas:[]};
+        if(!capActual){capActual={...mkCap(c0,CAP_COLORS[newCaps.length%CAP_COLORS.length],c0),subcapitulos:[]};newCaps.push(capActual);}
+        const codOrig=tipo===2?c0:'';
+        const nombre=(c1&&!_isNum(c1)?c1:c0).trim()||'Subcapítulo';
+        scActual={...mkSubcap(nombre,codOrig),partidas:[]};
         capActual.subcapitulos.push(scActual); continue;
       }
 
       // ── PARTIDA ──
       let codigo='',desc='',unidad='ud',cantidad=0,puVal=0;
-      const nNums=numCols.map(c=>_cleanNum2(c)).filter(n=>n!==null);
+      // IMPORTANTE: usar solo números reales, no inventar precios
+      const nNums=numCols.map(c=>_cleanNum2(c)).filter(n=>n!==null&&n>0);
       const nTextos=cols.filter(c=>{const t=(c||'').trim();return t&&!_isNum(t)&&!NAT_ABREVS.has(t.toUpperCase().replace(/[.\s]/g,''));});
 
       if(tipo>=3||(tipo===2&&numCols.length>0)){
-        // Código jerárquico numérico CON precio
         codigo=c0;
         desc=(nTextos.find(t=>t!==c0&&t.length>2)||c1||'').trim();
-        const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);
+        // Unidad: texto corto entre código y primer número
+        const primerNumIdx=cols.findIndex(c=>_isNum(c)&&(_cleanNum2(c)||0)>0);
+        const udC=cols.slice(1,primerNumIdx>1?primerNumIdx:cols.length).find(c=>{
+          const t=(c||'').trim();
+          return t&&!_isNum(t)&&t.length<=6&&t!==desc&&!NAT_ABREVS.has(t.toUpperCase());
+        });
         unidad=udC||'ud';
-        if(nNums.length>=3){cantidad=nNums[0];puVal=nNums[nNums.length-2]||nNums[1];}
+        // Precio: si hay 1 num → PU, si 2 → cant+PU, si 3+ → cant+PU+total (PU=penúltimo o verificar cant×PU≈total)
+        if(nNums.length===1){puVal=nNums[0];cantidad=1;}
         else if(nNums.length===2){cantidad=nNums[0];puVal=nNums[1];}
-        else if(nNums.length===1){puVal=nNums[0];cantidad=1;}
+        else if(nNums.length>=3){
+          cantidad=nNums[0];
+          // Verificar: algún nNums[k] tal que cant×nNums[k] ≈ nNums[last]
+          const total=nNums[nNums.length-1];
+          let found=false;
+          for(let k=1;k<nNums.length-1;k++){
+            if(cantidad>0&&Math.abs(cantidad*nNums[k]-total)/Math.max(total,1)<0.15){puVal=nNums[k];found=true;break;}
+          }
+          if(!found) puVal=nNums[nNums.length-2]; // penúltimo por defecto
+        }
       } else if(/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0)||/^[A-Za-z]{2,}\d{3,}/.test(c0)){
-        // Código alfanumérico SV.0028, MO.0053
         codigo=c0;
         desc=(c1&&!_isNum(c1)?c1:nTextos.find(t=>t!==c0&&t.length>1)||'').trim();
         const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&!NAT_ABREVS.has(((c||'').trim()).toUpperCase()));
         unidad=udC||'ud';
-        if(nNums.length>=2){cantidad=nNums[0];puVal=nNums[nNums.length-2]||nNums[1];}
-        else if(nNums.length===1){puVal=nNums[0];cantidad=1;}
+        if(nNums.length===1){puVal=nNums[0];cantidad=1;}
+        else if(nNums.length===2){cantidad=nNums[0];puVal=nNums[1];}
+        else if(nNums.length>=3){cantidad=nNums[0];const total=nNums[nNums.length-1];let found=false;for(let k=1;k<nNums.length-1;k++){if(cantidad>0&&Math.abs(cantidad*nNums[k]-total)/Math.max(total,1)<0.15){puVal=nNums[k];found=true;break;}}if(!found)puVal=nNums[nNums.length-2];}
       } else if(numCols.length>0){
-        // Fila sin código reconocible pero con números
         const parece=c0.length<=18&&c1.length>3&&!_isNum(c1)&&nz>=3;
-        if(parece){
-          codigo=c0; desc=c1.trim();
-          const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);
-          unidad=udC||'ud';
-        } else {
-          desc=(nTextos[0]||(c0&&!_isNum(c0)?c0:'')||'').trim();
-          const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);
-          unidad=udC||'ud';
-        }
-        if(nNums.length>=2){cantidad=nNums[0];puVal=nNums[1];}
-        else if(nNums.length===1){puVal=nNums[0];cantidad=1;}
+        if(parece){codigo=c0;desc=c1.trim();const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);unidad=udC||'ud';}
+        else{desc=(nTextos[0]||(c0&&!_isNum(c0)?c0:'')||'').trim();const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);unidad=udC||'ud';}
+        if(nNums.length===1){puVal=nNums[0];cantidad=1;}
+        else if(nNums.length===2){cantidad=nNums[0];puVal=nNums[1];}
+        else if(nNums.length>=3){cantidad=nNums[0];const total=nNums[nNums.length-1];let found=false;for(let k=1;k<nNums.length-1;k++){if(cantidad>0&&Math.abs(cantidad*nNums[k]-total)/Math.max(total,1)<0.15){puVal=nNums[k];found=true;break;}}if(!found)puVal=nNums[nNums.length-2];}
       } else continue;
 
       if(!desc&&!codigo) continue;
@@ -3282,13 +3296,12 @@ const PresupuestoObraView = () => {
         temporal:puVal===0,
         mediciones:[{id:uid(),concepto:'',a:String(cantidad||1),b:'',c:'',d:'',formula:''}]
       };
-      // Agregar a cap/subcap actual (sin crear "Importado" innecesario si ya hay uno)
       if(!capActual){
-        capActual={...mkCap(codigo||'Sin Capítulo',CAP_COLORS[newCaps.length%CAP_COLORS.length]),subcapitulos:[]};
+        capActual={...mkCap('Sin Capítulo',CAP_COLORS[newCaps.length%CAP_COLORS.length],''),subcapitulos:[]};
         newCaps.push(capActual);
       }
       if(!scActual){
-        scActual={...mkSubcap(desc.slice(0,30)||'Partidas'),partidas:[]};
+        scActual={...mkSubcap('Partidas',''),partidas:[]};
         capActual.subcapitulos.push(scActual);
       }
       scActual.partidas.push(np);
@@ -3393,14 +3406,19 @@ const PresupuestoObraView = () => {
     if(pantalla!=='editor') return;
     const handler=(e)=>{
       const tag=(e.target.tagName||'').toLowerCase();
-      if(tag==='input'||tag==='textarea'||tag==='select') return;
       const txt=e.clipboardData&&e.clipboardData.getData('text');
       if(!txt||!txt.trim()) return;
-      // Si hay un APU abierto, el paste va a los insumos, NO al presupuesto
+
+      // Si hay un APU abierto y el texto tiene múltiples líneas/columnas → paste al APU
       if(apuOpen){
-        const ctx=findPartContext(apuOpen);
-        if(ctx){ e.preventDefault(); handleApuExcelPaste(ctx.capId,ctx.scId,ctx.pId,txt); return; }
+        const isMultiCell=txt.includes('\t')||(txt.split('\n').filter(l=>l.trim()).length>1);
+        if(isMultiCell){
+          const ctx=findPartContext(apuOpen);
+          if(ctx){ e.preventDefault(); handleApuExcelPaste(ctx.capId,ctx.scId,ctx.pId,txt); return; }
+        }
       }
+      // Si el foco está en un input normal, dejar que pegue ahí
+      if(tag==='input'||tag==='textarea'||tag==='select') return;
       e.preventDefault();
       handleSmartPaste(txt);
     };
@@ -3448,7 +3466,58 @@ const PresupuestoObraView = () => {
   const descargarObra=()=>{const blob=new Blob([JSON.stringify(obra,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.obra.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
   const abrirArchivo=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const o=JSON.parse(ev.target.result);if(o&&o.capitulos){if(!o.indirectos)o.indirectos=[];if(o.iva===undefined)o.iva=18;if(!o.moneda)o.moneda='RD$';if(!o.tasaUSD)o.tasaUSD=60;if(!o.tasaEUR)o.tasaEUR=65;setObra(o);guardarObra(o);setPantalla('editor');}else alert('Archivo no valido.');}catch{alert('Error al leer.');}};reader.readAsText(file);e.target.value='';};
   const exportarBC3=()=>{const hoy=new Date().toISOString().slice(0,10).replace(/-/g,'');let bc3='~V|PROCALC||'+obra.nombre+'|||'+hoy+'\n';(obra.capitulos||[]).forEach(c=>{bc3+='~C|'+c.nombre.replace(/\s/g,'_')+'|Ud|'+c.nombre+'|0|\n';(c.subcapitulos||[]).forEach(sc=>(sc.partidas||[]).forEach(p=>{bc3+='~V|'+(p.codigo||p.id)+'|'+p.unidad+'|'+p.desc+'|'+calcPU(p).toFixed(2)+'||\n';bc3+='~D|'+(p.codigo||p.id)+'|||'+calcCant(p).toFixed(4)+'|\n';}));});const blob=new Blob([bc3],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.bc3';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
-  const importarBC3=()=>{const lines=bc3Text.trim().split('\n');let capActual=null,scActual=null;const nC=[];lines.forEach(line=>{const l=line.trim();if(!l)return;if(l.startsWith('~C')){const p=l.split('|');capActual={...mkCap(p[3]||p[1]||'Cap','#374151'),subcapitulos:[]};scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];nC.push(capActual);}else if(l.startsWith('~V')){if(!capActual){capActual={...mkCap('Importado','#374151'),subcapitulos:[]};scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];nC.push(capActual);}if(!scActual){scActual={...mkSubcap('Partidas'),partidas:[]};capActual.subcapitulos=[scActual];}const p=l.split('|');scActual.partidas.push({...mkPartida(p[3]||p[1]||'Partida',p[2]||'ud',parseFloat(p[4])||0,p[1]||''),temporal:false});}});if(nC.length>0){setCaps(prev=>[...prev,...nC]);alert('BC3 importado: '+nC.length+' cap.');}else alert('No se detectaron datos BC3.');setShowBC3(false);setBc3Text('');};
+  const importarBC3=()=>{
+    const lines=bc3Text.trim().split('\n');
+    let capActual=null,scActual=null;
+    const nC=[];
+    lines.forEach(line=>{
+      const l=line.trim();
+      if(!l) return;
+      if(l.startsWith('~C')){
+        const p=l.split('|');
+        const cod=p[1]||'';
+        const nombre=p[3]||p[1]||'Cap';
+        capActual={...mkCap(nombre,CAP_COLORS[nC.length%CAP_COLORS.length],cod),subcapitulos:[]};
+        scActual={...mkSubcap('Partidas',''),partidas:[]};
+        capActual.subcapitulos=[scActual];
+        nC.push(capActual);
+      } else if(l.startsWith('~V')){
+        if(!capActual){
+          capActual={...mkCap('Importado',CAP_COLORS[nC.length%CAP_COLORS.length],''),subcapitulos:[]};
+          scActual={...mkSubcap('Partidas',''),partidas:[]};
+          capActual.subcapitulos=[scActual];
+          nC.push(capActual);
+        }
+        if(!scActual){
+          scActual={...mkSubcap('Partidas',''),partidas:[]};
+          capActual.subcapitulos.push(scActual);
+        }
+        const p=l.split('|');
+        const cod=p[1]||'';
+        const ud=p[2]||'ud';
+        const desc=p[3]||p[1]||'Partida';
+        const pu=parseFloat(p[4])||0;
+        scActual.partidas.push({...mkPartida(desc,ud,pu,cod),temporal:false});
+      } else if(l.startsWith('~D')){
+        // Medición: ~D|cod|||cantidad|
+        if(scActual&&scActual.partidas.length>0){
+          const p=l.split('|');
+          const cant=parseFloat(p[4])||0;
+          const last=scActual.partidas[scActual.partidas.length-1];
+          if(cant>0) last.mediciones=[{id:uid(),concepto:'',a:String(cant),b:'',c:'',d:'',formula:''}];
+        }
+      }
+    });
+    if(nC.length>0){
+      setCaps(prev=>[...prev,...nC]);
+      setPasteNotif('✓ BC3: '+nC.length+' cap, '+nC.reduce((s,c)=>(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).length,s),0)+' partidas');
+      setTimeout(()=>setPasteNotif(''),5000);
+    } else {
+      alert('No se detectaron datos BC3. Formato esperado:\n~C|01|Ud|NOMBRE|0|\n~V|1.01|m2|Descripción|125.00||');
+    }
+    setShowBC3(false);
+    setBc3Text('');
+  };
   const exportarCSV=()=>{const mon=obra.moneda||'RD$';let csv='Codigo,Descripcion,Unidad,Cantidad,P.Unitario,Total,Moneda\n';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');csv+='"'+cod+'","'+c.nombre+'","","","","","'+mon+'"\n';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');csv+=',"'+scod+' '+sc.nombre+'","","","","",""\n';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p);csv+='"'+pcod+'","'+p.desc+'","'+p.unidad+'","'+fmtN(cant,4)+'","'+fmtN(pu)+'","'+fmtN(cant*pu)+'","'+mon+'"\n';});});});const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
   const exportarPDF=()=>{const mon=obra.moneda||'RD$';const fmP=v=>fmtMon(v,mon);let rows='';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');rows+='<tr style="background:#1f2937;color:white;"><td style="padding:8px 14px;font-weight:800;border-left:4px solid '+c.color+'">'+cod+' '+c.nombre+'</td><td colspan="4"></td><td style="padding:8px 14px;text-align:right;font-weight:800;font-family:monospace;">'+fmP(getCT(c))+'</td></tr>';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');rows+='<tr style="background:#374151;color:#d1d5db;"><td colspan="6" style="padding:5px 14px 5px 22px;font-weight:700;font-size:10px;">'+scod+' '+sc.nombre+'</td></tr>';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;rows+='<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 8px;font-size:10px;color:#6b7280;font-family:monospace;">'+pcod+'</td><td style="padding:5px 8px;" colspan="2">'+p.desc+'</td><td style="padding:5px 8px;text-align:center;">'+p.unidad+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;">'+fmtN(cant,4)+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:700;">'+fmP(tot)+'</td></tr>';});});});let indRows='';(obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).forEach(i=>{indRows+='<tr><td colspan="4" style="padding:5px 14px;text-align:right;color:#6b7280;">'+i.label+' ('+i.pct+'%)</td><td style="padding:5px 14px;text-align:right;font-family:monospace;">'+fmP(grandTotal*i.pct/100)+'</td></tr>';});const html='<!DOCTYPE html><html><head><title>'+obra.nombre+'</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px auto;max-width:920px;}table{width:100%;border-collapse:collapse;}th{background:#1f2937;color:#9ca3af;padding:8px 10px;font-size:10px;text-transform:uppercase;text-align:left;}@media print{body{margin:0;}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #6366f1;padding-bottom:10px;margin-bottom:16px;"><div><div style="font-size:20px;font-weight:900;">PRESUPUESTO DE OBRA</div><div style="font-size:15px;font-weight:700;margin-top:2px;">'+obra.nombre+'</div><div style="font-size:11px;color:#9ca3af;">Moneda: '+mon+'</div></div><div style="font-size:10px;color:#9ca3af;">ProCalc - '+new Date().toLocaleDateString('es-DO')+'</div></div><table><thead><tr><th>Codigo</th><th colspan="2">Descripcion</th><th style="text-align:center">Ud.</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Total '+mon+'</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid #e5e7eb;">COSTO DIRECTO</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:800;font-size:14px;">'+fmP(grandTotal)+'</td></tr>'+indRows+'<tr style="background:#374151;color:white;"><td colspan="4" style="padding:7px 14px;text-align:right;font-weight:700;">ITBIS ('+obra.iva+'%)</td><td style="padding:7px 14px;text-align:right;font-family:monospace;">'+fmP(ivaAmt)+'</td></tr><tr style="background:#1f2937;color:white;"><td colspan="4" style="padding:10px;text-align:right;font-weight:800;">TOTAL GENERAL</td><td style="padding:10px;text-align:right;font-family:monospace;font-weight:800;font-size:15px;">'+fmP(totalFinal)+'</td></tr></tfoot></table><script>window.onload=()=>{window.print();}<\/script></body></html>';const w=window.open('','_blank','width=960,height=720');if(w){w.document.write(html);w.document.close();}};
 
@@ -3809,38 +3878,40 @@ const PresupuestoObraView = () => {
         <tbody>
           {caps.map((cap,ci)=>{
             const ct=getCT(cap);
-            const capCode=String(ci+1).padStart(2,'0');
+            // Usar el código del capítulo si lo tiene, sino generar
+            const capCode=cap.codigo||String(ci+1).padStart(2,'0');
             return (
               <React.Fragment key={cap.id}>
                 {/* CAPÍTULO */}
                 <tr style={{background:CAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color}} onClick={()=>togCap(cap.id)}>
-                  <td style={{padding:'9px 10px',fontFamily:'monospace',color:cap.color,fontWeight:'800',fontSize:'12px',borderRight:'1px solid #374151'}}>{capCode}</td>
-                  <td colSpan={4} style={{padding:'9px 10px',fontWeight:'800',fontSize:'12px',color:'white',textTransform:'uppercase',letterSpacing:'0.06em'}}>
-                    <span style={{marginRight:'6px',color:'#6b7280',fontSize:'10px'}}>{cap.abierto?'▼':'▶'}</span>{cap.nombre}
+                  <td style={{padding:'9px 10px',fontFamily:'monospace',color:cap.color,fontWeight:'800',fontSize:'12px',borderRight:'1px solid #c7d2fe'}}>{capCode}</td>
+                  <td colSpan={4} style={{padding:'9px 10px',fontWeight:'800',fontSize:'12px',color:'#1e1b4b',textTransform:'uppercase',letterSpacing:'0.05em'}}>
+                    <span style={{marginRight:'6px',color:'#6366f1',fontSize:'10px'}}>{cap.abierto?'▼':'▶'}</span>{cap.nombre}
                   </td>
-                  <td style={{padding:'9px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:cap.color,borderLeft:'1px solid #374151',borderRight:'1px solid #374151'}}>{fmt(ct)}</td>
+                  <td style={{padding:'9px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:cap.color,borderLeft:'1px solid #c7d2fe',borderRight:'1px solid #c7d2fe'}}>{fmt(ct)}</td>
                   <td style={{background:CAP_BG,textAlign:'center',padding:'4px'}}>
-                    <button onClick={e=>{e.stopPropagation();delCap(cap.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#4b5563',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#4b5563'}>✕</button>
+                    <button onClick={e=>{e.stopPropagation();delCap(cap.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#a5b4fc',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#a5b4fc'}>✕</button>
                   </td>
                 </tr>
                 {cap.abierto&&(cap.subcapitulos||[]).map((sc,si)=>{
                   const sct=getSCT(sc);
-                  const scCode=capCode+'.'+String(si+1).padStart(2,'0');
+                  const scCode=sc.codigo||(capCode+'.'+String(si+1).padStart(2,'0'));
                   return (
                     <React.Fragment key={sc.id}>
                       {/* SUBCAPÍTULO */}
-                      <tr style={{background:SUBCAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color+'88'}} onClick={()=>togSC(cap.id,sc.id)}>
-                        <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#9ca3af',fontWeight:'700',fontSize:'11px',borderRight:'1px solid #4b5563'}}>{scCode}</td>
-                        <td colSpan={4} style={{padding:'7px 10px',fontWeight:'700',fontSize:'11px',color:'#d1d5db'}}>
-                          <span style={{marginRight:'6px',color:'#6b7280',fontSize:'9px'}}>{sc.abierto?'▼':'▶'}</span>{sc.nombre}
+                      <tr style={{background:SUBCAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color+'66'}} onClick={()=>togSC(cap.id,sc.id)}>
+                        <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#475569',fontWeight:'700',fontSize:'11px',borderRight:'1px solid #cbd5e1'}}>{scCode}</td>
+                        <td colSpan={4} style={{padding:'7px 10px',fontWeight:'700',fontSize:'11px',color:'#334155'}}>
+                          <span style={{marginRight:'6px',color:'#94a3b8',fontSize:'9px'}}>{sc.abierto?'▼':'▶'}</span>{sc.nombre}
                         </td>
-                        <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#9ca3af',fontSize:'11px',borderLeft:'1px solid #4b5563',borderRight:'1px solid #4b5563'}}>{fmt(sct)}</td>
+                        <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#475569',fontSize:'11px',borderLeft:'1px solid #cbd5e1',borderRight:'1px solid #cbd5e1'}}>{fmt(sct)}</td>
                         <td style={{background:SUBCAP_BG,textAlign:'center',padding:'4px'}}>
-                          <button onClick={e=>{e.stopPropagation();delSC(cap.id,sc.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#4b5563',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#4b5563'}>✕</button>
+                          <button onClick={e=>{e.stopPropagation();delSC(cap.id,sc.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'#94a3b8',fontSize:'12px'}} onMouseEnter={e=>e.target.style.color='#ef4444'} onMouseLeave={e=>e.target.style.color='#94a3b8'}>✕</button>
                         </td>
                       </tr>
                       {sc.abierto&&(sc.partidas||[]).map((p,pi)=>{
-                        const pCode=scCode+'.'+String(pi+1).padStart(3,'0');
+                        // Usar código del Excel si existe, sino generar secuencial
+                        const pCode=p.codigo||scCode+'.'+String(pi+1).padStart(3,'0');
                         const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;
                         const bg=pi%2===0?'#ffffff':'#f9fafb';
                         const bdr='1px solid #e5e7eb';
