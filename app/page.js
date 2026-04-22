@@ -2927,79 +2927,74 @@ const PresupuestoObraView = () => {
   const _parseInsumoRow = cols => {
     if(!cols.some(c=>c)) return null;
     let cod='', desc='', cantidad='', unidad='ud', pu='', itbis=0, rendimiento=1;
-    let idx=0;
-    const c0=(cols[0]||'').trim();
 
-    // Col 0: ¿Código tipo SV.0028 o alfanumérico o numérico largo?
-    if(/^[A-Za-z]{1,6}[\.\-]\d+/i.test(c0)||/^[A-Za-z]{2,}\d{3,}/i.test(c0)||/^\d{3,}$/.test(c0)){
-      cod=c0; idx=1;
+    // 1. Identificar columnas por tipo
+    const numCols=[];   // {idx, val}
+    const txtCols=[];   // {idx, val}
+    for(let i=0;i<cols.length;i++){
+      const c=(cols[i]||'').trim();
+      if(!c) continue;
+      if(_isNum(c)) numCols.push({idx:i, val:_cleanNum2(c)});
+      else txtCols.push({idx:i, val:c});
     }
 
-    // Saltar naturaleza si la siguiente columna es abreviatura conocida
-    if(idx<cols.length){
-      const mayus=(cols[idx]||'').toUpperCase().replace(/[.\s_]/g,'');
-      if(NAT_ABREVS.has(mayus)&&!_isNum(cols[idx])) idx++;
-    }
-
-    // Saltar celdas vacías
-    while(idx<cols.length&&!(cols[idx]||'').trim()) idx++;
-
-    // Siguiente columna no-numérica = descripción
-    while(idx<cols.length){
-      const c=(cols[idx]||'').trim();
-      if(c&&!_isNum(c)){ desc=c; idx++; break; }
-      if(_isNum(c)) break; // llegamos a los números sin desc
-      idx++;
-    }
-
-    // Si aún no hay desc, buscar primer texto largo en cualquier columna
-    if(!desc){
-      const candidato=cols.find((c,i)=>c&&!_isNum(c)&&c.length>2&&!NAT_ABREVS.has(c.toUpperCase().replace(/[.\s]/g,'')));
-      if(candidato) desc=candidato;
-    }
-
-    // Recolectar todos los números con sus posiciones
-    const nums=[];
-    for(let j=0;j<cols.length;j++){
-      if(_isNum(cols[j])){
-        const v=_cleanNum2(cols[j]);
-        if(v!==null) nums.push({val:v,colIdx:j});
+    // 2. Extraer código (primer texto que luce como código: XX.0000 o letras+dígitos)
+    let codIdx=-1;
+    for(let i=0;i<txtCols.length;i++){
+      const t=txtCols[i].val;
+      if(/^[A-Za-z]{1,6}[\.\-]\d+/i.test(t)||/^[A-Za-z]{2,}\d{3,}/i.test(t)||/^\d{3,}$/.test(t)){
+        cod=t; codIdx=i; break;
       }
     }
 
-    if(nums.length===1){ pu=String(nums[0].val); cantidad='1'; }
-    else if(nums.length===2){ cantidad=String(nums[0].val); pu=String(nums[1].val); }
-    else if(nums.length>=3){
-      cantidad=String(nums[0].val);
-      const total=nums[nums.length-1].val;
-      const cantV=nums[0].val;
-      let bestPU=null;
-      for(let k=1;k<nums.length-1;k++){
-        if(cantV>0&&Math.abs(cantV*nums[k].val-total)/Math.max(total,1)<0.05){ bestPU=nums[k].val; break; }
-      }
-      pu=String(bestPU!==null?bestPU:nums[nums.length-2].val);
+    // 3. Extraer descripción (primer texto largo NO código, NO naturaleza abreviada)
+    let descIdx=-1;
+    for(let i=0;i<txtCols.length;i++){
+      if(i===codIdx) continue;
+      const t=txtCols[i].val;
+      const upper=t.toUpperCase().replace(/[.\s_]/g,'');
+      if(NAT_ABREVS.has(upper)) continue; // saltar naturaleza
+      if(t.length>=2){ desc=t; descIdx=i; break; }
+    }
+    // Si hay más texto después de la descripción y antes de números, podría ser unidad
+    for(let i=descIdx+1;i<txtCols.length;i++){
+      const t=txtCols[i].val;
+      const upper=t.toUpperCase().replace(/[.\s_]/g,'');
+      if(NAT_ABREVS.has(upper)) continue;
+      if(t.length>=1&&t.length<=8&&!desc.includes(t)){ unidad=t; break; }
     }
 
-    // Unidad: primer texto corto (≤8 chars) no-numérico entre los números
-    if(nums.length>=2){
-      const firstIdx=nums[0].colIdx, lastIdx=nums[nums.length-1].colIdx;
-      for(let j=firstIdx+1;j<lastIdx;j++){
-        const c=(cols[j]||'').trim();
-        if(c&&!_isNum(c)&&c.length>=1&&c.length<=8&&!NAT_ABREVS.has(c.toUpperCase())){
-          unidad=c; break;
+    // 4. Asignar números: CANT, PU (y opcionalmente VALOR para verificar)
+    // Orden esperado: CANT → UD(texto) → PU → ITBIS → RENDTO → VALOR
+    if(numCols.length===0) { if(!desc&&!cod) return null; return {id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu,itbis,rendimiento}; }
+    if(numCols.length===1){ pu=String(numCols[0].val); cantidad='1'; }
+    else if(numCols.length===2){ cantidad=String(numCols[0].val); pu=String(numCols[1].val); }
+    else {
+      cantidad=String(numCols[0].val);
+      const cantV=numCols[0].val;
+      const totalV=numCols[numCols.length-1].val;
+      // Buscar el PU: número tal que cant × pu ≈ total (tolerancia 5%)
+      let foundPU=false;
+      for(let k=1;k<numCols.length-1;k++){
+        const candidate=numCols[k].val;
+        if(cantV>0&&Math.abs(cantV*candidate-totalV)/Math.max(Math.abs(totalV),1)<0.10){
+          pu=String(candidate); foundPU=true; break;
         }
       }
-    } else if(nums.length===1){
-      // Buscar unidad a la derecha del primer número
-      const firstIdx=nums[0].colIdx;
-      for(let j=firstIdx+1;j<cols.length;j++){
-        const c=(cols[j]||'').trim();
-        if(c&&!_isNum(c)&&c.length<=8){ unidad=c; break; }
+      if(!foundPU) pu=String(numCols[numCols.length-2].val); // penúltimo por defecto
+      // ITBIS: si hay número entre 0 y 100 que no sea cant ni pu
+      for(let k=1;k<numCols.length-1;k++){
+        const v=numCols[k].val;
+        if(v>0&&v<=100&&String(v)!==pu&&String(v)!==cantidad){
+          // Candidato a ITBIS si está en columna ITBIS conocida (columna ≥ PU idx)
+          // Simple heurística: si es 18 o número pequeño <= 50, es ITBIS
+          if(v===18||v===16||v===0){ itbis=v; break; }
+        }
       }
     }
 
     if(!desc&&!cod) return null;
-    return {id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu,itbis,rendimiento};
+    return {id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu:String(pu),itbis,rendimiento};
   };
 
   // ── PASTE EN ANÁLISIS DE COSTO (APU) ────────────────────────────────────
@@ -3011,7 +3006,7 @@ const PresupuestoObraView = () => {
     const newComps=[];
     for(const line of lines){
       const cols=_splitCols(line);
-      if(_isHeader(cols)) continue; // Saltar fila de encabezados
+      if(_isHeader(cols)) continue;
       const comp=_parseInsumoRow(cols);
       if(comp) newComps.push(comp);
     }
@@ -3019,9 +3014,12 @@ const PresupuestoObraView = () => {
     if(newComps.length>0){
       const p=getPart(capId,scId,pId);
       if(!p) return;
-      // Conservar filas existentes con datos, reemplazar vacías
-      const existing=(p.componentes||[]).filter(c=>c.desc||c.cod||parseFloat(c.pu)>0);
-      updatePart(capId,scId,pId,{componentes:[...existing,...newComps]});
+      // Descartar TODAS las filas vacías (sin código, descripción ni PU)
+      const withData=(p.componentes||[]).filter(c=>
+        (c.cod&&c.cod.trim())||(c.desc&&c.desc.trim())||parseFloat(c.pu)>0
+      );
+      // Agregar los nuevos al final de los que ya tenían datos
+      updatePart(capId,scId,pId,{componentes:[...withData,...newComps]});
       setPasteNotif('✓ APU: '+newComps.length+' insumo(s) pegado(s)');
       setTimeout(()=>setPasteNotif(''),4000);
     }
@@ -3462,15 +3460,21 @@ const PresupuestoObraView = () => {
       const pu=calcPU(focoPart), cant=calcCant(focoPart), tot=cant*pu;
       return (
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          {/* Barra de foco */}
-          <div style={{background:'#fef3c7',borderBottom:'2px solid #d97706',padding:'8px 16px',display:'flex',alignItems:'center',gap:'10px',flexShrink:0}}>
-            <button onClick={()=>{setApuOpen(null);setCodSugest(null);}} style={{background:'#d97706',color:'white',border:'none',borderRadius:'6px',padding:'4px 12px',fontWeight:'700',fontSize:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'5px'}}>
-              ← Volver al presupuesto
-            </button>
-            <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309',fontSize:'13px'}}>{focoCode}</span>
-            <span style={{flex:1,fontWeight:'700',color:'#78350f',fontSize:'13px'}}>{focoPart.desc}</span>
-            <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309',fontSize:'12px'}}>P.U. = {fmt(pu)}</span>
-            <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',background:'#d97706',borderRadius:'5px',padding:'3px 10px',fontSize:'13px'}}>{fmt(tot)}</span>
+          {/* Barra de foco — clic en cualquier parte vuelve atrás */}
+          <div
+            onClick={()=>{setApuOpen(null);setCodSugest(null);}}
+            style={{background:'#fef3c7',borderBottom:'2px solid #d97706',padding:'8px 16px',display:'flex',alignItems:'center',gap:'10px',flexShrink:0,cursor:'pointer',userSelect:'none'}}
+            title="Clic para volver al presupuesto"
+          >
+            <span style={{fontWeight:'800',color:'#d97706',fontSize:'16px'}}>←</span>
+            <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:0}}>
+              <span style={{fontSize:'10px',fontWeight:'700',color:'#d97706',textTransform:'uppercase',letterSpacing:'0.06em'}}>{obra.nombre} · Análisis de Precio Unitario</span>
+              <span style={{fontWeight:'700',color:'#78350f',fontSize:'13px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                <span style={{fontFamily:'monospace',color:'#b45309',marginRight:'8px'}}>{focoCode}</span>{focoPart.desc}
+              </span>
+            </div>
+            <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309',fontSize:'12px',flexShrink:0}}>P.U. = {fmt(pu)}</span>
+            <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',background:'#d97706',borderRadius:'5px',padding:'3px 10px',fontSize:'13px',flexShrink:0}}>{fmt(tot)}</span>
           </div>
           {/* APU completo inline */}
           <div style={{flex:1,overflow:'auto',background:'#fffbeb'}}>
@@ -3522,10 +3526,11 @@ const PresupuestoObraView = () => {
                     </tr>
                     {/* APU insumos — siempre visible en modo foco */}
                     <tr><td colSpan={7} style={{padding:'0',borderBottom:'2px solid #d97706',borderLeft:'4px solid #d97706'}}>
-                      <div style={{padding:'6px 12px',fontSize:'11px',fontWeight:'700',color:'#92400e',display:'flex',alignItems:'center',gap:'8px',background:'#fef3c7',borderBottom:'1px solid #fde68a',userSelect:'none'}}>
+                      <div onClick={()=>{setApuOpen(null);setCodSugest(null);}} style={{padding:'6px 12px',fontSize:'11px',fontWeight:'700',color:'#92400e',display:'flex',alignItems:'center',gap:'8px',background:'#fef3c7',borderBottom:'1px solid #fde68a',cursor:'pointer',userSelect:'none'}} title="Clic para volver al presupuesto">
                         <span style={{fontSize:'13px',color:'#d97706'}}>▼</span>
                         <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309',fontSize:'12px'}}>{pCode}</span>
                         <span style={{flex:1,color:'#78350f',fontWeight:'700'}}>{p.desc}</span>
+                        <span style={{fontSize:'10px',color:'#d97706',fontWeight:'400'}}>↑ clic para cerrar</span>
                         <span style={{fontFamily:'monospace',fontWeight:'800',color:'#b45309'}}>P.U. = {fmt(pu2)}</span>
                       </div>
                       <div style={{overflowX:'auto'}}>
@@ -3611,7 +3616,6 @@ const PresupuestoObraView = () => {
                         onPaste={e=>{const txt=e.clipboardData&&e.clipboardData.getData('text');if(!txt||!txt.trim()) return;e.preventDefault();handleApuExcelPaste(focoCap.id,focoSC.id,p.id,txt);}}>
                         <span style={{fontSize:'10px',color:'#6b7280',fontWeight:'700',marginRight:'4px'}}>+ Insumo:</span>
                         {Object.entries(ALL_NAT).map(([k,v])=>(<button key={k} onClick={()=>addComp(focoCap.id,focoSC.id,p.id,k)} style={{background:v.bg,border:'1px solid '+v.tx+'44',borderRadius:'4px',padding:'2px 8px',cursor:'pointer',fontSize:'10px',color:v.tx,fontWeight:'800'}}>{v.short}</button>))}
-                        <span style={{marginLeft:'auto',fontSize:'9px',color:'#9ca3af'}}><span style={{color:'#6366f1',fontWeight:'700'}}>Ctrl+V</span> pega desde Excel</span>
                       </div>
                     </td></tr>
                   </React.Fragment>);
@@ -3702,7 +3706,7 @@ const PresupuestoObraView = () => {
                                   setApuOpen(willOpen?p.id:null);
                                   setCodSugest(null);
                                   if(willOpen&&(!p.componentes||p.componentes.length===0)){
-                                    updatePart(cap.id,sc.id,p.id,{componentes:Array.from({length:10},()=>({...mkComp()}))});
+                                    updatePart(cap.id,sc.id,p.id,{componentes:Array.from({length:5},()=>({...mkComp()}))});
                                   }
                                 }}>
                                 {pCode}
@@ -3904,7 +3908,7 @@ const PresupuestoObraView = () => {
                                     <button key={k} onClick={()=>addComp(cap.id,sc.id,p.id,k)} style={{background:v.bg,border:'1px solid '+v.tx+'44',borderRadius:'4px',padding:'2px 8px',cursor:'pointer',fontSize:'10px',color:v.tx,fontWeight:'800'}}>{v.short}</button>
                                   ))}
                                   <span style={{marginLeft:'auto',fontSize:'9px',color:'#9ca3af'}}>
-                                    <span style={{color:'#6366f1',fontWeight:'700'}}>Ctrl+V</span> pega desde Excel · DB: <strong style={{color:'#6366f1'}}>{Object.keys(insumosDB).length}</strong>
+                                    DB: <strong style={{color:'#6366f1'}}>{Object.keys(insumosDB).length}</strong> insumos
                                   </span>
                                 </div>
                               </td></tr>
@@ -4241,7 +4245,6 @@ const PresupuestoObraView = () => {
           </div>
 
           <div style={{width:'1px',height:'22px',background:'#374151'}}/>
-          <div style={{padding:'3px 9px',background:'rgba(16,185,129,0.12)',border:'1px solid #064e3b',borderRadius:'6px',fontSize:'10px',fontWeight:'700',color:'#34d399'}}>Ctrl+V</div>
           <button onClick={()=>setShowBC3(true)} style={{padding:'5px 10px',background:'rgba(255,255,255,0.06)',color:'#9ca3af',border:'1px solid #374151',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>BC3</button>
           <button onClick={addCap} style={{padding:'5px 10px',background:'rgba(99,102,241,0.18)',color:'#a5b4fc',border:'1px solid #4338ca',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Cap.</button>
           <div style={{width:'1px',height:'22px',background:'#374151'}}/>
