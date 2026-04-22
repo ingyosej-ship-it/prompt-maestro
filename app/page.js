@@ -2829,6 +2829,7 @@ const PresupuestoObraView = () => {
   const mkComp    = ()      => ({id:uid(),naturaleza:'M',desc:'',cantidad:'',unidad:'ud',pu:'',itbis:0,rendimiento:1});
   const mkPartida = (desc,unidad,puManual,codigo) => ({
     id:uid(), codigo:codigo||'', desc:desc||'Nueva partida', unidad:unidad||'ud', puManual:puManual||0,
+    cantManual:'',   // '' = usar mediciones; número = manual (se muestra en rojo)
     mediciones:[mkMed()], componentes:[], temporal:true, showMed:false, showComp:false,
   });
   const mkSubcap = (nombre,codigo) => ({id:uid(),codigo:codigo||'',nombre:nombre||'Nuevo Subcapitulo',abierto:true,partidas:[]});
@@ -2874,7 +2875,14 @@ const PresupuestoObraView = () => {
   const calcPU  = p => p.componentes&&p.componentes.length>0
     ? p.componentes.reduce((s,c)=>s+(parseFloat(c.cantidad)||0)*(parseFloat(c.pu)||0)*(1+(parseFloat(c.itbis)||0)/100)*(parseFloat(c.rendimiento)||1),0)
     : parseFloat(p.puManual)||0;
-  const calcCant= p => (p.mediciones||[]).reduce((s,m)=>s+calcMedParcial(m),0);
+  // calcCant: usa cantManual si fue introducida manualmente, sino suma mediciones
+  const calcCant = p => {
+    const manual=p.cantManual;
+    if(manual!==''&&manual!==undefined&&manual!==null&&!isNaN(parseFloat(manual))){
+      return parseFloat(manual);
+    }
+    return (p.mediciones||[]).reduce((s,m)=>s+calcMedParcial(m),0);
+  };
   const getPT   = p => calcCant(p)*calcPU(p);
   const getSCT  = sc=> (sc.partidas||[]).reduce((s,p)=>s+getPT(p),0);
   const getCT   = c => (c.subcapitulos||[]).reduce((s,sc)=>s+getSCT(sc),0);
@@ -3077,89 +3085,120 @@ const PresupuestoObraView = () => {
   };
 
   // ── PASTE EN ANÁLISIS DE COSTO (APU) ────────────────────────────────────
-  // ──────────────────────────────────────────────────────────────────────────
-  //  PASTE APU — pega insumos en análisis de costo
-  //  Formato Excel esperado (en cualquier orden de columnas):
+  //  Orden de columnas del APU en ProCalc (igual al Excel de análisis RD):
   //  COD | NAT? | DESCRIPCION | CANTIDAD | UNIDAD | COSTO/PU | ITBIS? | RENDTO? | VALOR?
+  //
+  //  REGLA PRINCIPAL: si el Excel no trae precio → pu queda en '' (vacío, NO se inventa)
+  //  Cantidad y unidad son opcionales — se pueden agregar manual después
   // ──────────────────────────────────────────────────────────────────────────
   const handleApuExcelPaste = (capId, scId, pId, text) => {
     if(!text||!text.trim()) return;
-    const lines=_splitLines(text).filter(l=>l.trim());
+    const rawLines=_splitLines(text);
+    const lines=rawLines.filter(l=>l.trim());
     if(!lines.length) return;
 
-    // Para cada fila del Excel mapeamos columnas de forma inteligente
-    const parseRow = cols => {
-      if(!cols.some(c=>c.trim())) return null;
+    // Detectar si la primera fila no vacía es encabezado
+    const firstDataLine=lines.find(l=>l.trim());
+    const firstCols=firstDataLine?_splitCols(firstDataLine):[];
+    const skipFirst=_isHeader(firstCols);
 
-      // Clasificar cada celda
-      const cells = cols.map((c,i)=>({i, v:c.trim(), isN:_isNum(c.trim()), n:_cleanNum2(c.trim())}));
-      const numCells  = cells.filter(x=>x.isN&&x.n!==null);
-      const txtCells  = cells.filter(x=>!x.isN&&x.v);
+    // Mapear posición de columnas desde el encabezado si existe
+    let colMap={cod:0, nat:-1, desc:1, cant:2, ud:3, costo:4, itbis:-1, rendto:-1};
+    if(skipFirst){
+      firstCols.forEach((h,i)=>{
+        const u=(h||'').toUpperCase().replace(/[.\s_]/g,'');
+        if(['COD','CODIGO','CODINSUMO'].includes(u)) colMap.cod=i;
+        else if(['NAT','NATURALEZA','TIPO'].includes(u)) colMap.nat=i;
+        else if(['DESC','DESCRIPCION','DESCRIPCION'].includes(u)) colMap.desc=i;
+        else if(['CANT','CANTIDAD'].includes(u)) colMap.cant=i;
+        else if(['UD','UNIDAD','UND'].includes(u)) colMap.ud=i;
+        else if(['COSTO','PU','PRECIO','PRECIOUN','P.U.'].includes(u)) colMap.costo=i;
+        else if(['ITBIS','IVA','TAX'].includes(u)) colMap.itbis=i;
+        else if(['RENDTO','RENDIMIENTO'].includes(u)) colMap.rendto=i;
+      });
+    }
 
-      // Código: primera celda que luce como código de insumo
-      let cod='';
-      const codCell = txtCells.find(x=>/^[A-Za-z]{1,6}[\.\-]\d+/.test(x.v)||/^[A-Za-z]{2,}\d{3,}/.test(x.v));
-      if(codCell) cod=codCell.v;
-
-      // Naturaleza: celda NAT_ABREVS (ignorar al buscar desc)
-      const natCells = new Set(txtCells.filter(x=>NAT_ABREVS.has(x.v.toUpperCase().replace(/[.\s_]/g,''))).map(x=>x.i));
-
-      // Descripción: primer texto largo NO código NO naturaleza
-      let desc='';
-      const descCell = txtCells.find(x=>x.i!==(codCell&&codCell.i)&&!natCells.has(x.i)&&x.v.length>=2);
-      if(descCell) desc=descCell.v;
-
-      // Unidad: texto corto (1-8 chars) NO código NO desc NO naturaleza
-      let unidad='ud';
-      const udCell = txtCells.find(x=>
-        x.i!==(codCell&&codCell.i)&&
-        x.i!==(descCell&&descCell.i)&&
-        !natCells.has(x.i)&&
-        x.v.length>=1&&x.v.length<=8
-      );
-      if(udCell) unidad=udCell.v;
-
-      // Números: CANT, PU, [ITBIS, RENDTO, VALOR]
-      let cantidad='', pu='', itbis=0, rendimiento=1;
-      if(numCells.length===0){ if(!desc&&!cod) return null; }
-      else if(numCells.length===1){ pu=String(numCells[0].n); cantidad='1'; }
-      else if(numCells.length===2){ cantidad=String(numCells[0].n); pu=String(numCells[1].n); }
-      else {
-        // 3+ números → buscar PU como: cant × pu ≈ valor_total
-        cantidad=String(numCells[0].n);
-        const cantV=numCells[0].n;
-        const totalV=numCells[numCells.length-1].n;
-        let foundPU=false;
-        for(let k=1;k<numCells.length-1;k++){
-          const cand=numCells[k].n;
-          if(cantV>0&&totalV>0&&Math.abs(cantV*cand-totalV)/totalV<0.12){
-            pu=String(cand); foundPU=true; break;
-          }
-        }
-        if(!foundPU) pu=String(numCells[numCells.length-2].n);
-      }
-
-      if(!desc&&!cod) return null;
-      return {id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu,itbis,rendimiento};
-    };
+    const getCol=(cols,idx)=>idx>=0&&idx<cols.length?(cols[idx]||'').trim():'';
 
     const newComps=[];
-    for(const line of lines){
+    const dataLines=skipFirst?lines.slice(1):lines;
+
+    for(const line of dataLines){
+      if(!line.trim()) continue;
       const cols=_splitCols(line);
+      if(!cols.some(c=>c.trim())) continue;
+
+      const rawCod  = getCol(cols, colMap.cod);
+      const rawDesc = getCol(cols, colMap.desc);
+      const rawCant = getCol(cols, colMap.cant);
+      const rawUd   = getCol(cols, colMap.ud);
+      const rawCosto= getCol(cols, colMap.costo);
+
+      // Saltar filas que son encabezados internos, totales o vacías
+      if(!rawDesc&&!rawCod) continue;
       if(_isHeader(cols)) continue;
-      const comp=parseRow(cols);
-      if(comp) newComps.push(comp);
+      // Saltar si la descripción luce como total/subtotal
+      if(/^(total|subtotal|suma|grand)/i.test(rawDesc)) continue;
+
+      // Código: usar el de la columna, o intentar detectar en c0
+      let cod=rawCod;
+      if(!cod){
+        const c0=(cols[0]||'').trim();
+        if(/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0)||/^[A-Za-z]{2,}\d{3,}/.test(c0)) cod=c0;
+      }
+
+      const desc=rawDesc||getCol(cols,0)||'';
+      if(!desc&&!cod) continue;
+
+      // Cantidad: solo si es un número real, sino dejar vacío
+      const cantidad=_isNum(rawCant)&&rawCant?String(_cleanNum2(rawCant)||''):'';
+
+      // Unidad: texto corto
+      let unidad='ud';
+      if(rawUd&&!_isNum(rawUd)&&rawUd.length<=8) unidad=rawUd;
+
+      // PU: NUNCA inventar — solo si viene explícito y es un número real
+      let pu='';
+      if(_isNum(rawCosto)&&rawCosto){
+        const v=_cleanNum2(rawCosto);
+        if(v!==null&&v>0) pu=String(v);
+      }
+      // Si hay encabezado con colMap pero no trajo costo, intentar último número de la fila
+      // SOLO si hay 2+ números y el último se ve como precio (no se inventa, solo si está presente)
+      if(!pu&&colMap.costo<0){
+        const allNums=cols.map((c,i)=>({i,v:_cleanNum2(c),raw:c.trim()})).filter(x=>x.v!==null&&x.v>0&&_isNum(x.raw));
+        if(allNums.length>=2){
+          // penúltimo número = PU en formato RD estándar (último = total)
+          pu=String(allNums[allNums.length-2].v);
+        } else if(allNums.length===1&&!cantidad){
+          // un solo número = PU
+          pu=String(allNums[0].v);
+        }
+        // SI un solo número pero ya está como cantidad → PU queda vacío (se pone manual)
+      }
+
+      // ITBIS
+      let itbis=0;
+      if(colMap.itbis>=0){const v=_cleanNum2(getCol(cols,colMap.itbis));if(v&&v>0&&v<=100)itbis=v;}
+
+      // Rendimiento
+      let rendimiento=1;
+      if(colMap.rendto>=0){const v=_cleanNum2(getCol(cols,colMap.rendto));if(v&&v>0)rendimiento=v;}
+
+      newComps.push({id:uid(),cod,naturaleza:'M',desc:desc.trim(),cantidad,unidad,pu,itbis,rendimiento});
     }
 
     if(newComps.length>0){
       const p=getPart(capId,scId,pId);
       if(!p) return;
-      // Eliminar filas vacías existentes, conservar solo las con datos
       const withData=(p.componentes||[]).filter(c=>
         (c.cod&&c.cod.trim())||(c.desc&&c.desc.trim())||parseFloat(c.pu)>0
       );
       updatePart(capId,scId,pId,{componentes:[...withData,...newComps]});
-      setPasteNotif('✓ APU: '+newComps.length+' insumo(s) pegado(s)');
+      setPasteNotif('✓ APU: '+newComps.length+' insumo(s) — edita cantidad y PU si hacen falta');
+      setTimeout(()=>setPasteNotif(''),5000);
+    } else {
+      setPasteNotif('⚠ No se detectaron insumos. Verifica el formato del Excel.');
       setTimeout(()=>setPasteNotif(''),4000);
     }
     setApuPaste(null); setApuPasteText('');
@@ -3246,48 +3285,46 @@ const PresupuestoObraView = () => {
 
       // ── PARTIDA ──
       let codigo='',desc='',unidad='ud',cantidad=0,puVal=0;
-      // IMPORTANTE: usar solo números reales, no inventar precios
+      // IMPORTANTE: usar solo números reales del Excel, NO inventar precios
       const nNums=numCols.map(c=>_cleanNum2(c)).filter(n=>n!==null&&n>0);
       const nTextos=cols.filter(c=>{const t=(c||'').trim();return t&&!_isNum(t)&&!NAT_ABREVS.has(t.toUpperCase().replace(/[.\s]/g,''));});
+
+      // Función para extraer PU sin inventar:
+      // Regla: si hay ≥3 números, verificar cant×pu≈total (tolerancia 15%); penúltimo de lo contrario
+      // Si hay exactamente 2 números: cant + PU
+      // Si hay 1 número: ese es el PU (cantidad=1)
+      // Si hay 0 números: PU=0
+      const extractCantAndPU = (nums) => {
+        if(nums.length===0) return {c:1, p:0};
+        if(nums.length===1) return {c:1, p:nums[0]};
+        if(nums.length===2) return {c:nums[0], p:nums[1]};
+        // 3+: intentar cant × PU ≈ total
+        const total=nums[nums.length-1];
+        const cantV=nums[0];
+        for(let k=1;k<nums.length-1;k++){
+          if(cantV>0&&total>0&&Math.abs(cantV*nums[k]-total)/total<0.15) return {c:cantV,p:nums[k]};
+        }
+        return {c:cantV, p:nums[nums.length-2]};
+      };
 
       if(tipo>=3||(tipo===2&&numCols.length>0)){
         codigo=c0;
         desc=(nTextos.find(t=>t!==c0&&t.length>2)||c1||'').trim();
-        // Unidad: texto corto entre código y primer número
         const primerNumIdx=cols.findIndex(c=>_isNum(c)&&(_cleanNum2(c)||0)>0);
-        const udC=cols.slice(1,primerNumIdx>1?primerNumIdx:cols.length).find(c=>{
-          const t=(c||'').trim();
-          return t&&!_isNum(t)&&t.length<=6&&t!==desc&&!NAT_ABREVS.has(t.toUpperCase());
-        });
+        const udC=cols.slice(1,primerNumIdx>1?primerNumIdx:cols.length).find(c=>{const t=(c||'').trim();return t&&!_isNum(t)&&t.length<=8&&t!==desc&&!NAT_ABREVS.has(t.toUpperCase());});
         unidad=udC||'ud';
-        // Precio: si hay 1 num → PU, si 2 → cant+PU, si 3+ → cant+PU+total (PU=penúltimo o verificar cant×PU≈total)
-        if(nNums.length===1){puVal=nNums[0];cantidad=1;}
-        else if(nNums.length===2){cantidad=nNums[0];puVal=nNums[1];}
-        else if(nNums.length>=3){
-          cantidad=nNums[0];
-          // Verificar: algún nNums[k] tal que cant×nNums[k] ≈ nNums[last]
-          const total=nNums[nNums.length-1];
-          let found=false;
-          for(let k=1;k<nNums.length-1;k++){
-            if(cantidad>0&&Math.abs(cantidad*nNums[k]-total)/Math.max(total,1)<0.15){puVal=nNums[k];found=true;break;}
-          }
-          if(!found) puVal=nNums[nNums.length-2]; // penúltimo por defecto
-        }
+        const {c,p}=extractCantAndPU(nNums); cantidad=c; puVal=p;
       } else if(/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0)||/^[A-Za-z]{2,}\d{3,}/.test(c0)){
         codigo=c0;
         desc=(c1&&!_isNum(c1)?c1:nTextos.find(t=>t!==c0&&t.length>1)||'').trim();
         const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&!NAT_ABREVS.has(((c||'').trim()).toUpperCase()));
         unidad=udC||'ud';
-        if(nNums.length===1){puVal=nNums[0];cantidad=1;}
-        else if(nNums.length===2){cantidad=nNums[0];puVal=nNums[1];}
-        else if(nNums.length>=3){cantidad=nNums[0];const total=nNums[nNums.length-1];let found=false;for(let k=1;k<nNums.length-1;k++){if(cantidad>0&&Math.abs(cantidad*nNums[k]-total)/Math.max(total,1)<0.15){puVal=nNums[k];found=true;break;}}if(!found)puVal=nNums[nNums.length-2];}
+        const {c,p}=extractCantAndPU(nNums); cantidad=c; puVal=p;
       } else if(numCols.length>0){
         const parece=c0.length<=18&&c1.length>3&&!_isNum(c1)&&nz>=3;
         if(parece){codigo=c0;desc=c1.trim();const udC=cols.find((c,i)=>i>1&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);unidad=udC||'ud';}
         else{desc=(nTextos[0]||(c0&&!_isNum(c0)?c0:'')||'').trim();const udC=cols.find((c,i)=>i>0&&!_isNum(c)&&(c||'').trim()&&(c||'').trim().length<=8&&(c||'').trim()!==desc);unidad=udC||'ud';}
-        if(nNums.length===1){puVal=nNums[0];cantidad=1;}
-        else if(nNums.length===2){cantidad=nNums[0];puVal=nNums[1];}
-        else if(nNums.length>=3){cantidad=nNums[0];const total=nNums[nNums.length-1];let found=false;for(let k=1;k<nNums.length-1;k++){if(cantidad>0&&Math.abs(cantidad*nNums[k]-total)/Math.max(total,1)<0.15){puVal=nNums[k];found=true;break;}}if(!found)puVal=nNums[nNums.length-2];}
+        const {c,p}=extractCantAndPU(nNums); cantidad=c; puVal=p;
       } else continue;
 
       if(!desc&&!codigo) continue;
@@ -3734,11 +3771,25 @@ const PresupuestoObraView = () => {
                       <td style={{borderRight:bdr,background:bg,textAlign:'center',padding:'5px 6px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'unidad',p.unidad||'')}>
                         {isEd(cap.id,sc.id,p.id,'unidad')?<input autoFocus style={{...cInp,textAlign:'center'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:<span>{p.unidad}</span>}
                       </td>
-                      <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:'pointer',fontFamily:'monospace',fontWeight:'700',color:p.showMed?'#6366f1':'#111827'}} onClick={()=>togP(cap.id,sc.id,p.id,'showMed')}>
-                        <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
-                          <span>{fmtN(cant2,4)}</span>
-                          <span style={{fontSize:'9px',color:p.showMed?'#6366f1':'#9ca3af',fontWeight:'600'}}>{(p.mediciones||[]).length} med.</span>
-                        </div>
+                      <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'3px 8px',fontFamily:'monospace',fontWeight:'700'}}>
+                        {isEd(cap.id,sc.id,p.id,'cantManual')
+                          ? <input autoFocus type="number" step="any"
+                              style={{...cInp,textAlign:'right',color:'#dc2626',width:'100%'}}
+                              value={editCellVal}
+                              onChange={e=>setEditCellVal(e.target.value)}
+                              onBlur={()=>{const v=editCellVal.trim();updatePart(cap.id,sc.id,p.id,{cantManual:v===''?'':v});setEditCell(null);}}
+                              onKeyDown={e=>{if(e.key==='Enter'){const v=editCellVal.trim();updatePart(cap.id,sc.id,p.id,{cantManual:v===''?'':v});setEditCell(null);}if(e.key==='Escape')setEditCell(null);}}
+                              placeholder="0"/>
+                          : <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'1px'}}>
+                              <span
+                                style={{color:(p.cantManual!==''&&p.cantManual!==undefined&&p.cantManual!==null)?'#dc2626':'#111827',cursor:'text'}}
+                                onClick={()=>startEdit(cap.id,sc.id,p.id,'cantManual',p.cantManual||fmtN(cant2,4))}
+                                title="Clic para cantidad manual"
+                              >{fmtN(cant2,4)}</span>
+                              <span style={{fontSize:'9px',color:p.showMed?'#6366f1':'#9ca3af',fontWeight:'600',cursor:'pointer',textDecoration:'underline',textDecorationStyle:'dotted'}}
+                                onClick={e=>{e.stopPropagation();togP(cap.id,sc.id,p.id,'showMed');}}>{(p.mediciones||[]).length} med.</span>
+                            </div>
+                        }
                       </td>
                       <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',fontFamily:'monospace'}}><span style={{color:hasComps?'#b45309':'#111827',fontWeight:hasComps?'700':'400'}}>{fmt(pu2)}</span></td>
                       <td style={{textAlign:'right',padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',color:'#111827',borderRight:bdr,background:'#eef2ff'}}>{fmt(tot2)}</td>
@@ -3947,12 +3998,36 @@ const PresupuestoObraView = () => {
                               <td style={{borderRight:bdr,background:bg,textAlign:'center',padding:'5px 6px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'unidad',p.unidad||'')}>
                                 {isEd(cap.id,sc.id,p.id,'unidad')?<input autoFocus style={{...cInp,textAlign:'center'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:<span style={{color:'#374151'}}>{p.unidad}</span>}
                               </td>
-                              {/* Cantidad → mediciones */}
-                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:'pointer',fontFamily:'monospace',fontWeight:'700',color:p.showMed?'#6366f1':'#111827'}} onClick={()=>togP(cap.id,sc.id,p.id,'showMed')} title="Ver mediciones">
-                                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
-                                  <span>{fmtN(cant,4)}</span>
-                                  <span style={{fontSize:'9px',color:p.showMed?'#6366f1':'#9ca3af',fontWeight:'600'}}>{(p.mediciones||[]).length} med.</span>
-                                </div>
+                              {/* Cantidad — clic edita manual (rojo), clic en "med." abre mediciones (negro calculado) */}
+                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'3px 8px',fontFamily:'monospace',fontWeight:'700'}}>
+                                {isEd(cap.id,sc.id,p.id,'cantManual')
+                                  ? <input autoFocus type="number" step="any"
+                                      style={{...cInp,textAlign:'right',color:'#dc2626',width:'100%'}}
+                                      value={editCellVal}
+                                      onChange={e=>setEditCellVal(e.target.value)}
+                                      onBlur={()=>{
+                                        const v=editCellVal.trim();
+                                        updatePart(cap.id,sc.id,p.id,{cantManual:v===''?'':v});
+                                        setEditCell(null);
+                                      }}
+                                      onKeyDown={e=>{
+                                        if(e.key==='Enter'){const v=editCellVal.trim();updatePart(cap.id,sc.id,p.id,{cantManual:v===''?'':v});setEditCell(null);}
+                                        if(e.key==='Escape'){setEditCell(null);}
+                                      }}
+                                      placeholder="0"/>
+                                  : <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'1px'}}>
+                                      <span
+                                        style={{color:(p.cantManual!==''&&p.cantManual!==undefined&&p.cantManual!==null&&p.cantManual!=='')?'#dc2626':'#111827',cursor:'text'}}
+                                        onClick={()=>startEdit(cap.id,sc.id,p.id,'cantManual',p.cantManual===''||p.cantManual===undefined?fmtN(cant,4):p.cantManual)}
+                                        title="Clic para editar cantidad manual (rojo) — vacía para usar mediciones"
+                                      >{fmtN(cant,4)}</span>
+                                      <span
+                                        style={{fontSize:'9px',color:p.showMed?'#6366f1':'#9ca3af',fontWeight:'600',cursor:'pointer',textDecoration:'underline',textDecorationStyle:'dotted'}}
+                                        onClick={e=>{e.stopPropagation();togP(cap.id,sc.id,p.id,'showMed');}}
+                                        title="Abrir mediciones"
+                                      >{(p.mediciones||[]).length} med.</span>
+                                    </div>
+                                }
                               </td>
                               {/* P.U. → editar o ver APU badge */}
                               <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:'text',fontFamily:'monospace',color:'#111827'}}
@@ -4583,18 +4658,51 @@ const PresupuestoObraView = () => {
 
       {showBC3&&(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:'#1f2937',border:'1px solid #374151',borderRadius:'14px',width:'580px',maxHeight:'88vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.6)'}}>
+          <div style={{background:'#1f2937',border:'1px solid #374151',borderRadius:'14px',width:'580px',maxHeight:'90vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.6)'}}>
             <div style={{padding:'14px 20px',borderBottom:'1px solid #374151',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div style={{fontWeight:'800',fontSize:'15px',color:'white'}}>Importar BC3</div>
-              <button onClick={()=>setShowBC3(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:'20px'}}>✕</button>
+              <button onClick={()=>{setShowBC3(false);setBc3Text('');}} style={{background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:'20px'}}>✕</button>
             </div>
-            <div style={{padding:'14px 20px',flex:1,overflow:'auto'}}>
-              <div style={{background:'#111827',borderRadius:'7px',padding:'8px',marginBottom:'10px',fontSize:'10px',color:'#6b7280',border:'1px solid #374151'}}>~C|cod|ud|Capitulo|0| · ~V|cod|ud|Partida|precio||</div>
-              <textarea value={bc3Text} onChange={e=>setBc3Text(e.target.value)} style={{width:'100%',height:'240px',padding:'10px',border:'1px solid #374151',borderRadius:'8px',fontSize:'11px',fontFamily:'monospace',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:'1.6',background:'#111827',color:'#d1d5db'}} placeholder={'~C|01|Ud|PRELIMINARES|0|\n~V|1.01|m2|Limpieza|125.00||'}/>
+            <div style={{padding:'16px 20px',flex:1,overflow:'auto'}}>
+              {/* Opción 1: abrir archivo .bc3 desde PC */}
+              <div style={{marginBottom:'14px'}}>
+                <div style={{fontSize:'11px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Opción 1 — Abrir archivo .bc3 desde tu PC</div>
+                <label style={{display:'flex',alignItems:'center',gap:'10px',padding:'12px 16px',background:'#111827',border:'2px dashed #374151',borderRadius:'8px',cursor:'pointer',transition:'border-color 0.15s'}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor='#6366f1'}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor='#374151'}>
+                  <input type="file" accept=".bc3,.BC3,.txt" style={{display:'none'}}
+                    onChange={e=>{
+                      const file=e.target.files[0];
+                      if(!file) return;
+                      const reader=new FileReader();
+                      reader.onload=ev=>{setBc3Text(ev.target.result||'');};
+                      reader.readAsText(file,'latin1');
+                      e.target.value='';
+                    }}/>
+                  <div style={{width:'36px',height:'36px',background:'#374151',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:'18px'}}>📁</div>
+                  <div>
+                    <div style={{fontWeight:'700',fontSize:'13px',color:'white'}}>Seleccionar archivo BC3</div>
+                    <div style={{fontSize:'11px',color:'#64748b',marginTop:'2px'}}>Formatos: .bc3 · .BC3 · .txt</div>
+                  </div>
+                  {bc3Text&&<span style={{marginLeft:'auto',fontSize:'10px',color:'#34d399',fontWeight:'700'}}>✓ {bc3Text.split('\n').filter(l=>l.trim()).length} líneas cargadas</span>}
+                </label>
+              </div>
+              {/* Opción 2: pegar texto */}
+              <div>
+                <div style={{fontSize:'11px',fontWeight:'700',color:'#94a3b8',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Opción 2 — Pegar texto BC3 directamente</div>
+                <div style={{background:'#111827',borderRadius:'7px',padding:'7px 10px',marginBottom:'8px',fontSize:'10px',color:'#6b7280',border:'1px solid #374151',fontFamily:'monospace'}}>
+                  ~C|01|Ud|PRELIMINARES|0|<br/>~V|1.01|m2|Limpieza y desbroce|125.00||<br/>~D|1.01|||120.00|
+                </div>
+                <textarea value={bc3Text} onChange={e=>setBc3Text(e.target.value)}
+                  style={{width:'100%',height:'160px',padding:'10px',border:'1px solid #374151',borderRadius:'8px',fontSize:'11px',fontFamily:'monospace',outline:'none',resize:'vertical',boxSizing:'border-box',lineHeight:'1.6',background:'#111827',color:'#d1d5db'}}
+                  placeholder={'~C|01|Ud|PRELIMINARES|0|\n~V|1.01|m2|Limpieza y desbroce|125.00||\n~D|1.01|||120.00|'}/>
+              </div>
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid #374151',display:'flex',justifyContent:'flex-end',gap:'10px'}}>
-              <button onClick={()=>setShowBC3(false)} style={{padding:'7px 18px',background:'transparent',color:'#6b7280',border:'1px solid #374151',borderRadius:'7px',fontWeight:'600',fontSize:'13px',cursor:'pointer'}}>Cancelar</button>
-              <button onClick={importarBC3} style={{padding:'7px 18px',background:'#6366f1',color:'white',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>Importar</button>
+              <button onClick={()=>{setShowBC3(false);setBc3Text('');}} style={{padding:'7px 18px',background:'transparent',color:'#6b7280',border:'1px solid #374151',borderRadius:'7px',fontWeight:'600',fontSize:'13px',cursor:'pointer'}}>Cancelar</button>
+              <button onClick={importarBC3} disabled={!bc3Text.trim()} style={{padding:'7px 18px',background:bc3Text.trim()?'#6366f1':'#374151',color:'white',border:'none',borderRadius:'7px',fontWeight:'700',fontSize:'13px',cursor:bc3Text.trim()?'pointer':'not-allowed'}}>
+                Importar BC3
+              </button>
             </div>
           </div>
         </div>
