@@ -5615,38 +5615,46 @@ const BibliotecaView = () => {
 // ==================== VISTA: DASHBOARD HOME ====================
 const DashboardHome = ({ goToBudget, goToCostAnalysis, goToTemplates, goToCalculators, goToPresupuesto, goToBiblioteca }) => {
   const cards = [
-    { title:'Presupuesto', sub:'Nuevo Proyecto', desc:'Crea presupuestos detallados con costos directos e indirectos.', action:'Iniciar →', iconBg:'#dbeafe', iconStroke:'#1d4ed8', actionColor:'#1d4ed8', onClick: goToBudget,
-      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg> },
-    { title:'Cálculo de Materiales', sub:'Cuantías y Costos', desc:'Calcula cuantías de acero, hormigón y costos por elemento estructural.', action:'Calcular →', iconBg:'#ffe4e6', iconStroke:'#e11d48', actionColor:'#e11d48', onClick: goToCalculators,
-      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h4M8 14h4M8 18h4"/></svg> },
-    { title:'Base de Datos', sub:'MOB & Precios', desc:'Consulta precios actualizados de materiales y análisis de costos.', action:'Consultar →', iconBg:'#ffedd5', iconStroke:'#ea580c', actionColor:'#ea580c', onClick: goToCostAnalysis,
-      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg> },
-    { title:'Modelos', sub:'Plantillas', desc:'Estructuras predefinidas para viviendas, naves y más.', action:'Ver →', iconBg:'#ede9fe', iconStroke:'#7c3aed', actionColor:'#7c3aed', onClick: goToTemplates,
-      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg> },
-    { title:'Presupuesto de Obra', sub:'Por Capítulos', desc:'Organiza tu presupuesto por capítulos con exportación a PDF.', action:'Abrir →', iconBg:'#f0fdf4', iconStroke:'#16a34a', actionColor:'#16a34a', onClick: goToPresupuesto,
-      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> },
-    { title:'Biblioteca', sub:'Recursos Técnicos', desc:'Normas, manuales, precios y documentación técnica de construcción.', action:'Explorar →', iconBg:'#ecfeff', iconStroke:'#0891b2', actionColor:'#0891b2', onClick: goToBiblioteca,
-      icon:<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> },
+    { title:'Cotizaciones',           sub:'Nuevo Proyecto',        desc:'Crea cotizaciones profesionales con costos directos e ITBIS.',      action:'Iniciar →',   color:'#2563eb', bg:'#eff6ff', onClick: goToBudget,
+      icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg> },
+    { title:'Calculadoras',           sub:'Materiales y Costos',   desc:'Losa, columna, viga, zapata, cisterna y más calculadoras.',          action:'Calcular →',  color:'#dc2626', bg:'#fff1f2', onClick: goToCalculators,
+      icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h5M8 14h5M8 18h3"/></svg> },
+    { title:'Base de Datos',          sub:'MOB & Precios',         desc:'2,124+ registros de materiales, mano de obra y rendimientos.',       action:'Consultar →', color:'#ea580c', bg:'#fff7ed', onClick: goToCostAnalysis,
+      icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg> },
+    { title:'Modelos',                sub:'Plantillas de Obra',    desc:'Plantillas predefinidas para viviendas, naves industriales y más.',   action:'Ver →',       color:'#7c3aed', bg:'#f5f3ff', onClick: goToTemplates,
+      icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg> },
+    { title:'Presupuesto de Obra',    sub:'Por Capítulos',         desc:'Presupuesto organizado por capítulos con exportación a PDF y Excel.', action:'Abrir →',     color:'#16a34a', bg:'#f0fdf4', onClick: goToPresupuesto,
+      icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> },
+    { title:'Biblioteca Técnica',     sub:'Recursos y Normas',     desc:'Normas ACI, MOPC, manuales, precios DGODT y documentación técnica.',  action:'Explorar →',  color:'#0891b2', bg:'#ecfeff', onClick: goToBiblioteca,
+      icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> },
   ];
   return (
-    <div style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 20px',minHeight:'100%',backgroundImage:`url(${BACKGROUNDS.dashboard})`,backgroundSize:'cover',backgroundPosition:'center',position:'relative'}}>
-      <div style={{position:'absolute',inset:0,background:'rgba(15,23,42,0.65)'}}></div>
-      <div style={{position:'relative',zIndex:1,textAlign:'center',marginBottom:'40px'}}>
-        <h2 style={{fontSize:'46px',fontWeight:'900',color:'white',letterSpacing:'-0.03em',margin:'0 0 8px'}}>ProCalc</h2>
-        <p style={{color:'#cbd5e1',fontSize:'15px',margin:0}}>Suite profesional para análisis de costos y presupuestos de obra.</p>
+    <div style={{flex:1,overflow:'auto',background:'#f0f4f8',display:'flex',flexDirection:'column',backgroundImage:`url(${BACKGROUNDS.dashboard})`,backgroundSize:'cover',backgroundPosition:'center',position:'relative'}}>
+      <div style={{position:'absolute',inset:0,background:'rgba(15,23,42,0.55)'}}/>
+      {/* Header banner */}
+      <div style={{position:'relative',zIndex:1,background:'rgba(15,23,42,0.4)',backdropFilter:'blur(2px)',padding:'32px 36px 28px'}}>
+        <div style={{fontSize:'11px',fontWeight:'700',color:'#93c5fd',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'6px'}}>Bienvenido a</div>
+        <h1 style={{fontSize:'32px',fontWeight:'900',color:'white',margin:'0 0 6px',letterSpacing:'-0.02em'}}>ProCalc</h1>
+        <p style={{color:'#bfdbfe',fontSize:'13px',margin:0,fontWeight:'500'}}>Suite profesional para análisis de costos y presupuestos de construcción · República Dominicana</p>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'16px',maxWidth:'900px',width:'100%',position:'relative',zIndex:1}}>
-        {cards.map((c,i) => (
-          <div key={i} onClick={c.onClick} style={{background:'white',borderRadius:'18px',padding:'22px',cursor:'pointer',transition:'all 0.2s',display:'flex',flexDirection:'column'}}
-            onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-4px)';e.currentTarget.style.boxShadow='0 16px 40px rgba(0,0,0,0.2)';}}
-            onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='none';}}>
-            <div style={{width:'50px',height:'50px',borderRadius:'13px',background:c.iconBg,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:'14px'}}>{c.icon}</div>
-            <div style={{fontSize:'10px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.1em',color:'#94a3b8',marginBottom:'3px'}}>{c.sub}</div>
-            <div style={{fontSize:'17px',fontWeight:'800',color:'#0f172a',marginBottom:'7px'}}>{c.title}</div>
-            <div style={{fontSize:'11px',color:'#64748b',lineHeight:'1.5',marginBottom:'14px',flex:1}}>{c.desc}</div>
-            <div style={{fontSize:'12px',fontWeight:'700',color:c.actionColor}}>{c.action}</div>
-          </div>
-        ))}
+
+      {/* Cards grid */}
+      <div style={{position:'relative',zIndex:1,padding:'24px 32px',flex:1}}>
+        <div style={{fontSize:'11px',fontWeight:'800',color:'#cbd5e1',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'16px'}}>Módulos disponibles</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'16px'}}>
+          {cards.map((c,i) => (
+            <div key={i} onClick={c.onClick}
+              style={{background:'rgba(255,255,255,0.95)',borderRadius:'18px',padding:'22px',cursor:'pointer',transition:'all 0.2s',display:'flex',flexDirection:'column',border:'1px solid rgba(255,255,255,0.5)',boxShadow:'0 2px 8px rgba(0,0,0,0.12)'}}
+              onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-4px)';e.currentTarget.style.boxShadow=`0 16px 40px rgba(0,0,0,0.2)`;e.currentTarget.style.borderColor=c.color+'66';}}
+              onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';e.currentTarget.style.borderColor='rgba(255,255,255,0.5)';}}>
+              <div style={{width:'50px',height:'50px',borderRadius:'13px',background:c.bg,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:'14px'}}>{c.icon}</div>
+              <div style={{fontSize:'10px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.1em',color:'#94a3b8',marginBottom:'3px'}}>{c.sub}</div>
+              <div style={{fontSize:'17px',fontWeight:'800',color:'#0f172a',marginBottom:'7px'}}>{c.title}</div>
+              <div style={{fontSize:'11px',color:'#64748b',lineHeight:'1.5',marginBottom:'14px',flex:1}}>{c.desc}</div>
+              <div style={{fontSize:'12px',fontWeight:'700',color:c.color}}>{c.action}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -6108,7 +6116,6 @@ const Dashboard = ({ onLogout }) => {
 
   return (
     <div style={{display:'flex', height:'100vh', overflow:'hidden', background:'#f1f5f9'}}>
-      {mobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />}
 
       <aside style={{
           flexShrink: 0,
@@ -6116,60 +6123,65 @@ const Dashboard = ({ onLogout }) => {
           transition: 'width 0.25s ease',
           display: 'flex',
           flexDirection: 'column',
-          background: '#0f172a',
+          background: '#1e3a5f',
           color: 'white',
-          borderRight: '1px solid #1e293b',
+          borderRight: '1px solid #2d4f7a',
           overflow: 'hidden',
           position: 'relative',
           zIndex: 40,
-        }}
-        className="hidden md:flex shadow-2xl">
+          boxShadow: '4px 0 20px rgba(0,0,0,0.3)',
+        }}>
+        {/* Toggle button */}
         <button onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="hidden md:flex absolute -right-3 top-20 bg-white text-slate-800 border border-slate-200 rounded-full p-1 shadow-md hover:bg-slate-100 z-50">
-          {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          style={{position:'absolute',right:'-12px',top:'72px',width:'24px',height:'24px',background:'white',border:'1px solid #e2e8f0',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',zIndex:50,boxShadow:'0 2px 6px rgba(0,0,0,0.15)'}}>
+          {sidebarOpen ? <ChevronLeft size={14} color="#374151"/> : <ChevronRight size={14} color="#374151"/>}
         </button>
-        <div style={{padding:'0 16px', height:'64px', display:'flex', alignItems:'center', gap:'12px', borderBottom:'1px solid #1e293b', overflow:'hidden', justifyContent: sidebarOpen ? 'flex-start' : 'center'}}>
-          <div style={{width:'38px', height:'38px', minWidth:'38px', background:'#1d4ed8', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, boxShadow:'0 0 0 2px rgba(96,165,250,0.3)'}}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
+
+        {/* Logo */}
+        <div style={{padding:'0 14px', height:'64px', display:'flex', alignItems:'center', gap:'10px', borderBottom:'1px solid #2d4f7a', overflow:'hidden', justifyContent: sidebarOpen ? 'flex-start' : 'center'}}>
+          <div style={{width:'36px', height:'36px', minWidth:'36px', background:'#2563eb', borderRadius:'9px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
           </div>
           {sidebarOpen && (
             <div>
               <span style={{fontWeight:'900', fontSize:'15px', color:'white', display:'block', lineHeight:1}}>ProCalc</span>
-              <span style={{fontSize:'9px', fontWeight:'700', color:'#60a5fa', letterSpacing:'0.15em', textTransform:'uppercase'}}>Ingeniería de Costos</span>
+              <span style={{fontSize:'9px', fontWeight:'700', color:'#93c5fd', letterSpacing:'0.12em', textTransform:'uppercase'}}>Ingeniería de Costos</span>
             </div>
           )}
         </div>
+
+        {/* Nav */}
         <nav style={{flex:1, padding:'12px 10px', overflowY:'auto'}}>
-          <NavItem icon={<Home size={19} />} label="Inicio" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
-          <NavItem icon={<Calculator size={19} />} label="Cotizaciones" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'budget'} onClick={() => handleViewChange('budget')} />
-          <NavItem icon={<Box size={19} />} label="Cálculo de Materiales" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'calculators'} onClick={() => handleViewChange('calculators')} />
-          <NavItem icon={<Grid size={19} />} label="Base de Datos" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'costAnalysis'} onClick={() => handleViewChange('costAnalysis')} />
-          <NavItem icon={<LayoutTemplate size={19} />} label="Modelos" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'templates'} onClick={() => handleViewChange('templates')} />
-          <NavItem icon={<ClipboardList size={19} />} label="Presupuesto de Obra" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'presupuestoObra'} onClick={() => handleViewChange('presupuestoObra')} />
-          <NavItem icon={<BookOpen size={19} />} label="Biblioteca" isOpen={sidebarOpen || mobileMenuOpen} active={currentView === 'biblioteca'} onClick={() => handleViewChange('biblioteca')} />
+          <NavItem icon={<Home size={19} />} label="Inicio" isOpen={sidebarOpen} active={currentView === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
+          <NavItem icon={<Calculator size={19} />} label="Cotizaciones" isOpen={sidebarOpen} active={currentView === 'budget'} onClick={() => handleViewChange('budget')} />
+          <NavItem icon={<Box size={19} />} label="Calculadoras" isOpen={sidebarOpen} active={currentView === 'calculators'} onClick={() => handleViewChange('calculators')} />
+          <NavItem icon={<Grid size={19} />} label="Base de Datos" isOpen={sidebarOpen} active={currentView === 'costAnalysis'} onClick={() => handleViewChange('costAnalysis')} />
+          <NavItem icon={<LayoutTemplate size={19} />} label="Modelos" isOpen={sidebarOpen} active={currentView === 'templates'} onClick={() => handleViewChange('templates')} />
+          <NavItem icon={<ClipboardList size={19} />} label="Presupuesto de Obra" isOpen={sidebarOpen} active={currentView === 'presupuestoObra'} onClick={() => handleViewChange('presupuestoObra')} />
+          <NavItem icon={<BookOpen size={19} />} label="Biblioteca" isOpen={sidebarOpen} active={currentView === 'biblioteca'} onClick={() => handleViewChange('biblioteca')} />
         </nav>
-        <div className="p-4 border-t border-slate-800">
-          <button onClick={onLogout} className={`w-full flex items-center ${(sidebarOpen || mobileMenuOpen) ? 'justify-start px-4' : 'justify-center'} py-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-all`}>
-            <LogOut size={20} />
-            {(sidebarOpen || mobileMenuOpen) && <span className="ml-3 font-medium text-sm">Cerrar Sesión</span>}
-          </button>
+
+        {/* Logout */}
+        <div style={{padding:'12px 10px', borderTop:'1px solid #2d4f7a'}}>
+          <div onClick={onLogout}
+            style={{display:'flex', alignItems:'center', padding: sidebarOpen ? '10px 12px' : '10px 0', justifyContent: sidebarOpen ? 'flex-start' : 'center', cursor:'pointer', borderRadius:'8px', color:'#94a3b8', transition:'all 0.15s'}}
+            onMouseEnter={e=>{e.currentTarget.style.background='#1e293b';e.currentTarget.style.color='#e2e8f0';}}
+            onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#94a3b8';}}>
+            <LogOut size={19} />
+            {sidebarOpen && <span style={{marginLeft:'12px', fontWeight:'600', fontSize:'13px'}}>Cerrar Sesión</span>}
+          </div>
         </div>
       </aside>
 
       <main style={{flex:'1 1 0%', minWidth:0, display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden', background:'#f1f5f9', position:'relative'}}>
-        {/* TOPBAR MOBILE */}
-        <div className="md:hidden h-16 bg-slate-900 text-white flex items-center px-4 shadow-md z-30" style={{flexShrink:0}}>
-          <button onClick={() => setMobileMenuOpen(true)} className="p-2 hover:bg-slate-800 rounded-lg"><PanelLeft size={24} /></button>
-          <span className="ml-3 font-bold text-lg">ProCalc</span>
-        </div>
         {/* TOPBAR DESKTOP */}
-        <div className="hidden md:flex" style={{height:'56px',background:'white',borderBottom:'1px solid #e2e8f0',alignItems:'center',justifyContent:'space-between',padding:'0 20px',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.05)'}}>
+        <div style={{height:'56px',background:'white',borderBottom:'1px solid #e2e8f0',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.05)'}}>
           <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-            <div style={{width:'3px',height:'20px',background:'#1d4ed8',borderRadius:'2px'}}></div>
+            <div style={{width:'3px',height:'20px',background:'#2563eb',borderRadius:'2px'}}></div>
             <span style={{fontWeight:'700',fontSize:'15px',color:'#0f172a'}}>
               {currentView==='dashboard'&&'Panel Principal'}
               {currentView==='budget'&&'Cotizaciones'}
-              {currentView==='calculators'&&'Cálculo de Materiales'}
+              {currentView==='calculators'&&'Calculadoras de Materiales'}
               {currentView==='costAnalysis'&&'Base de Datos'}
               {currentView==='templates'&&'Modelos'}
               {currentView==='presupuestoObra'&&'Presupuesto de Obra'}
@@ -6178,7 +6190,7 @@ const Dashboard = ({ onLogout }) => {
           </div>
           <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
             <span style={{fontSize:'12px',color:'#94a3b8'}}>República Dominicana</span>
-            <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'#1d4ed8',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:'13px',fontWeight:'700'}}>P</div>
+            <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'#2563eb',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:'13px',fontWeight:'700'}}>P</div>
           </div>
         </div>
 
@@ -6601,16 +6613,18 @@ const Dashboard = ({ onLogout }) => {
   );
 };
 
-// ==================== EXPORT PRINCIPAL ====================
 // ==================== AUTH CON SUPABASE ====================
 const AuthSystem = () => {
   const [view, setView]         = useState('login');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [nombre, setNombre]     = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
-  const [msg, setMsg]           = useState('');
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+  const [msg, setMsg]                 = useState('');
+  const [sidePanel, setSidePanel]     = useState(null); // null | 'mision' | 'planes' | 'recursos' | 'ayuda' | 'derechos'
+  const [helpMsg, setHelpMsg]         = useState('');
+  const [helpSent, setHelpSent]       = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true); setError('');
@@ -6637,6 +6651,9 @@ const AuthSystem = () => {
     setLoading(false);
   };
 
+  const togglePanel = (p) => setSidePanel(prev => prev === p ? null : p);
+
+
   const BG = BACKGROUNDS.login;
   const inp = { width:'100%',padding:'11px 12px 11px 38px',border:'1.5px solid #e2e8f0',borderRadius:'10px',fontSize:'13px',fontWeight:'500',color:'#1e293b',outline:'none',boxSizing:'border-box' };
   const lbl = { fontSize:'10px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em',display:'block',marginBottom:'6px' };
@@ -6653,75 +6670,208 @@ const AuthSystem = () => {
     { icon:'📈', text:'Precios de construcción por m²' },
   ];
 
+  const PANELS = {
+    mision: {
+      title: '🎯 Misión, Visión y Objetivo', color: '#1d4ed8',
+      content: (<div>
+        <div style={{marginBottom:'20px'}}>
+          <div style={{fontSize:'12px',fontWeight:'800',color:'#60a5fa',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'6px'}}>🎯 Misión</div>
+          <p style={{fontSize:'13px',color:'#cbd5e1',lineHeight:1.7,margin:0}}>Proveer a los profesionales de la construcción dominicana una herramienta digital precisa, accesible y actualizada para el cálculo de cuantías, presupuestos y análisis de costos, mejorando la eficiencia y competitividad del sector.</p>
+        </div>
+        <div style={{marginBottom:'20px'}}>
+          <div style={{fontSize:'12px',fontWeight:'800',color:'#34d399',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'6px'}}>👁️ Visión</div>
+          <p style={{fontSize:'13px',color:'#cbd5e1',lineHeight:1.7,margin:0}}>Ser la plataforma de referencia en ingeniería de costos de construcción para toda la República Dominicana y el Caribe, integrando tecnología, datos reales y fácil uso en un solo lugar.</p>
+        </div>
+        <div>
+          <div style={{fontSize:'12px',fontWeight:'800',color:'#fbbf24',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'6px'}}>🏆 Objetivo Específico</div>
+          <p style={{fontSize:'13px',color:'#cbd5e1',lineHeight:1.7,margin:0}}>Digitalizar y automatizar el proceso de presupuestación en obras de construcción, reduciendo el tiempo de elaboración de cotizaciones en un 70% y garantizando datos actualizados con las referencias del MOPC y DGODT de República Dominicana.</p>
+        </div>
+      </div>)
+    },
+    planes: {
+      title: '💎 Planes y Precios', color: '#7c3aed',
+      content: (<div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+        <div style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'12px',padding:'16px'}}>
+          <div style={{fontWeight:'800',fontSize:'14px',color:'white',marginBottom:'2px'}}>Plan Gratuito</div>
+          <div style={{fontSize:'20px',fontWeight:'900',color:'#94a3b8',marginBottom:'12px'}}>$0 <span style={{fontSize:'11px',fontWeight:'500'}}>/siempre</span></div>
+          {[{ok:false,text:'Visualizar 5 minutos cada 24 horas'},{ok:false,text:'Sin acceso a cálculos'},{ok:false,text:'Sin cotizaciones ni base de datos'},{ok:true,text:'Vista previa de la plataforma'}].map((f,i)=>(
+            <div key={i} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:f.ok?'#94a3b8':'#64748b'}}>
+              <span style={{flexShrink:0,color:f.ok?'#34d399':'#ef4444'}}>{f.ok?'✓':'○'}</span>{f.text}
+            </div>
+          ))}
+        </div>
+        <div style={{background:'linear-gradient(135deg,#1e3a5f,#1d4ed8)',border:'2px solid #3b82f6',borderRadius:'12px',padding:'16px',position:'relative'}}>
+          <div style={{position:'absolute',top:'-10px',left:'50%',transform:'translateX(-50%)',background:'#fbbf24',color:'#0f172a',fontSize:'9px',fontWeight:'900',padding:'3px 14px',borderRadius:'20px',letterSpacing:'0.08em',whiteSpace:'nowrap'}}>⭐ MÁS POPULAR</div>
+          <div style={{fontWeight:'800',fontSize:'14px',color:'white',marginBottom:'2px'}}>Plan Pro</div>
+          <div style={{fontSize:'24px',fontWeight:'900',color:'#60a5fa',marginBottom:'12px'}}>$40 <span style={{fontSize:'11px',fontWeight:'500',color:'#93c5fd'}}>/año</span></div>
+          {['Cálculos ilimitados en todas las calculadoras','Cotizaciones profesionales exportables','Base de datos completa (2,124+ registros)','Modelos de presupuesto por tipo de obra','Precios actualizados MOPC / DGODT','Presupuesto de obra por capítulos','Biblioteca técnica completa','Nuevas funciones incluidas sin costo extra'].map((f,i)=>(
+            <div key={i} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:'#bfdbfe',fontWeight:'600'}}>
+              <span style={{flexShrink:0,color:'#34d399'}}>✓</span>{f}
+            </div>
+          ))}
+          <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')}
+            style={{width:'100%',padding:'11px',background:'#fbbf24',color:'#0f172a',border:'none',borderRadius:'8px',fontWeight:'900',fontSize:'13px',cursor:'pointer',marginTop:'14px'}}>
+            💳 Suscribirse — $40/año
+          </button>
+        </div>
+      </div>)
+    },
+    recursos: {
+      title: '🛠️ Recursos Disponibles', color: '#0891b2',
+      content: (<div>
+        {[
+          {icon:'⚡',title:'Calculadoras Estructurales',items:['Losa Maciza','Columna','Viga','Zapata Aislada','Muros de Bloques','Badén Ciclópeo','Cisterna','Piso / Torta']},
+          {icon:'📊',title:'Base de Datos Técnica',items:['2,124+ materiales con precios','Mano de Obra por cuadrillas','Rendimientos estándar','Análisis de Costo (APU)','Jornales y equipos']},
+          {icon:'📋',title:'Presupuesto y Cotizaciones',items:['Presupuesto por capítulos','Exportar a PDF y Excel','Importar desde Excel (Ctrl+V)','Análisis de precio unitario','Costos indirectos e ITBIS']},
+          {icon:'📚',title:'Biblioteca Técnica',items:['Normas ACI y MOPC','Guías de instalaciones','Precios DGODT actualizados','Código Eléctrico Nacional','Tablas de rendimientos']},
+        ].map((s,i)=>(
+          <div key={i} style={{marginBottom:'16px'}}>
+            <div style={{fontSize:'12px',fontWeight:'800',color:'#38bdf8',marginBottom:'8px'}}>{s.icon} {s.title}</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:'5px'}}>
+              {s.items.map((item,j)=>(
+                <span key={j} style={{background:'rgba(56,189,248,0.1)',border:'1px solid rgba(56,189,248,0.2)',borderRadius:'6px',padding:'3px 8px',fontSize:'11px',color:'#bae6fd',fontWeight:'600'}}>{item}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>)
+    },
+    ayuda: {
+      title: '❓ Ayuda y Soporte', color: '#16a34a',
+      content: (<div>
+        <p style={{fontSize:'13px',color:'#cbd5e1',lineHeight:1.7,marginBottom:'16px'}}>¿Tienes alguna pregunta? Contáctanos y te respondemos en menos de 24 horas.</p>
+        <div style={{marginBottom:'16px'}}>
+          <div style={{fontSize:'11px',fontWeight:'700',color:'#4ade80',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'8px'}}>📧 Contacto directo</div>
+          <div style={{background:'rgba(255,255,255,0.05)',borderRadius:'8px',padding:'12px',fontSize:'13px',color:'#86efac',fontWeight:'600'}}>ingyosej@gmail.com</div>
+        </div>
+        {[['¿Cómo activo el Plan Pro?','Después del pago por PayPal envía tu email de registro y lo activamos en menos de 2 horas.'],['¿Los precios están actualizados?','Sí. La base de datos se actualiza mensualmente con datos del MOPC y DGODT.'],['¿Puedo exportar mis presupuestos?','Sí. Puedes exportar a PDF, Excel (.csv) y formato BC3.']].map(([q,a],i)=>(
+          <div key={i} style={{marginBottom:'10px',background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'10px 12px'}}>
+            <div style={{fontSize:'12px',fontWeight:'700',color:'#4ade80',marginBottom:'4px'}}>❓ {q}</div>
+            <div style={{fontSize:'11px',color:'#94a3b8',lineHeight:1.6}}>{a}</div>
+          </div>
+        ))}
+      </div>)
+    },
+    derechos: {
+      title: '⚖️ Derechos y Legal', color: '#f59e0b',
+      content: (<div>
+        <div style={{background:'rgba(251,191,36,0.1)',border:'1px solid rgba(251,191,36,0.3)',borderRadius:'10px',padding:'14px',marginBottom:'16px',textAlign:'center'}}>
+          <div style={{fontSize:'28px',marginBottom:'6px'}}>©</div>
+          <div style={{fontWeight:'800',fontSize:'14px',color:'#fbbf24'}}>ProCalc — Ingeniería de Costos</div>
+          <div style={{fontSize:'12px',color:'#d97706',marginTop:'4px'}}>Todos los derechos reservados · {new Date().getFullYear()}</div>
+        </div>
+        {[
+          {title:'📝 Autoría',text:'ProCalc es una obra de software de autoría original, registrada ante la Oficina Nacional de Derecho de Autor (ONDA) de la República Dominicana, conforme a la Ley 65-00.'},
+          {title:'🔒 Propiedad Intelectual',text:'El código fuente, diseño, base de datos, fórmulas de cálculo y toda la interfaz de ProCalc están protegidos por derechos de autor. Se prohíbe su reproducción sin autorización expresa.'},
+          {title:'🌐 Uso de la Plataforma',text:'El acceso a ProCalc es personal e intransferible. Está prohibido compartir credenciales o usar la plataforma para fines distintos al cálculo y presupuestación de obras de construcción.'},
+          {title:'📊 Datos y Privacidad',text:'Los datos ingresados son propiedad del usuario. ProCalc no comparte información personal con terceros. Los precios de referencia son de fuentes públicas del MOPC y DGODT.'},
+        ].map((s,i)=>(
+          <div key={i} style={{marginBottom:'14px'}}>
+            <div style={{fontSize:'12px',fontWeight:'800',color:'#fbbf24',marginBottom:'5px'}}>{s.title}</div>
+            <p style={{fontSize:'12px',color:'#94a3b8',lineHeight:1.7,margin:0}}>{s.text}</p>
+          </div>
+        ))}
+        <div style={{marginTop:'16px',paddingTop:'14px',borderTop:'1px solid rgba(255,255,255,0.08)',textAlign:'center',fontSize:'11px',color:'#475569'}}>República Dominicana · ProCalc v2.0 · {new Date().getFullYear()}</div>
+      </div>)
+    },
+  };
+
+  const panelInfo = sidePanel ? PANELS[sidePanel] : null;
+
+
   return (
     <div style={{minHeight:'100vh',backgroundImage:`url(${BG})`,backgroundSize:'cover',backgroundPosition:'center',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}>
-      <div style={{position:'absolute',inset:0,background:'rgba(10,18,38,0.82)',backdropFilter:'blur(3px)'}}/>
+      {/* Overlay muy ligero para que se vea la foto */}
+      <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.30)'}}/>
 
-      {/* Contenedor principal — 2 columnas en desktop, 1 en móvil */}
-      <div style={{position:'relative',zIndex:10,width:'100%',maxWidth:'900px',display:'flex',gap:'0',borderRadius:'20px',overflow:'hidden',boxShadow:'0 30px 80px rgba(0,0,0,0.6)'}}>
+      {/* Panel lateral deslizante */}
+      <div style={{position:'fixed',left:0,top:0,bottom:0,zIndex:90,width:sidePanel?'340px':'0',background:'linear-gradient(180deg,#0f172a 0%,#1e293b 100%)',borderRight:sidePanel?'1px solid rgba(255,255,255,0.1)':'none',overflow:'hidden',transition:'width 0.35s cubic-bezier(0.4,0,0.2,1)',display:'flex',flexDirection:'column',boxShadow:sidePanel?'8px 0 32px rgba(0,0,0,0.5)':'none'}}>
+        <div style={{width:'340px',height:'100%',overflow:'hidden',display:'flex',flexDirection:'column'}}>
+          <div style={{padding:'20px',borderBottom:'1px solid rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+            <div style={{fontWeight:'800',fontSize:'15px',color:'white'}}>{panelInfo?.title}</div>
+            <button onClick={()=>setSidePanel(null)} style={{background:'rgba(255,255,255,0.08)',border:'none',borderRadius:'6px',width:'28px',height:'28px',cursor:'pointer',color:'#94a3b8',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px'}}>✕</button>
+          </div>
+          <div style={{flex:1,overflowY:'auto',padding:'20px'}}>{panelInfo?.content}</div>
+          <div style={{padding:'12px 20px',borderTop:'1px solid rgba(255,255,255,0.06)',flexShrink:0,fontSize:'11px',color:'#475569',fontWeight:'600'}}>ProCalc · Ingeniería de Costos · RD</div>
+        </div>
+      </div>
 
-        {/* ── COLUMNA IZQUIERDA — Features ── */}
-        <div style={{flex:'1',background:'linear-gradient(160deg,#0f172a 0%,#1e3a5f 100%)',padding:'44px 36px',display:'none',flexDirection:'column',justifyContent:'space-between',minWidth:'340px'}}
-          className="login-left">
-          {/* Logo */}
+      {/* Botones flotantes — parte inferior */}
+      <div style={{position:'fixed',bottom:'20px',left:'50%',transform:'translateX(-50%)',zIndex:100,display:'flex',gap:'6px',background:'rgba(10,15,28,0.85)',backdropFilter:'blur(12px)',padding:'8px 12px',borderRadius:'40px',border:'1px solid rgba(255,255,255,0.1)',boxShadow:'0 8px 32px rgba(0,0,0,0.4)'}}>
+        {[
+          {key:'mision',  icon:'🎯', label:'Misión',   color:'#3b82f6'},
+          {key:'planes',  icon:'💎', label:'Planes',   color:'#7c3aed'},
+          {key:'recursos',icon:'🛠️', label:'Recursos', color:'#0891b2'},
+          {key:'ayuda',   icon:'❓', label:'Ayuda',    color:'#16a34a'},
+          {key:'derechos',icon:'⚖️', label:'Derechos', color:'#f59e0b'},
+        ].map(btn=>(
+          <button key={btn.key} onClick={()=>setSidePanel(prev=>prev===btn.key?null:btn.key)}
+            style={{display:'flex',alignItems:'center',gap:'5px',padding:'7px 12px',background:sidePanel===btn.key?btn.color:'transparent',borderRadius:'30px',border:'none',color:sidePanel===btn.key?'white':'#94a3b8',fontSize:'11px',fontWeight:'700',cursor:'pointer',transition:'all 0.2s',whiteSpace:'nowrap'}}>
+            <span style={{fontSize:'14px'}}>{btn.icon}</span>
+            <span>{btn.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{position:'relative',zIndex:10,width:'100%',maxWidth:'880px',display:'flex',borderRadius:'20px',overflow:'hidden',boxShadow:'0 30px 80px rgba(0,0,0,0.55)'}}>
+
+        {/* ── Columna izquierda — features ── */}
+        <div style={{flex:'1',background:'rgba(15,23,42,0.82)',backdropFilter:'blur(12px)',padding:'44px 36px',display:'flex',flexDirection:'column',justifyContent:'space-between',minWidth:'310px'}}>
           <div>
-            <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'36px'}}>
-              <div style={{width:'48px',height:'48px',background:'#1d4ed8',borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 0 2px rgba(96,165,250,0.25)'}}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
+            {/* Logo */}
+            <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'32px'}}>
+              <div style={{width:'46px',height:'46px',background:'#3b82f6',borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
               </div>
               <div>
-                <div style={{fontSize:'22px',fontWeight:'900',color:'white',letterSpacing:'-0.02em',lineHeight:1}}>ProCalc</div>
-                <div style={{fontSize:'10px',fontWeight:'700',color:'#60a5fa',letterSpacing:'0.14em',textTransform:'uppercase',marginTop:'3px'}}>Ingeniería de Costos</div>
+                <div style={{fontSize:'22px',fontWeight:'900',color:'white',lineHeight:1}}>ProCalc</div>
+                <div style={{fontSize:'10px',fontWeight:'700',color:'#93c5fd',letterSpacing:'0.14em',textTransform:'uppercase',marginTop:'3px'}}>Ingeniería de Costos</div>
               </div>
             </div>
 
-            <h2 style={{fontSize:'17px',fontWeight:'800',color:'white',marginBottom:'6px',lineHeight:1.3}}>
+            <h2 style={{fontSize:'16px',fontWeight:'800',color:'white',marginBottom:'6px',lineHeight:1.4}}>
               Todo lo que necesitas para presupuestar con precisión
             </h2>
-            <p style={{fontSize:'12px',color:'#94a3b8',marginBottom:'28px',lineHeight:1.6}}>
+            <p style={{fontSize:'12px',color:'#94a3b8',marginBottom:'26px',lineHeight:1.6}}>
               La plataforma de ingeniería de costos para República Dominicana.
             </p>
 
-            {/* Features */}
-            <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <div style={{display:'flex',flexDirection:'column',gap:'11px'}}>
               {FEATURES.map((f,i)=>(
                 <div key={i} style={{display:'flex',alignItems:'center',gap:'10px'}}>
-                  <span style={{fontSize:'16px',flexShrink:0}}>{f.icon}</span>
+                  <span style={{fontSize:'15px',flexShrink:0}}>{f.icon}</span>
                   <span style={{fontSize:'12px',color:'#cbd5e1',fontWeight:'500',lineHeight:1.4}}>{f.text}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Footer */}
-          <div style={{marginTop:'32px',paddingTop:'20px',borderTop:'1px solid rgba(255,255,255,0.08)'}}>
-            <div style={{fontSize:'11px',color:'#475569',fontWeight:'600'}}>República Dominicana · 2026</div>
+          <div style={{marginTop:'28px',paddingTop:'16px',borderTop:'1px solid rgba(255,255,255,0.1)',fontSize:'10px',color:'#475569',fontWeight:'600'}}>
+            República Dominicana · {new Date().getFullYear()}
           </div>
         </div>
 
-        {/* ── COLUMNA DERECHA — Formulario ── */}
-        <div style={{width:'100%',maxWidth:'400px',background:'white',display:'flex',flexDirection:'column'}}>
-
-          {/* Header móvil (solo aparece en móvil) */}
-          <div style={{background:'#0f172a',padding:'24px 28px',display:'flex',alignItems:'center',gap:'12px'}} className="login-mobile-header">
-            <div style={{width:'42px',height:'42px',background:'#1d4ed8',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 0 0 2px rgba(96,165,250,0.25)'}}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
-            </div>
-            <div>
-              <div style={{fontSize:'20px',fontWeight:'900',color:'white',letterSpacing:'-0.02em',lineHeight:1}}>ProCalc</div>
-              <div style={{fontSize:'9px',fontWeight:'700',color:'#60a5fa',letterSpacing:'0.14em',textTransform:'uppercase',marginTop:'2px'}}>Ingeniería de Costos · RD</div>
+        {/* ── Columna derecha — formulario ── */}
+        <div style={{width:'100%',maxWidth:'390px',background:'white',display:'flex',flexDirection:'column'}}>
+          {/* Header */}
+          <div style={{background:'rgba(15,23,42,0.92)',backdropFilter:'blur(12px)',padding:'20px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+              <div style={{width:'38px',height:'38px',background:'#3b82f6',borderRadius:'9px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
+              </div>
+              <div>
+                <div style={{fontSize:'17px',fontWeight:'900',color:'white',lineHeight:1}}>ProCalc</div>
+                <div style={{fontSize:'9px',fontWeight:'700',color:'#93c5fd',letterSpacing:'0.1em',textTransform:'uppercase'}}>Ingeniería de Costos</div>
+              </div>
             </div>
           </div>
 
-          <div style={{padding:'28px',flex:1,overflowY:'auto'}}>
+          <div style={{padding:'24px',flex:1,overflowY:'auto'}}>
             {/* Tabs */}
             {view !== 'forgot' && (
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'4px',background:'#f1f5f9',borderRadius:'10px',padding:'4px',marginBottom:'22px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'4px',background:'#f1f5f9',borderRadius:'10px',padding:'4px',marginBottom:'20px'}}>
                 {[['login','Entrar'],['register','Registrarse'],['pricing','Planes']].map(([v,l])=>(
                   <button key={v} onClick={()=>{setView(v);setError('');setMsg('');}}
-                    style={{padding:'9px 4px',border:'none',borderRadius:'7px',fontSize:'11px',fontWeight:'700',cursor:'pointer',
-                      background:view===v?'white':'transparent',color:view===v?'#0f172a':'#64748b',
-                      boxShadow:view===v?'0 1px 4px rgba(0,0,0,0.1)':'none',transition:'all .15s'}}>
+                    style={{padding:'9px 4px',border:'none',borderRadius:'7px',fontSize:'11px',fontWeight:'700',cursor:'pointer',background:view===v?'white':'transparent',color:view===v?'#0f172a':'#64748b',boxShadow:view===v?'0 1px 4px rgba(0,0,0,0.1)':'none',transition:'all .15s'}}>
                     {l}
                   </button>
                 ))}
@@ -6736,79 +6886,31 @@ const AuthSystem = () => {
               <form onSubmit={handleLogin}>
                 <div style={{marginBottom:'14px'}}>
                   <label style={lbl}>Correo Electrónico</label>
-                  <div style={{position:'relative'}}>
-                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>
-                    </span>
-                    <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/>
-                  </div>
+                  <div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg></span><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/></div>
                 </div>
                 <div style={{marginBottom:'8px'}}>
                   <label style={lbl}>Contraseña</label>
-                  <div style={{position:'relative'}}>
-                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    </span>
-                    <input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" style={inp}/>
-                  </div>
+                  <div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" style={inp}/></div>
                 </div>
-                <div style={{textAlign:'right',marginBottom:'18px'}}>
-                  <button type="button" onClick={()=>{setView('forgot');setError('');setMsg('');}}
-                    style={{background:'none',border:'none',fontSize:'11px',color:'#1d4ed8',cursor:'pointer',fontWeight:'600'}}>
-                    ¿Olvidaste tu contraseña?
-                  </button>
-                </div>
-                <button type="submit" disabled={loading}
-                  style={{width:'100%',padding:'13px',background:'#1d4ed8',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer',boxShadow:'0 4px 14px rgba(29,78,216,0.3)',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
+                <div style={{textAlign:'right',marginBottom:'18px'}}><button type="button" onClick={()=>{setView('forgot');setError('');setMsg('');}} style={{background:'none',border:'none',fontSize:'11px',color:'#2563eb',cursor:'pointer',fontWeight:'600'}}>¿Olvidaste tu contraseña?</button></div>
+                <button type="submit" disabled={loading} style={{width:'100%',padding:'13px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer',boxShadow:'0 4px 14px rgba(37,99,235,0.3)',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
                   {loading?<><div style={{width:'15px',height:'15px',border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>Accediendo...</>:'Iniciar Sesión'}
                 </button>
-                <p style={{textAlign:'center',marginTop:'16px',fontSize:'11px',color:'#94a3b8'}}>
-                  ¿No tienes cuenta? <button type="button" onClick={()=>setView('register')} style={{background:'none',border:'none',color:'#1d4ed8',fontWeight:'700',cursor:'pointer',fontSize:'11px'}}>Regístrate gratis</button>
-                </p>
+                <p style={{textAlign:'center',marginTop:'16px',fontSize:'11px',color:'#94a3b8'}}>¿No tienes cuenta? <button type="button" onClick={()=>setView('register')} style={{background:'none',border:'none',color:'#2563eb',fontWeight:'700',cursor:'pointer',fontSize:'11px'}}>Regístrate gratis</button></p>
               </form>
             )}
 
             {/* REGISTRO */}
             {view === 'register' && (
               <form onSubmit={handleRegister}>
-                <div style={{marginBottom:'14px'}}>
-                  <label style={lbl}>Nombre Completo</label>
-                  <div style={{position:'relative'}}>
-                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-                    </span>
-                    <input required type="text" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ing. Juan Pérez" style={inp}/>
-                  </div>
-                </div>
-                <div style={{marginBottom:'14px'}}>
-                  <label style={lbl}>Correo Electrónico</label>
-                  <div style={{position:'relative'}}>
-                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>
-                    </span>
-                    <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/>
-                  </div>
-                </div>
-                <div style={{marginBottom:'16px'}}>
-                  <label style={lbl}>Contraseña</label>
-                  <div style={{position:'relative'}}>
-                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    </span>
-                    <input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" style={inp}/>
-                  </div>
-                </div>
-                <div style={{background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:'10px',padding:'12px',marginBottom:'16px'}}>
-                  <div style={{fontSize:'11px',fontWeight:'800',color:'#0369a1',marginBottom:'3px'}}>✓ Plan Gratuito incluido</div>
-                  <div style={{fontSize:'11px',color:'#0369a1',lineHeight:1.5}}>1 cálculo cada 24 horas · Sin tarjeta requerida</div>
-                </div>
-                <button type="submit" disabled={loading}
-                  style={{width:'100%',padding:'13px',background:'#1d4ed8',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
+                <div style={{marginBottom:'14px'}}><label style={lbl}>Nombre Completo</label><div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></span><input required type="text" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ing. Juan Pérez" style={inp}/></div></div>
+                <div style={{marginBottom:'14px'}}><label style={lbl}>Correo Electrónico</label><div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg></span><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/></div></div>
+                <div style={{marginBottom:'16px'}}><label style={lbl}>Contraseña</label><div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" style={inp}/></div></div>
+                <div style={{background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:'10px',padding:'12px',marginBottom:'16px'}}><div style={{fontSize:'11px',fontWeight:'800',color:'#0369a1',marginBottom:'3px'}}>✓ Plan Gratuito incluido</div><div style={{fontSize:'11px',color:'#0369a1',lineHeight:1.5}}>Visualizar 5 min cada 24 horas · Sin tarjeta requerida</div></div>
+                <button type="submit" disabled={loading} style={{width:'100%',padding:'13px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
                   {loading?<><div style={{width:'15px',height:'15px',border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>Creando...</>:'Crear Cuenta Gratis'}
                 </button>
-                <p style={{textAlign:'center',marginTop:'14px',fontSize:'11px',color:'#94a3b8'}}>
-                  ¿Ya tienes cuenta? <button type="button" onClick={()=>setView('login')} style={{background:'none',border:'none',color:'#1d4ed8',fontWeight:'700',cursor:'pointer',fontSize:'11px'}}>Inicia sesión</button>
-                </p>
+                <p style={{textAlign:'center',marginTop:'14px',fontSize:'11px',color:'#94a3b8'}}>¿Ya tienes cuenta? <button type="button" onClick={()=>setView('login')} style={{background:'none',border:'none',color:'#2563eb',fontWeight:'700',cursor:'pointer',fontSize:'11px'}}>Inicia sesión</button></p>
               </form>
             )}
 
@@ -6818,73 +6920,53 @@ const AuthSystem = () => {
                 <div style={{border:'1px solid #e2e8f0',borderRadius:'12px',padding:'16px',marginBottom:'10px'}}>
                   <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a',marginBottom:'2px'}}>Plan Gratuito</div>
                   <div style={{fontSize:'22px',fontWeight:'900',color:'#0f172a',marginBottom:'10px'}}>$0 <span style={{fontSize:'12px',fontWeight:'500',color:'#64748b'}}>/siempre</span></div>
-                  {['1 cálculo cada 24 horas','Vista de todas las calculadoras','Sin cotizaciones','Sin base de datos completa'].map(f=>(
-                    <div key={f} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:'#94a3b8'}}>
-                      <span style={{marginTop:'1px',flexShrink:0}}>○</span>{f}
-                    </div>
+                  {[{ok:false,text:'Visualizar 5 minutos cada 24 horas'},{ok:false,text:'Sin acceso a cálculos'},{ok:false,text:'Sin cotizaciones ni base de datos'},{ok:true,text:'Vista previa de la plataforma'}].map((f,i)=>(
+                    <div key={i} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:f.ok?'#64748b':'#94a3b8'}}><span style={{color:f.ok?'#10b981':'#94a3b8',flexShrink:0}}>{f.ok?'✓':'○'}</span>{f.text}</div>
                   ))}
-                  <button onClick={()=>setView('register')} style={{width:'100%',padding:'10px',background:'#f1f5f9',color:'#475569',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',marginTop:'12px'}}>
-                    Empezar Gratis
-                  </button>
+                  <button onClick={()=>setView('register')} style={{width:'100%',padding:'10px',background:'#f1f5f9',color:'#475569',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',marginTop:'12px'}}>Empezar Gratis</button>
                 </div>
-                <div style={{border:'2px solid #1d4ed8',borderRadius:'12px',padding:'16px',position:'relative',background:'#f0f7ff'}}>
-                  <div style={{position:'absolute',top:'-10px',left:'50%',transform:'translateX(-50%)',background:'#1d4ed8',color:'white',fontSize:'10px',fontWeight:'800',padding:'3px 14px',borderRadius:'20px',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>MÁS POPULAR</div>
+                <div style={{border:'2px solid #2563eb',borderRadius:'12px',padding:'16px',position:'relative',background:'#f0f7ff'}}>
+                  <div style={{position:'absolute',top:'-10px',left:'50%',transform:'translateX(-50%)',background:'#2563eb',color:'white',fontSize:'10px',fontWeight:'800',padding:'3px 14px',borderRadius:'20px',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>MÁS POPULAR</div>
                   <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a',marginBottom:'2px'}}>Plan Pro</div>
-                  <div style={{fontSize:'26px',fontWeight:'900',color:'#1d4ed8',marginBottom:'10px'}}>$40 <span style={{fontSize:'12px',fontWeight:'500',color:'#64748b'}}>/año</span></div>
-                  {['Cálculos ilimitados','Todas las calculadoras','Cotizaciones profesionales','Base de datos completa actualizada','Modelos de presupuesto','Precios de construcción por m²','Nuevas funciones incluidas'].map(f=>(
-                    <div key={f} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:'#1e3a5f',fontWeight:'600'}}>
-                      <span style={{color:'#1d4ed8',marginTop:'1px',flexShrink:0}}>✓</span>{f}
-                    </div>
+                  <div style={{fontSize:'26px',fontWeight:'900',color:'#2563eb',marginBottom:'10px'}}>$40 <span style={{fontSize:'12px',fontWeight:'500',color:'#64748b'}}>/año</span></div>
+                  {['Cálculos ilimitados','Todas las calculadoras','Cotizaciones profesionales','Base de datos completa actualizada','Modelos de presupuesto','Precios de construcción por m²','Nuevas funciones incluidas'].map((f,i)=>(
+                    <div key={i} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:'#1e3a5f',fontWeight:'600'}}><span style={{color:'#2563eb',flexShrink:0}}>✓</span>{f}</div>
                   ))}
-                  <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')}
-                    style={{width:'100%',padding:'12px',background:'#1d4ed8',color:'white',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'13px',cursor:'pointer',marginTop:'12px',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
+                  <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')} style={{width:'100%',padding:'12px',background:'#2563eb',color:'white',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'13px',cursor:'pointer',marginTop:'12px',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788.06-.26.76-4.852.816-5.09a.932.932 0 0 1 .923-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.471z"/></svg>
                     Suscribirse — $40/año
                   </button>
                 </div>
-                <p style={{textAlign:'center',marginTop:'10px',fontSize:'10px',color:'#94a3b8',lineHeight:1.5}}>
-                  Después del pago envía tu email de registro para activar.
-                </p>
+                <p style={{textAlign:'center',marginTop:'10px',fontSize:'10px',color:'#94a3b8',lineHeight:1.5}}>Después del pago envía tu email de registro para activar.</p>
               </div>
             )}
 
-            {/* OLVIDÉ CONTRASEÑA */}
+            {/* OLVIDÉ */}
             {view === 'forgot' && (
               <form onSubmit={handleForgot}>
-                <button type="button" onClick={()=>setView('login')} style={{background:'none',border:'none',fontSize:'12px',color:'#64748b',cursor:'pointer',fontWeight:'600',marginBottom:'16px',display:'flex',alignItems:'center',gap:'4px'}}>
-                  ← Volver
-                </button>
+                <button type="button" onClick={()=>setView('login')} style={{background:'none',border:'none',fontSize:'12px',color:'#64748b',cursor:'pointer',fontWeight:'600',marginBottom:'16px',display:'flex',alignItems:'center',gap:'4px'}}>← Volver</button>
                 <h3 style={{fontWeight:'800',fontSize:'16px',color:'#0f172a',marginBottom:'6px'}}>Restablecer contraseña</h3>
                 <p style={{fontSize:'12px',color:'#64748b',marginBottom:'18px',lineHeight:1.5}}>Te enviaremos un enlace para crear una nueva contraseña.</p>
-                <div style={{marginBottom:'16px'}}>
-                  <label style={lbl}>Correo Electrónico</label>
-                  <div style={{position:'relative'}}>
-                    <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>
-                    </span>
-                    <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/>
-                  </div>
-                </div>
-                <button type="submit" disabled={loading}
-                  style={{width:'100%',padding:'13px',background:'#1d4ed8',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer'}}>
-                  {loading?'Enviando...':'Enviar Enlace'}
-                </button>
+                <div style={{marginBottom:'16px'}}><label style={lbl}>Correo Electrónico</label><div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8'}}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg></span><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@ejemplo.com" style={inp}/></div></div>
+                <button type="submit" disabled={loading} style={{width:'100%',padding:'13px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:loading?'wait':'pointer'}}>{loading?'Enviando...':'Enviar Enlace'}</button>
               </form>
             )}
+
+            {/* Footer derechos — sin autoría */}
+            <div style={{marginTop:'20px',paddingTop:'14px',borderTop:'1px solid #f1f5f9',textAlign:'center'}}>
+              <span style={{fontSize:'10px',color:'#cbd5e1',fontWeight:'600'}}>
+                ⚖️ © {new Date().getFullYear()} ProCalc · Todos los derechos reservados
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <style>{`
-        @keyframes spin{to{transform:rotate(360deg);}}
-        @media(min-width:700px){
-          .login-left{display:flex !important;}
-          .login-mobile-header{display:none !important;}
-        }
-      `}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
     </div>
   );
 };
+
 
 // ==================== EXPORT PRINCIPAL ====================
 export default function ProCalcApp() {
