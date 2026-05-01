@@ -2965,7 +2965,7 @@ const CostAnalysisView = () => {
     { key: 'materiales',    label: 'Materiales',       color: '#3b82f6', table: 'materiales' },
     { key: 'herramientas',  label: 'Herramientas',     color: '#f97316', table: 'herramientas' },
     { key: 'rendimientos',  label: 'Rendimientos',     color: '#10b981', table: 'rendimientos' },
-    { key: 'mov_equipos',   label: 'Mov. Equipos',     color: '#06b6d4', table: 'movimientos_equipos' },
+    { key: 'mov_equipos',   label: 'Equipos',          color: '#06b6d4', table: 'movimientos_equipos' },
     { key: 'mo_cuadrillas', label: 'MO Cuadrillas',    color: '#8b5cf6', table: 'mo_cuadrillas' },
     { key: 'mo_jornales',   label: 'MO Jornales',      color: '#ec4899', table: 'mo_jornales' },
     { key: 'analisis_costo',label: 'Análisis de Costo',color: '#0891b2', table: 'analisis_costo' },
@@ -3215,6 +3215,161 @@ const CostAnalysisView = () => {
   const cols = COL_DEFS[activeTab] || COL_DEFS.materiales;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
+  const descargarConMarcaAgua = async () => {
+    const tab = TABS.find(t => t.key === activeTab);
+    const cols = COL_DEFS[activeTab] || COL_DEFS.materiales;
+    const hoy = new Date().toLocaleDateString('es-DO');
+
+    // ── Cargar SheetJS dinámicamente ──
+    let XLSX;
+    try {
+      if (window.XLSX) {
+        XLSX = window.XLSX;
+      } else {
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+        XLSX = window.XLSX;
+      }
+    } catch(e) {
+      alert('Error cargando librería Excel. Verifica tu conexión.');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // ── Hoja de MARCA DE AGUA (primera hoja) ──
+    const wmRows = [
+      ['⚠ DOCUMENTO OFICIAL PROCALC'],
+      [''],
+      ['© ' + new Date().getFullYear() + ' ProCalc — Ingeniería de Costos'],
+      ['Todos los derechos reservados'],
+      ['República Dominicana'],
+      [''],
+      ['Este documento contiene información propietaria de ProCalc.'],
+      ['Queda prohibida su reproducción, distribución o uso comercial'],
+      ['sin autorización expresa del titular de los derechos.'],
+      [''],
+      ['Datos de referencia: MOPC / DGODT — República Dominicana'],
+      ['Generado: ' + hoy],
+      [''],
+      ['⚠ SOLO PARA USO INTERNO ⚠'],
+    ];
+    const wsWM = XLSX.utils.aoa_to_sheet(wmRows);
+    wsWM['!cols'] = [{ wch: 60 }];
+    // Fusionar celdas del título
+    wsWM['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:5} }];
+    XLSX.utils.book_append_sheet(wb, wsWM, '⚠ MARCA DE AGUA');
+
+    // ── Función helper: cargar items de una partida ──
+    const loadItems = async (row) => {
+      if (itemsMap[row.id]) return itemsMap[row.id];
+      try {
+        if (activeTab === 'analisis_costo') {
+          const { data: items } = await supabase.from('analisis_costo').select('*')
+            .eq('tipo_fila', 'item').eq('partida_codigo', row.codigo)
+            .eq('partida_descripcion', row.descripcion).order('id', { ascending: true });
+          return items || [];
+        } else if (activeTab === 'mov_equipos') {
+          const { data: items } = await supabase.from('movimientos_equipos').select('*')
+            .is('codigo', null).eq('tipo_equipo', row.tipo_equipo)
+            .eq('partida_descripcion', row.descripcion).order('id', { ascending: true });
+          return items || [];
+        }
+      } catch(e) {}
+      return [];
+    };
+
+    // ── Hoja de DATOS ──
+    const fmtNum = v => { const n = parseFloat(v); return isNaN(n) ? '' : n; };
+
+    // Construir filas
+    const aoaRows = [];
+
+    // Fila de encabezado ProCalc
+    aoaRows.push(['ProCalc — Base de Datos: ' + tab?.label, '', '', '', '', '', '']);
+    aoaRows.push(['Generado: ' + hoy + ' | Registros: ' + totalCount.toLocaleString() + ' | © ProCalc Todos los derechos reservados']);
+    aoaRows.push([]);
+
+    if (hasAccordion) {
+      // Tabs con acordeón: Análisis de Costo y Equipos
+      const itemCols = activeTab === 'analisis_costo'
+        ? COL_DEFS.analisis_costo_items
+        : COL_DEFS.mov_equipos_items;
+
+      // Cabecera partidas
+      const partCols = COL_DEFS[activeTab] || [];
+      aoaRows.push(['CÓDIGO', 'DESCRIPCIÓN', 'UNIDAD', 'TOTAL RD$']);
+
+      for (const row of data) {
+        // Fila de partida
+        aoaRows.push([
+          row.codigo || '',
+          row.descripcion || '',
+          row.unidad || '',
+          fmtNum(row.precio_total),
+        ]);
+        // Cargar y expandir items
+        const items = await loadItems(row);
+        if (items.length > 0) {
+          // Sub-cabecera
+          const itemHeaders = itemCols.map(c => c.label);
+          aoaRows.push(['  ', ...itemHeaders]);
+          for (const it of items) {
+            aoaRows.push([
+              '  ',
+              ...itemCols.map(c => c.num ? fmtNum(it[c.key]) : (it[c.key] ?? ''))
+            ]);
+          }
+          aoaRows.push([]); // Espacio entre partidas
+        }
+      }
+    } else {
+      // Tabs normales con categorías
+      const hasCategories = ['materiales', 'herramientas', 'rendimientos', 'mo_cuadrillas'].includes(activeTab);
+      const colHeaders = cols.map(c => c.label);
+      aoaRows.push(colHeaders);
+
+      if (hasCategories) {
+        // Agrupar por referencia
+        let lastRef = null;
+        for (const row of data) {
+          if (row.referencia && row.referencia !== lastRef) {
+            aoaRows.push([]);
+            aoaRows.push([`── ${row.referencia} ──`]);
+            lastRef = row.referencia;
+          }
+          aoaRows.push(cols.map(c => c.num ? fmtNum(row[c.key]) : (row[c.key] ?? '')));
+        }
+      } else {
+        for (const row of data) {
+          aoaRows.push(cols.map(c => c.num ? fmtNum(row[c.key]) : (row[c.key] ?? '')));
+        }
+      }
+    }
+
+    // Pie de marca de agua
+    aoaRows.push([]);
+    aoaRows.push(['© ' + new Date().getFullYear() + ' ProCalc · Ingeniería de Costos · Todos los derechos reservados · Solo uso interno']);
+
+    const wsData = XLSX.utils.aoa_to_sheet(aoaRows);
+
+    // Anchos de columnas
+    const wscols = cols.length > 0
+      ? [{ wch: 12 }, { wch: 50 }, ...cols.slice(2).map(() => ({ wch: 15 }))]
+      : [{ wch: 60 }];
+    wsData['!cols'] = wscols;
+
+    XLSX.utils.book_append_sheet(wb, wsData, tab?.label || 'Datos');
+
+    // ── Descargar ──
+    const fileName = `ProCalc_${tab?.label}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'#f8fafc', fontFamily:'system-ui,sans-serif' }}>
 
@@ -3227,14 +3382,20 @@ const CostAnalysisView = () => {
               {hasAccordion ? `${totalCount.toLocaleString()} partidas` : `${totalCount.toLocaleString()} registros`}
             </span>
           </div>
-          <div style={{ position:'relative' }}>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar descripción..."
-              style={{ padding:'7px 12px 7px 32px', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'12px', width:'220px', outline:'none', background:'#f8fafc' }}
-            />
-            <span style={{ position:'absolute', left:'10px', top:'8px', color:'#94a3b8', fontSize:'13px' }}>🔍</span>
+          <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+            <div style={{ position:'relative' }}>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar descripción..."
+                style={{ padding:'7px 12px 7px 32px', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'12px', width:'220px', outline:'none', background:'#f8fafc' }}
+              />
+              <span style={{ position:'absolute', left:'10px', top:'8px', color:'#94a3b8', fontSize:'13px' }}>🔍</span>
+            </div>
+            <button onClick={descargarConMarcaAgua}
+              style={{ display:'flex', alignItems:'center', gap:'6px', padding:'7px 14px', background:'#16a34a', color:'white', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'700', cursor:'pointer' }}>
+              <Download size={14}/> Descargar Excel
+            </button>
           </div>
         </div>
 
@@ -5617,7 +5778,7 @@ const DashboardHome = ({ goToBudget, goToCostAnalysis, goToTemplates, goToCalcul
   const cards = [
     { title:'Cotizaciones',           sub:'Nuevo Proyecto',        desc:'Crea cotizaciones profesionales con costos directos e ITBIS.',      action:'Iniciar →',   color:'#2563eb', bg:'#eff6ff', onClick: goToBudget,
       icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg> },
-    { title:'Calculadoras',           sub:'Materiales y Costos',   desc:'Losa, columna, viga, zapata, cisterna y más calculadoras.',          action:'Calcular →',  color:'#dc2626', bg:'#fff1f2', onClick: goToCalculators,
+    { title:'Calculadora de Materiales', sub:'Materiales y Costos',   desc:'Calcula materiales y análisis de costos necesarios para tu obra.',  action:'Calcular →',  color:'#dc2626', bg:'#fff1f2', onClick: goToCalculators,
       icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h5M8 14h5M8 18h3"/></svg> },
     { title:'Base de Datos',          sub:'MOB & Precios',         desc:'2,124+ registros de materiales, mano de obra y rendimientos.',       action:'Consultar →', color:'#ea580c', bg:'#fff7ed', onClick: goToCostAnalysis,
       icon:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg> },
@@ -5995,6 +6156,10 @@ const Dashboard = ({ onLogout }) => {
     const nro = nroCotizacion || 'S/N';
     const today = new Date().toLocaleDateString('es-DO');
     const validUntil = new Date(Date.now()+validezDias*86400000).toLocaleDateString('es-DO');
+    const subtotalCot = (pr.partidas||[]).filter(p=>p.enCotizacion!==false).reduce((s,p)=>(s+(parseFloat(p.cantidad)||0)*(parseFloat(p.precio_unitario)||0)),0);
+    const itbisAmtCot = subtotalCot*0.18;
+    const totalIndCot = indirectos.filter(i=>i.activo).reduce((s,i)=>s+subtotalCot*(parseFloat(i.pct)||0)/100,0);
+    const totalCot = subtotalCot+totalIndCot+itbisAmtCot;
 
     const partidasCot = (pr.partidas||[]).filter(p => p.enCotizacion !== false);
     let itemsHTML = partidasCot.map(p => {
@@ -6154,7 +6319,7 @@ const Dashboard = ({ onLogout }) => {
         <nav style={{flex:1, padding:'12px 10px', overflowY:'auto'}}>
           <NavItem icon={<Home size={19} />} label="Inicio" isOpen={sidebarOpen} active={currentView === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
           <NavItem icon={<Calculator size={19} />} label="Cotizaciones" isOpen={sidebarOpen} active={currentView === 'budget'} onClick={() => handleViewChange('budget')} />
-          <NavItem icon={<Box size={19} />} label="Calculadoras" isOpen={sidebarOpen} active={currentView === 'calculators'} onClick={() => handleViewChange('calculators')} />
+          <NavItem icon={<Box size={19} />} label="Calculadora de Materiales" isOpen={sidebarOpen} active={currentView === 'calculators'} onClick={() => handleViewChange('calculators')} />
           <NavItem icon={<Grid size={19} />} label="Base de Datos" isOpen={sidebarOpen} active={currentView === 'costAnalysis'} onClick={() => handleViewChange('costAnalysis')} />
           <NavItem icon={<LayoutTemplate size={19} />} label="Modelos" isOpen={sidebarOpen} active={currentView === 'templates'} onClick={() => handleViewChange('templates')} />
           <NavItem icon={<ClipboardList size={19} />} label="Presupuesto de Obra" isOpen={sidebarOpen} active={currentView === 'presupuestoObra'} onClick={() => handleViewChange('presupuestoObra')} />
@@ -6181,7 +6346,7 @@ const Dashboard = ({ onLogout }) => {
             <span style={{fontWeight:'700',fontSize:'15px',color:'#0f172a'}}>
               {currentView==='dashboard'&&'Panel Principal'}
               {currentView==='budget'&&'Cotizaciones'}
-              {currentView==='calculators'&&'Calculadoras de Materiales'}
+              {currentView==='calculators'&&'Calculadora de Materiales'}
               {currentView==='costAnalysis'&&'Base de Datos'}
               {currentView==='templates'&&'Modelos'}
               {currentView==='presupuestoObra'&&'Presupuesto de Obra'}
@@ -6662,8 +6827,8 @@ const AuthSystem = () => {
     { icon:'📊', text:'Base de datos actualizada mensualmente' },
     { icon:'🧱', text:'Costos de materiales de construcción' },
     { icon:'🔧', text:'Herramientas y equipos con precios' },
-    { icon:'📐', text:'Análisis de costos por partida' },
-    { icon:'📏', text:'Cálculo de cuantías estructurales' },
+    { icon:'📐', text:'Calculadora de materiales' },
+    { icon:'📏', text:'Análisis de costo' },
     { icon:'📋', text:'Modelos de presupuesto profesionales' },
     { icon:'💰', text:'Genera cotizaciones con la base de datos' },
     { icon:'🏗️', text:'Crea tu base de datos personalizada' },
@@ -6720,7 +6885,7 @@ const AuthSystem = () => {
       title: '🛠️ Recursos Disponibles', color: '#0891b2',
       content: (<div>
         {[
-          {icon:'⚡',title:'Calculadoras Estructurales',items:['Losa Maciza','Columna','Viga','Zapata Aislada','Muros de Bloques','Badén Ciclópeo','Cisterna','Piso / Torta']},
+          {icon:'⚡',title:'Calculadora de Materiales',items:['Calcula materiales y análisis de costos necesarios para cada elemento de tu obra de construcción']},
           {icon:'📊',title:'Base de Datos Técnica',items:['2,124+ materiales con precios','Mano de Obra por cuadrillas','Rendimientos estándar','Análisis de Costo (APU)','Jornales y equipos']},
           {icon:'📋',title:'Presupuesto y Cotizaciones',items:['Presupuesto por capítulos','Exportar a PDF y Excel','Importar desde Excel (Ctrl+V)','Análisis de precio unitario','Costos indirectos e ITBIS']},
           {icon:'📚',title:'Biblioteca Técnica',items:['Normas ACI y MOPC','Guías de instalaciones','Precios DGODT actualizados','Código Eléctrico Nacional','Tablas de rendimientos']},
@@ -6803,7 +6968,6 @@ const AuthSystem = () => {
           {key:'planes',  icon:'💎', label:'Planes',   color:'#7c3aed'},
           {key:'recursos',icon:'🛠️', label:'Recursos', color:'#0891b2'},
           {key:'ayuda',   icon:'❓', label:'Ayuda',    color:'#16a34a'},
-          {key:'derechos',icon:'⚖️', label:'Derechos', color:'#f59e0b'},
         ].map(btn=>(
           <button key={btn.key} onClick={()=>setSidePanel(prev=>prev===btn.key?null:btn.key)}
             style={{display:'flex',alignItems:'center',gap:'5px',padding:'7px 12px',background:sidePanel===btn.key?btn.color:'transparent',borderRadius:'30px',border:'none',color:sidePanel===btn.key?'white':'#94a3b8',fontSize:'11px',fontWeight:'700',cursor:'pointer',transition:'all 0.2s',whiteSpace:'nowrap'}}>
