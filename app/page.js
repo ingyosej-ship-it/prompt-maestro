@@ -3216,159 +3216,197 @@ const CostAnalysisView = () => {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const descargarConMarcaAgua = async () => {
-    const tab = TABS.find(t => t.key === activeTab);
-    const cols = COL_DEFS[activeTab] || COL_DEFS.materiales;
+    const tab      = TABS.find(t => t.key === activeTab);
+    const cols     = COL_DEFS[activeTab] || [];
+    const itemCols = activeTab === 'analisis_costo' ? (COL_DEFS.analisis_costo_items||[])
+                   : activeTab === 'mov_equipos'    ? (COL_DEFS.mov_equipos_items||[])
+                   : [];
+    const tabColor = (tab?.color || '#3b82f6').replace('#',''); // hex sin #
     const hoy = new Date().toLocaleDateString('es-DO');
+    const fN  = v => { const n = parseFloat(v); return isNaN(n) ? '' : n; };
 
-    // ── Cargar SheetJS dinámicamente ──
-    let XLSX;
+    // ── Cargar xlsx-style (soporta colores) ──
+    let XLSXStyle;
     try {
-      if (window.XLSX) {
-        XLSX = window.XLSX;
-      } else {
-        await new Promise((res, rej) => {
+      if (!window.XLSX) {
+        await new Promise((res,rej) => {
           const s = document.createElement('script');
           s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-          s.onload = res; s.onerror = rej;
-          document.head.appendChild(s);
+          s.onload = res; s.onerror = rej; document.head.appendChild(s);
         });
-        XLSX = window.XLSX;
       }
-    } catch(e) {
-      alert('Error cargando librería Excel. Verifica tu conexión.');
-      return;
-    }
+      XLSXStyle = window.XLSX;
+    } catch(e) { alert('Error cargando Excel. Verifica tu conexión.'); return; }
 
-    const wb = XLSX.utils.book_new();
+    // ── Cargar TODOS los datos ──
+    let allData = [];
+    try {
+      if (activeTab === 'analisis_costo') {
+        const { data: rows } = await supabase.from('analisis_costo')
+          .select('*').eq('tipo_fila','partida').order('codigo',{ascending:true});
+        allData = rows || [];
+      } else if (activeTab === 'mov_equipos') {
+        const { data: rows } = await supabase.from('movimientos_equipos')
+          .select('*').not('codigo','is',null).order('codigo',{ascending:true});
+        allData = rows || [];
+      } else {
+        const tableName = tab?.table || activeTab;
+        const { data: rows } = await supabase.from(tableName)
+          .select('*').order('id',{ascending:true});
+        allData = rows || [];
+      }
+    } catch(e) { allData = [...data]; }
 
-    // ── Hoja de MARCA DE AGUA (primera hoja) ──
-    const wmRows = [
-      ['⚠ DOCUMENTO OFICIAL PROCALC'],
-      [''],
-      ['© ' + new Date().getFullYear() + ' ProCalc — Ingeniería de Costos'],
-      ['Todos los derechos reservados'],
-      ['República Dominicana'],
-      [''],
-      ['Este documento contiene información propietaria de ProCalc.'],
-      ['Queda prohibida su reproducción, distribución o uso comercial'],
-      ['sin autorización expresa del titular de los derechos.'],
-      [''],
-      ['Datos de referencia: MOPC / DGODT — República Dominicana'],
-      ['Generado: ' + hoy],
-      [''],
-      ['⚠ SOLO PARA USO INTERNO ⚠'],
-    ];
-    const wsWM = XLSX.utils.aoa_to_sheet(wmRows);
-    wsWM['!cols'] = [{ wch: 60 }];
-    // Fusionar celdas del título
-    wsWM['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:5} }];
-    XLSX.utils.book_append_sheet(wb, wsWM, '⚠ MARCA DE AGUA');
+    // ── Construir filas como objetos {v, s} con estilo ──
+    // s = {fill, font, alignment, border}
+    const mkCell = (v, s) => ({ v: v ?? '', s });
 
-    // ── Función helper: cargar items de una partida ──
-    const loadItems = async (row) => {
-      if (itemsMap[row.id]) return itemsMap[row.id];
-      try {
-        if (activeTab === 'analisis_costo') {
-          const { data: items } = await supabase.from('analisis_costo').select('*')
-            .eq('tipo_fila', 'item').eq('partida_codigo', row.codigo)
-            .eq('partida_descripcion', row.descripcion).order('id', { ascending: true });
-          return items || [];
-        } else if (activeTab === 'mov_equipos') {
-          const { data: items } = await supabase.from('movimientos_equipos').select('*')
-            .is('codigo', null).eq('tipo_equipo', row.tipo_equipo)
-            .eq('partida_descripcion', row.descripcion).order('id', { ascending: true });
-          return items || [];
-        }
-      } catch(e) {}
-      return [];
+    const headerStyle = {
+      fill: { fgColor: { rgb: tabColor } },
+      font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 9 },
+      alignment: { horizontal: 'center', vertical: 'center' },
+    };
+    const partStyle = {
+      fill: { fgColor: { rgb: 'F8FAFC' } },
+      font: { bold: true, sz: 10 },
+      alignment: { vertical: 'center' },
+    };
+    const partNumStyle = {
+      fill: { fgColor: { rgb: 'F8FAFC' } },
+      font: { bold: true, color: { rgb: tabColor }, sz: 10 },
+      alignment: { horizontal: 'center' },
+      numFmt: '#,##0.00',
+    };
+    const subHeadStyle = {
+      fill: { fgColor: { rgb: tabColor + '33' } },
+      font: { bold: true, color: { rgb: tabColor }, sz: 9 },
+      alignment: { horizontal: 'center' },
+    };
+    const evenStyle  = { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { sz: 10 }, alignment: { wrapText: true } };
+    const oddStyle   = { fill: { fgColor: { rgb: 'F8FAFC' } }, font: { sz: 10 }, alignment: { wrapText: true } };
+    const numEvenStyle = { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { sz: 10 }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    const numOddStyle  = { fill: { fgColor: { rgb: 'F8FAFC' } }, font: { sz: 10 }, alignment: { horizontal: 'right' }, numFmt: '#,##0.00' };
+    const catStyle = {
+      fill: { fgColor: { rgb: tabColor + '22' } },
+      font: { bold: true, color: { rgb: tabColor }, sz: 11 },
+    };
+    const wmStyle = {
+      fill: { fgColor: { rgb: 'F0F4F8' } },
+      font: { italic: true, color: { rgb: 'CBD5E1' }, sz: 8 },
+      alignment: { horizontal: 'center' },
+    };
+    const titleStyle = {
+      font: { bold: true, color: { rgb: '1E3A5F' }, sz: 13 },
     };
 
-    // ── Hoja de DATOS ──
-    const fmtNum = v => { const n = parseFloat(v); return isNaN(n) ? '' : n; };
+    // ── Construir hoja celda a celda ──
+    const sheetData = []; // array de arrays de {v,s}
 
-    // Construir filas
-    const aoaRows = [];
-
-    // Fila de encabezado ProCalc
-    aoaRows.push(['ProCalc — Base de Datos: ' + tab?.label, '', '', '', '', '', '']);
-    aoaRows.push(['Generado: ' + hoy + ' | Registros: ' + totalCount.toLocaleString() + ' | © ProCalc Todos los derechos reservados']);
-    aoaRows.push([]);
+    // Título
+    sheetData.push([mkCell('ProCalc — Base de Datos: ' + (tab?.label||''), titleStyle), mkCell('',''), mkCell('',''), mkCell('',''), mkCell('© ProCalc',wmStyle)]);
+    sheetData.push([mkCell('Generado: ' + hoy + '  |  © ' + new Date().getFullYear() + ' ProCalc · Solo uso interno', {font:{italic:true,color:{rgb:'94A3B8'},sz:9}}), mkCell('',''), mkCell('',''), mkCell('',''), mkCell('© ProCalc',wmStyle)]);
+    sheetData.push([]);
 
     if (hasAccordion) {
-      // Tabs con acordeón: Análisis de Costo y Equipos
-      const itemCols = activeTab === 'analisis_costo'
-        ? COL_DEFS.analisis_costo_items
-        : COL_DEFS.mov_equipos_items;
+      // Cabecera de partidas (color del tab)
+      sheetData.push([...cols.map(c => mkCell(c.label, headerStyle)), mkCell('© ProCalc', wmStyle)]);
 
-      // Cabecera partidas
-      const partCols = COL_DEFS[activeTab] || [];
-      aoaRows.push(['CÓDIGO', 'DESCRIPCIÓN', 'UNIDAD', 'TOTAL RD$']);
-
-      for (const row of data) {
-        // Fila de partida
-        aoaRows.push([
-          row.codigo || '',
-          row.descripcion || '',
-          row.unidad || '',
-          fmtNum(row.precio_total),
+      for (const row of allData) {
+        // Fila de partida — fondo #f8fafc, texto bold
+        sheetData.push([
+          ...cols.map(c => mkCell(
+            c.num ? fN(row[c.key]) : (row[c.key] ?? ''),
+            c.num ? partNumStyle : partStyle
+          )),
+          mkCell('© ProCalc', wmStyle),
         ]);
-        // Cargar y expandir items
-        const items = await loadItems(row);
-        if (items.length > 0) {
-          // Sub-cabecera
-          const itemHeaders = itemCols.map(c => c.label);
-          aoaRows.push(['  ', ...itemHeaders]);
-          for (const it of items) {
-            aoaRows.push([
-              '  ',
-              ...itemCols.map(c => c.num ? fmtNum(it[c.key]) : (it[c.key] ?? ''))
-            ]);
-          }
-          aoaRows.push([]); // Espacio entre partidas
-        }
-      }
-    } else {
-      // Tabs normales con categorías
-      const hasCategories = ['materiales', 'herramientas', 'rendimientos', 'mo_cuadrillas'].includes(activeTab);
-      const colHeaders = cols.map(c => c.label);
-      aoaRows.push(colHeaders);
 
-      if (hasCategories) {
-        // Agrupar por referencia
-        let lastRef = null;
-        for (const row of data) {
-          if (row.referencia && row.referencia !== lastRef) {
-            aoaRows.push([]);
-            aoaRows.push([`── ${row.referencia} ──`]);
-            lastRef = row.referencia;
-          }
-          aoaRows.push(cols.map(c => c.num ? fmtNum(row[c.key]) : (row[c.key] ?? '')));
+        // Cargar items con misma query que toggleExpand
+        let items = itemsMap[row.id] || [];
+        if (!items.length) {
+          try {
+            if (activeTab === 'analisis_costo') {
+              const { data: its } = await supabase.from('analisis_costo').select('*')
+                .eq('tipo_fila','item')
+                .eq('partida_codigo', row.codigo)
+                .eq('partida_descripcion', row.descripcion)
+                .order('id',{ascending:true});
+              items = its || [];
+            } else {
+              const { data: its } = await supabase.from('movimientos_equipos').select('*')
+                .is('codigo',null)
+                .eq('tipo_equipo', row.tipo_equipo)
+                .eq('partida_descripcion', row.descripcion)
+                .order('id',{ascending:true});
+              items = its || [];
+            }
+          } catch(e) {}
         }
-      } else {
-        for (const row of data) {
-          aoaRows.push(cols.map(c => c.num ? fmtNum(row[c.key]) : (row[c.key] ?? '')));
+
+        if (items.length) {
+          // Sub-cabecera de items (color claro del tab)
+          sheetData.push([mkCell('', subHeadStyle), ...itemCols.map(c => mkCell(c.label, subHeadStyle)), mkCell('© ProCalc', wmStyle)]);
+          // Filas de items alternando blanco/#f8fafc
+          items.forEach((it, idx) => {
+            const bg = idx % 2 === 0 ? evenStyle : oddStyle;
+            const bgN = idx % 2 === 0 ? numEvenStyle : numOddStyle;
+            sheetData.push([
+              mkCell('', bg),
+              ...itemCols.map(c => mkCell(c.num ? fN(it[c.key]) : (it[c.key] ?? ''), c.num ? bgN : bg)),
+              mkCell('© ProCalc', wmStyle),
+            ]);
+          });
         }
+        // Línea separadora vacía entre partidas
+        sheetData.push([mkCell('', {fill:{fgColor:{rgb:'E2E8F0'}}}), mkCell('© ProCalc', wmStyle)]);
+      }
+
+    } else {
+      // Tabla normal
+      sheetData.push([...cols.map(c => mkCell(c.label, headerStyle)), mkCell('© ProCalc', wmStyle)]);
+      const conCat = ['materiales','herramientas','rendimientos','mo_cuadrillas'].includes(activeTab);
+      let lastRef = null;
+      let rowIdx = 0;
+      for (const row of allData) {
+        if (conCat && row.referencia && row.referencia !== lastRef) {
+          sheetData.push([]);
+          sheetData.push([mkCell(row.referencia, catStyle), mkCell('',''), mkCell('',''), mkCell('',''), mkCell('© ProCalc', wmStyle)]);
+          lastRef = row.referencia;
+          rowIdx = 0;
+        }
+        const bg  = rowIdx % 2 === 0 ? evenStyle : oddStyle;
+        const bgN = rowIdx % 2 === 0 ? numEvenStyle : numOddStyle;
+        sheetData.push([...cols.map(c => mkCell(c.num ? fN(row[c.key]) : (row[c.key] ?? ''), c.num ? bgN : bg)), mkCell('© ProCalc', wmStyle)]);
+        rowIdx++;
       }
     }
 
-    // Pie de marca de agua
-    aoaRows.push([]);
-    aoaRows.push(['© ' + new Date().getFullYear() + ' ProCalc · Ingeniería de Costos · Todos los derechos reservados · Solo uso interno']);
+    // ── Convertir a hoja SheetJS ──
+    const ws = {};
+    let maxCol = 0;
+    sheetData.forEach((row, r) => {
+      row.forEach((cell, c) => {
+        if (!cell) return;
+        const addr = XLSXStyle.utils.encode_cell({r, c});
+        ws[addr] = { v: cell.v, t: typeof cell.v === 'number' ? 'n' : 's', s: cell.s };
+        if (c > maxCol) maxCol = c;
+      });
+    });
+    ws['!ref'] = XLSXStyle.utils.encode_range({s:{r:0,c:0}, e:{r:sheetData.length-1, c:maxCol}});
 
-    const wsData = XLSX.utils.aoa_to_sheet(aoaRows);
+    // Anchos de columna
+    if (hasAccordion) {
+      ws['!cols'] = [{wch:10},{wch:52},{wch:7},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},{wch:14}];
+    } else {
+      ws['!cols'] = [...cols.map((c,i) => ({wch: i===0 ? 52 : c.num ? 14 : 12})), {wch:14}];
+    }
 
-    // Anchos de columnas
-    const wscols = cols.length > 0
-      ? [{ wch: 12 }, { wch: 50 }, ...cols.slice(2).map(() => ({ wch: 15 }))]
-      : [{ wch: 60 }];
-    wsData['!cols'] = wscols;
-
-    XLSX.utils.book_append_sheet(wb, wsData, tab?.label || 'Datos');
-
-    // ── Descargar ──
-    const fileName = `ProCalc_${tab?.label}_${new Date().toISOString().slice(0,10)}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    const wb = XLSXStyle.utils.book_new();
+    XLSXStyle.utils.book_append_sheet(wb, ws, (tab?.label||'Datos').slice(0,31));
+    XLSXStyle.writeFile(wb, 'ProCalc_' + (tab?.label||'datos').replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.xlsx');
   };
+
+
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'#f8fafc', fontFamily:'system-ui,sans-serif' }}>
