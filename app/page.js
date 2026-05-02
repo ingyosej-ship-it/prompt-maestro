@@ -3238,22 +3238,36 @@ const CostAnalysisView = () => {
       XLSXStyle = window.XLSX;
     } catch(e) { alert('Error cargando Excel. Verifica tu conexión.'); return; }
 
-    // ── Cargar TODOS los datos ──
+    // ── Cargar TODOS los datos paginando (Supabase limita 1000 filas) ──
     let allData = [];
     try {
+      const fetchAll = async (query) => {
+        let all = [], from = 0, PAGE = 1000;
+        while (true) {
+          const { data: chunk, error } = await query(from, from + PAGE - 1);
+          if (error || !chunk || chunk.length === 0) break;
+          all = [...all, ...chunk];
+          if (chunk.length < PAGE) break;
+          from += PAGE;
+        }
+        return all;
+      };
+
       if (activeTab === 'analisis_costo') {
-        const { data: rows } = await supabase.from('analisis_costo')
-          .select('*').eq('tipo_fila','partida').order('codigo',{ascending:true});
-        allData = rows || [];
+        allData = await fetchAll((from, to) =>
+          supabase.from('analisis_costo').select('*')
+            .eq('tipo_fila','partida').order('codigo',{ascending:true}).range(from, to)
+        );
       } else if (activeTab === 'mov_equipos') {
-        const { data: rows } = await supabase.from('movimientos_equipos')
-          .select('*').not('codigo','is',null).order('codigo',{ascending:true});
-        allData = rows || [];
+        allData = await fetchAll((from, to) =>
+          supabase.from('movimientos_equipos').select('*')
+            .not('codigo','is',null).order('codigo',{ascending:true}).range(from, to)
+        );
       } else {
         const tableName = tab?.table || activeTab;
-        const { data: rows } = await supabase.from(tableName)
-          .select('*').order('id',{ascending:true});
-        allData = rows || [];
+        allData = await fetchAll((from, to) =>
+          supabase.from(tableName).select('*').order('id',{ascending:true}).range(from, to)
+        );
       }
     } catch(e) { allData = [...data]; }
 
@@ -3321,24 +3335,30 @@ const CostAnalysisView = () => {
           mkCell('© ProCalc', wmStyle),
         ]);
 
-        // Cargar items con misma query que toggleExpand
+        // Cargar items con misma query que toggleExpand, paginado
         let items = itemsMap[row.id] || [];
         if (!items.length) {
           try {
-            if (activeTab === 'analisis_costo') {
-              const { data: its } = await supabase.from('analisis_costo').select('*')
-                .eq('tipo_fila','item')
-                .eq('partida_codigo', row.codigo)
-                .eq('partida_descripcion', row.descripcion)
-                .order('id',{ascending:true});
-              items = its || [];
-            } else {
-              const { data: its } = await supabase.from('movimientos_equipos').select('*')
-                .is('codigo',null)
-                .eq('tipo_equipo', row.tipo_equipo)
-                .eq('partida_descripcion', row.descripcion)
-                .order('id',{ascending:true});
-              items = its || [];
+            let from = 0; const PAGE = 1000;
+            while (true) {
+              let q;
+              if (activeTab === 'analisis_costo') {
+                q = await supabase.from('analisis_costo').select('*')
+                  .eq('tipo_fila','item')
+                  .eq('partida_codigo', row.codigo)
+                  .eq('partida_descripcion', row.descripcion)
+                  .order('id',{ascending:true}).range(from, from + PAGE - 1);
+              } else {
+                q = await supabase.from('movimientos_equipos').select('*')
+                  .is('codigo',null)
+                  .eq('tipo_equipo', row.tipo_equipo)
+                  .eq('partida_descripcion', row.descripcion)
+                  .order('id',{ascending:true}).range(from, from + PAGE - 1);
+              }
+              if (!q.data || q.data.length === 0) break;
+              items = [...items, ...q.data];
+              if (q.data.length < PAGE) break;
+              from += PAGE;
             }
           } catch(e) {}
         }
@@ -3870,6 +3890,7 @@ const PresupuestoObraView = () => {
   const [showExport,setShowExport]     = React.useState(false);
   const [editNombre,setEditNombre]     = React.useState(false);
   const [showBC3,setShowBC3]           = React.useState(false);
+  const [showPastePanel,setShowPastePanel] = React.useState(false);
   const [bc3Text,setBc3Text]           = React.useState('');
   const [pasteNotif,setPasteNotif]     = React.useState('');
   const [showMoneda,setShowMoneda]     = React.useState(false);
@@ -5425,6 +5446,7 @@ const PresupuestoObraView = () => {
           <div style={{width:'1px',height:'22px',background:'#374151'}}/>
           <button onClick={()=>setShowBC3(true)} style={{padding:'5px 10px',background:'rgba(255,255,255,0.06)',color:'#9ca3af',border:'1px solid #374151',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>BC3</button>
           <button onClick={addCap} style={{padding:'5px 10px',background:'rgba(99,102,241,0.18)',color:'#a5b4fc',border:'1px solid #4338ca',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Cap.</button>
+          <button onClick={()=>setShowPastePanel(p=>!p)} style={{padding:'5px 10px',background:'rgba(52,211,153,0.15)',color:'#34d399',border:'1px solid #065f46',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>📋 Pegar Excel</button>
           <div style={{width:'1px',height:'22px',background:'#374151'}}/>
           <div style={{display:'flex',gap:'12px',borderRight:'1px solid #374151',paddingRight:'10px'}}>
             <div style={{textAlign:'right'}}>
@@ -5455,17 +5477,37 @@ const PresupuestoObraView = () => {
       </header>
 
       {caps.length===0&&(
-        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'16px',color:'#9ca3af',background:'#111827'}}>
-          <ClipboardList size={56} style={{opacity:0.1,color:'#6366f1'}}/>
-          <div style={{fontSize:'17px',fontWeight:'600',color:'#6b7280'}}>Presupuesto vacío — pega desde Excel (Ctrl+V) o agrega manualmente</div>
+        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'16px',color:'#9ca3af',background:'#111827',padding:'32px',overflowY:'auto'}}>
+          <ClipboardList size={48} style={{opacity:0.15,color:'#6366f1'}}/>
+          <div style={{fontSize:'17px',fontWeight:'600',color:'#6b7280'}}>Presupuesto vacío</div>
           <div style={{display:'flex',gap:'10px',flexWrap:'wrap',justifyContent:'center'}}>
             <button onClick={()=>setPantalla('inicio')} style={{padding:'10px 22px',background:'#1f2937',color:'white',border:'1px solid #374151',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer',display:'flex',alignItems:'center',gap:'7px'}}>
               ← Abrir otro presupuesto
             </button>
             <button onClick={addCap} style={{padding:'10px 22px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar capítulo</button>
           </div>
-          <div style={{fontSize:'11px',color:'#4b5563',maxWidth:'420px',textAlign:'center',lineHeight:1.6}}>
-            💡 Para pegar un presupuesto de Excel: copia las filas → haz clic aquí → presiona <strong style={{color:'#34d399'}}>Ctrl+V</strong>
+
+          {/* ── ÁREA DE PEGADO EXCEL ── */}
+          <div style={{width:'100%',maxWidth:'640px',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(99,102,241,0.4)',borderRadius:'14px',padding:'20px'}}>
+            <div style={{fontSize:'13px',fontWeight:'800',color:'#a5b4fc',marginBottom:'4px'}}>📋 Pegar desde Excel</div>
+            <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'10px',lineHeight:1.6}}>
+              Copia filas de tu Excel y pégalas abajo.<br/>
+              <span style={{color:'#34d399',fontWeight:'700'}}>Detecta automáticamente:</span> código · descripción · unidad · cantidad · precio unitario
+            </div>
+            <textarea
+              placeholder={'Ejemplo — con o sin encabezados:\n\nCOD        DESCRIPCION                  UD    CANT    PU\n1.00       OBRAS PRELIMINARES\n1.01       Trabajos iniciales\n1.01.001   Limpieza y chapeo             m2    500     85.00\n1.01.002   Excavación en tierra          m3    200     450.00\n\n→ Pega aquí y el sistema detecta capítulos, subcapítulos y partidas automáticamente'}
+              style={{width:'100%',minHeight:'160px',background:'rgba(0,0,0,0.35)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:'8px',color:'#e2e8f0',fontSize:'11px',fontFamily:'monospace',padding:'10px',resize:'vertical',outline:'none',boxSizing:'border-box'}}
+              onPaste={e=>{
+                const txt=e.clipboardData&&e.clipboardData.getData('text');
+                if(txt&&txt.trim()){e.preventDefault();handleSmartPaste(txt);e.target.value='';}
+              }}
+              onKeyUp={e=>{
+                if(e.target.value.trim().length>10){handleSmartPaste(e.target.value);e.target.value='';}
+              }}
+            />
+            <div style={{fontSize:'10px',color:'#4b5563',marginTop:'8px'}}>
+              💡 Formatos: <code style={{color:'#a5b4fc',fontSize:'9px'}}>COD | DESCRIPCION | UD | CANT | PU</code> · Capítulos en MAYÚSCULAS · Subcapítulos con código 1.01 · Partidas con código 1.01.001
+            </div>
           </div>
         </div>
       )}
@@ -5535,6 +5577,51 @@ const PresupuestoObraView = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── PANEL FLOTANTE DE PEGADO EXCEL ── */}
+      {showPastePanel&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowPastePanel(false)}>
+          <div style={{background:'#1f2937',border:'1px solid #374151',borderRadius:'14px',width:'600px',maxHeight:'90vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 80px rgba(0,0,0,0.6)'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'14px 20px',borderBottom:'1px solid #374151',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:'800',fontSize:'15px',color:'white'}}>📋 Pegar desde Excel</div>
+              <button onClick={()=>setShowPastePanel(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:'20px'}}>✕</button>
+            </div>
+            <div style={{padding:'16px 20px',flex:1,overflow:'auto'}}>
+              <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'12px',lineHeight:1.7}}>
+                Copia las filas de tu Excel y pégalas abajo. El sistema detecta automáticamente:<br/>
+                <span style={{color:'#34d399',fontWeight:'700'}}>• Código</span> · <span style={{color:'#34d399',fontWeight:'700'}}>Descripción</span> · <span style={{color:'#34d399',fontWeight:'700'}}>Unidad</span> · <span style={{color:'#34d399',fontWeight:'700'}}>Cantidad</span> · <span style={{color:'#34d399',fontWeight:'700'}}>Precio unitario</span><br/>
+                Capítulos en <strong style={{color:'#a5b4fc'}}>MAYÚSCULAS</strong> · Subcapítulos con código <strong style={{color:'#a5b4fc'}}>1.01</strong> · Partidas con código <strong style={{color:'#a5b4fc'}}>1.01.001</strong>
+              </div>
+              <div style={{background:'rgba(0,0,0,0.2)',border:'1px solid #374151',borderRadius:'8px',padding:'10px',marginBottom:'12px',fontSize:'10px',color:'#6b7280',fontFamily:'monospace',lineHeight:1.8}}>
+                <span style={{color:'#a5b4fc',fontWeight:'700'}}>COD</span>{'       '}<span style={{color:'#a5b4fc',fontWeight:'700'}}>DESCRIPCION</span>{'            '}<span style={{color:'#a5b4fc',fontWeight:'700'}}>UD</span>{'    '}<span style={{color:'#a5b4fc',fontWeight:'700'}}>CANT</span>{'   '}<span style={{color:'#a5b4fc',fontWeight:'700'}}>PU</span><br/>
+                1.00{'      '}OBRAS PRELIMINARES<br/>
+                1.01{'      '}Trabajos iniciales<br/>
+                1.01.001{'  '}Limpieza y chapeo{'         '}m2{'    '}500{'    '}85.00<br/>
+                1.01.002{'  '}Excavación en tierra{'      '}m3{'    '}200{'    '}450.00
+              </div>
+              <textarea
+                autoFocus
+                placeholder="Pega aquí tu Excel (Ctrl+V) o escribe directamente..."
+                style={{width:'100%',minHeight:'180px',background:'rgba(0,0,0,0.3)',border:'1px solid rgba(99,102,241,0.4)',borderRadius:'8px',color:'#e2e8f0',fontSize:'11px',fontFamily:'monospace',padding:'10px',resize:'vertical',outline:'none',boxSizing:'border-box'}}
+                onPaste={e=>{
+                  const txt=e.clipboardData&&e.clipboardData.getData('text');
+                  if(txt&&txt.trim()){e.preventDefault();handleSmartPaste(txt);setShowPastePanel(false);}
+                }}
+                onKeyUp={e=>{
+                  if(e.key==='Enter'&&e.target.value.trim().length>10){handleSmartPaste(e.target.value);setShowPastePanel(false);}
+                }}
+              />
+              <div style={{marginTop:'12px',display:'flex',justifyContent:'flex-end',gap:'8px'}}>
+                <button onClick={()=>setShowPastePanel(false)} style={{padding:'8px 16px',background:'transparent',color:'#9ca3af',border:'1px solid #374151',borderRadius:'7px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Cancelar</button>
+                <button onClick={e=>{
+                  const ta=e.target.closest('.paste-panel-modal')?.querySelector('textarea');
+                  if(ta&&ta.value.trim()){handleSmartPaste(ta.value);setShowPastePanel(false);}
+                }} style={{padding:'8px 18px',background:'#34d399',color:'#064e3b',border:'none',borderRadius:'7px',fontWeight:'800',fontSize:'12px',cursor:'pointer'}}>Importar →</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
