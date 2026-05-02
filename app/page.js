@@ -5899,6 +5899,104 @@ const BibliotecaView = () => {
 };
 
 // ==================== VISTA: DASHBOARD HOME ====================
+// ── PANEL DE ADMINISTRACIÓN ──────────────────────────────────────────────────
+const AdminPanel = ({ supabase }) => {
+  const [users, setUsers]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(null);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    setUsers(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const setplan = async (userId, plan) => {
+    setSaving(userId + '_plan');
+    await supabase.from('profiles').update({ plan }).eq('id', userId);
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, plan } : u));
+    setSaving(null);
+  };
+
+  const toggleBloqueo = async (userId, bloqueado) => {
+    setSaving(userId + '_blk');
+    await supabase.from('profiles').update({ bloqueado }).eq('id', userId);
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, bloqueado } : u));
+    setSaving(null);
+  };
+
+  const planColor = { pro:'#16a34a', gratuito:'#d97706', admin:'#2563eb' };
+
+  return (
+    <div style={{ flex:1, overflow:'auto', background:'#f8fafc', padding:'24px' }}>
+      <div style={{ maxWidth:'900px', margin:'0 auto' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
+          <div>
+            <h2 style={{ fontWeight:'900', fontSize:'18px', color:'#0f172a', margin:0 }}>Gestión de Usuarios</h2>
+            <div style={{ fontSize:'12px', color:'#94a3b8', marginTop:'3px' }}>{users.length} usuarios registrados</div>
+          </div>
+          <button onClick={loadUsers} style={{ padding:'7px 14px', background:'#2563eb', color:'white', border:'none', borderRadius:'8px', fontWeight:'700', fontSize:'12px', cursor:'pointer' }}>↺ Actualizar</button>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign:'center', padding:'48px', color:'#94a3b8' }}>Cargando usuarios...</div>
+        ) : (
+          <div style={{ background:'white', borderRadius:'14px', border:'1px solid #e2e8f0', overflow:'hidden' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ background:'#1e3a5f' }}>
+                  {['Nombre','Email','Plan','Registrado','Acceso'].map(h => (
+                    <th key={h} style={{ padding:'10px 14px', color:'white', fontWeight:'700', fontSize:'11px', textAlign:'left', textTransform:'uppercase', letterSpacing:'0.06em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u, i) => (
+                  <tr key={u.id} style={{ background: i%2===0 ? 'white' : '#f8fafc', borderBottom:'1px solid #f1f5f9' }}>
+                    <td style={{ padding:'10px 14px', fontSize:'13px', fontWeight:'600', color:'#0f172a' }}>{u.nombre || '—'}</td>
+                    <td style={{ padding:'10px 14px', fontSize:'12px', color:'#64748b', fontFamily:'monospace' }}>{u.email}</td>
+                    <td style={{ padding:'10px 14px' }}>
+                      <select
+                        value={u.plan || 'gratuito'}
+                        disabled={saving === u.id + '_plan'}
+                        onChange={e => setplan(u.id, e.target.value)}
+                        style={{ padding:'4px 8px', borderRadius:'6px', border:`1px solid ${planColor[u.plan]||'#e2e8f0'}`, fontSize:'11px', fontWeight:'700', color:planColor[u.plan]||'#374151', background:'white', cursor:'pointer' }}>
+                        <option value="gratuito">Gratuito</option>
+                        <option value="pro">Pro</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </td>
+                    <td style={{ padding:'10px 14px', fontSize:'11px', color:'#94a3b8' }}>
+                      {u.created_at ? new Date(u.created_at).toLocaleDateString('es-DO') : '—'}
+                    </td>
+                    <td style={{ padding:'10px 14px' }}>
+                      <button
+                        disabled={saving === u.id + '_blk'}
+                        onClick={() => toggleBloqueo(u.id, !u.bloqueado)}
+                        style={{ padding:'5px 12px', borderRadius:'6px', border:'none', fontWeight:'700', fontSize:'11px', cursor:'pointer',
+                          background: u.bloqueado ? '#fee2e2' : '#dcfce7',
+                          color: u.bloqueado ? '#dc2626' : '#16a34a' }}>
+                        {saving === u.id + '_blk' ? '...' : u.bloqueado ? '🔒 Bloqueado' : '✓ Activo'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div style={{ marginTop:'16px', padding:'14px', background:'#fef3c7', borderRadius:'10px', fontSize:'11px', color:'#92400e', lineHeight:1.7 }}>
+          <strong>💡 Para activar un usuario Pro:</strong> cambia su plan a "Pro" en el selector. El cambio es inmediato — la próxima vez que inicie sesión tendrá acceso completo.<br/>
+          <strong>🔒 Bloquear:</strong> el usuario verá un error al intentar entrar y será desconectado si ya está activo.
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DashboardHome = ({ goToBudget, goToCostAnalysis, goToTemplates, goToCalculators, goToPresupuesto, goToBiblioteca }) => {
   const cards = [
     { title:'Cotizaciones',           sub:'Nuevo Proyecto',        desc:'Crea cotizaciones profesionales con costos directos e ITBIS.',      action:'Iniciar →',   color:'#2563eb', bg:'#eff6ff', onClick: goToBudget,
@@ -5965,7 +6063,64 @@ const IndirectoRow = ({ ind, subtotal, onChange }) => (
 );
 
 // ==================== DASHBOARD WRAPPER ====================
-const Dashboard = ({ onLogout }) => {
+const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
+  const isPro     = userProfile?.plan === 'pro' || userProfile?.plan === 'admin';
+  const isAdmin   = userProfile?.plan === 'admin' || userEmail === 'ingyosej@gmail.com';
+  const planLabel = isPro ? (isAdmin ? 'Admin' : 'Pro') : 'Gratuito';
+
+  // ── LÍMITE 8 MINUTOS CADA 24H PARA PLAN GRATUITO ──
+  const SESSION_LIMIT = 8 * 60; // 8 minutos en segundos
+  const STORAGE_KEY   = 'procalc_free_session';
+  const [tiempoRestante, setTiempoRestante] = useState(null); // segundos restantes
+  const [sesionExpirada, setSesionExpirada] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (isPro) return; // Pro y Admin no tienen límite
+
+    const ahora = Date.now();
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+    const ultimaFecha = stored.fecha || 0;
+    const tiempoUsado = stored.usado || 0;
+    const mismoDia    = (ahora - ultimaFecha) < 24 * 60 * 60 * 1000;
+
+    if (mismoDia && tiempoUsado >= SESSION_LIMIT) {
+      // Ya agotó los 8 minutos hoy
+      setSesionExpirada(true);
+      return;
+    }
+
+    // Si es un día nuevo, reiniciar
+    const usadoHoy = mismoDia ? tiempoUsado : 0;
+    const restante = SESSION_LIMIT - usadoHoy;
+    setTiempoRestante(restante);
+
+    // Guardar inicio de sesión de hoy
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ fecha: ahora, usado: usadoHoy }));
+
+    // Contador regresivo
+    timerRef.current = setInterval(() => {
+      setTiempoRestante(prev => {
+        if (prev === null) return null;
+        const nuevo = prev - 1;
+        // Guardar progreso
+        try {
+          const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ fecha: s.fecha || Date.now(), usado: SESSION_LIMIT - nuevo }));
+        } catch(e) {}
+        if (nuevo <= 0) {
+          clearInterval(timerRef.current);
+          setSesionExpirada(true);
+          return 0;
+        }
+        return nuevo;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerRef.current);
+  }, [isPro]);
   const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -6449,6 +6604,7 @@ const Dashboard = ({ onLogout }) => {
           <NavItem icon={<LayoutTemplate size={19} />} label="Modelos" isOpen={sidebarOpen} active={currentView === 'templates'} onClick={() => handleViewChange('templates')} />
           <NavItem icon={<ClipboardList size={19} />} label="Presupuesto de Obra" isOpen={sidebarOpen} active={currentView === 'presupuestoObra'} onClick={() => handleViewChange('presupuestoObra')} />
           <NavItem icon={<BookOpen size={19} />} label="Biblioteca" isOpen={sidebarOpen} active={currentView === 'biblioteca'} onClick={() => handleViewChange('biblioteca')} />
+          {isAdmin && <NavItem icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>} label="Usuarios" isOpen={sidebarOpen} active={currentView === 'admin'} onClick={() => handleViewChange('admin')} />}
         </nav>
 
         {/* Logout */}
@@ -6480,16 +6636,77 @@ const Dashboard = ({ onLogout }) => {
           </div>
           <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
             <span style={{fontSize:'12px',color:'#94a3b8'}}>República Dominicana</span>
-            <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'#2563eb',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:'13px',fontWeight:'700'}}>P</div>
+            {!isPro && tiempoRestante !== null && !sesionExpirada && (
+              <span style={{fontSize:'11px',fontWeight:'800',background: tiempoRestante < 60 ? '#fee2e2' : '#fef3c7',color: tiempoRestante < 60 ? '#dc2626' : '#92400e',padding:'3px 10px',borderRadius:'20px',fontFamily:'monospace',minWidth:'72px',textAlign:'center'}}>
+                ⏱ {Math.floor(tiempoRestante/60)}:{String(tiempoRestante%60).padStart(2,'0')} restante
+              </span>
+            )}
+            {!isPro && !sesionExpirada && (
+              <span style={{fontSize:'9px',fontWeight:'800',background:'#fef3c7',color:'#92400e',padding:'2px 8px',borderRadius:'20px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Plan Gratuito</span>
+            )}
+            {isPro && !isAdmin && (
+              <span style={{fontSize:'9px',fontWeight:'800',background:'#dcfce7',color:'#166534',padding:'2px 8px',borderRadius:'20px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Pro</span>
+            )}
+            {isAdmin && (
+              <span style={{fontSize:'9px',fontWeight:'800',background:'#dbeafe',color:'#1e40af',padding:'2px 8px',borderRadius:'20px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Admin</span>
+            )}
+            <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'#2563eb',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:'13px',fontWeight:'700'}}>
+              {(userProfile?.nombre||userEmail||'P')[0].toUpperCase()}
+            </div>
           </div>
         </div>
 
         <div style={{flex:'1 1 0%', minHeight:0, overflow:'hidden', position:'relative', display:'flex', flexDirection:'column'}}>
+
+          {/* ── SESIÓN EXPIRADA (plan gratuito 8 min/24h) ── */}
+          {sesionExpirada && !isPro && (
+            <div style={{position:'absolute',inset:0,zIndex:100,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(10,15,30,0.97)',backdropFilter:'blur(8px)',gap:'18px',padding:'32px',textAlign:'center'}}>
+              <div style={{fontSize:'52px'}}>⏰</div>
+              <div style={{fontSize:'22px',fontWeight:'900',color:'white'}}>Tiempo de sesión agotado</div>
+              <div style={{fontSize:'13px',color:'#94a3b8',maxWidth:'360px',lineHeight:1.8}}>
+                El plan gratuito permite <strong style={{color:'#fbbf24'}}>8 minutos cada 24 horas</strong>.<br/>
+                Tu acceso se renueva automáticamente mañana.<br/>
+                Activa el Plan Pro para acceso ilimitado.
+              </div>
+              <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')}
+                style={{padding:'13px 32px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
+                💎 Suscribirse — $40/año
+              </button>
+              <button onClick={onLogout}
+                style={{padding:'8px 20px',background:'transparent',color:'#64748b',border:'1px solid #334155',borderRadius:'8px',fontWeight:'600',fontSize:'12px',cursor:'pointer'}}>
+                Cerrar sesión
+              </button>
+              <div style={{fontSize:'11px',color:'#475569'}}>
+                Escribe a <strong style={{color:'#93c5fd'}}>ingyosej@gmail.com</strong> tras pagar para activar tu cuenta.
+              </div>
+            </div>
+          )}
           {currentView === 'dashboard' && <DashboardHome goToBudget={() => handleViewChange('budget')} goToCostAnalysis={() => handleViewChange('costAnalysis')} goToTemplates={() => handleViewChange('templates')} goToCalculators={() => handleViewChange('calculators')} goToPresupuesto={() => handleViewChange('presupuestoObra')} goToBiblioteca={() => handleViewChange('biblioteca')} />}
+
+          {/* Módulos restringidos — solo Pro/Admin pueden interactuar */}
+          {['costAnalysis','templates','presupuestoObra','calculators','budget'].includes(currentView) && !isPro && (
+            <div style={{position:'absolute',inset:0,zIndex:50,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(15,23,42,0.92)',backdropFilter:'blur(4px)',gap:'16px',padding:'32px',textAlign:'center'}}>
+              <div style={{fontSize:'48px'}}>🔒</div>
+              <div style={{fontSize:'20px',fontWeight:'900',color:'white'}}>Acceso Plan Pro</div>
+              <div style={{fontSize:'13px',color:'#94a3b8',maxWidth:'340px',lineHeight:1.7}}>
+                Con el plan gratuito solo puedes navegar el panel principal y la biblioteca.<br/>
+                Activa el Plan Pro para acceder a todos los módulos.
+              </div>
+              <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')}
+                style={{padding:'12px 28px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
+                💎 Suscribirse — $40/año
+              </button>
+              <div style={{fontSize:'11px',color:'#475569'}}>
+                Luego de pagar escribe a <strong style={{color:'#93c5fd'}}>ingyosej@gmail.com</strong> con tu email de registro.
+              </div>
+            </div>
+          )}
+
           {currentView === 'costAnalysis' && <CostAnalysisView />}
           {currentView === 'templates' && <TemplatesView />}
           {currentView === 'presupuestoObra' && <PresupuestoObraView />}
           {currentView === 'biblioteca' && <BibliotecaView />}
+          {currentView === 'admin' && isAdmin && <AdminPanel supabase={supabase} />}
           {currentView === 'calculators' && <CalculatorsView onAddToPresupuesto={(partida) => {
             if (!activeProject) { alert('Primero crea o abre un proyecto en el Presupuesto.'); return; }
             const nueva = {
@@ -6918,8 +7135,16 @@ const AuthSystem = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true); setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message === 'Invalid login credentials' ? 'Email o contraseña incorrectos.' : error.message);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) { setError(error.message === 'Invalid login credentials' ? 'Email o contraseña incorrectos.' : error.message); }
+    else {
+      // Verificar si el usuario está bloqueado
+      const { data: prof } = await supabase.from('profiles').select('bloqueado').eq('id', data.user.id).single();
+      if (prof?.bloqueado) {
+        await supabase.auth.signOut();
+        setError('Tu acceso ha sido desactivado. Contacta a ingyosej@gmail.com');
+      }
+    }
     setLoading(false);
   };
 
@@ -6927,9 +7152,30 @@ const AuthSystem = () => {
     e.preventDefault();
     if (password.length < 6) { setError('La contraseña debe tener al menos 6 caracteres.'); return; }
     setLoading(true); setError('');
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { nombre } } });
-    if (error) setError(error.message);
-    else { setMsg('¡Cuenta creada! Revisa tu email para confirmar y luego inicia sesión.'); setView('login'); }
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { nombre } } });
+    if (error) { setError(error.message); }
+    else {
+      // Crear perfil con plan gratuito
+      if (data?.user) {
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          email: email,
+          nombre: nombre,
+          plan: 'gratuito',
+          bloqueado: false,
+          created_at: new Date().toISOString(),
+        });
+        // Notificación al admin via Supabase Edge Function o email directo
+        try {
+          await fetch('https://hbolprmitnjqxvmfddhl.supabase.co/functions/v1/notify-admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+            body: JSON.stringify({ nombre, email, tipo: 'nuevo_registro', fecha: new Date().toLocaleString('es-DO') })
+          });
+        } catch(e) { /* no bloquear registro si falla notificación */ }
+      }
+      setMsg('¡Cuenta creada! Revisa tu email para confirmar y luego inicia sesión.'); setView('login');
+    }
     setLoading(false);
   };
 
@@ -7279,6 +7525,12 @@ export default function ProCalcApp() {
 
   const loadProfile = async (userId) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    // Si está bloqueado, cerrar sesión inmediatamente
+    if (data?.bloqueado) {
+      await supabase.auth.signOut();
+      setLoadingAuth(false);
+      return;
+    }
     setProfile(data);
     setLoadingAuth(false);
   };
