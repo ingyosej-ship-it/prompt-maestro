@@ -4016,7 +4016,7 @@ const PresupuestoObraView = () => {
 
   // Detectar cabecera: al menos 2 palabras clave de encabezado
   const isHeaderRow = cols => {
-    const kw=new Set(['COD','CODIGO','COD.','CODINSUMO','DESCRIPCION','DESCRIPCIÓN','DESC','CANTIDAD','CANT','UNIDAD','UNID','UD','UND','PRECIO','COSTO','PU','P.U.','VALOR','TOTAL','ITBIS','IVA','RENDTO','RENDIMIENTO','NATURALEZA','NAT','NATURALEZ']);
+    const kw=new Set(['COD','CODIGO','COD.','CODINSUMO','ITEM','DESCRIPCION','DESCRIPCIÓN','DESC','CANTIDAD','CANT','UNIDAD','UNID','UD','UND','PRECIO','COSTO','PU','P.U.','VALOR','TOTAL','ITBIS','IVA','RENDTO','RENDIMIENTO','NATURALEZA','NAT','NATURALEZ']);
     return cols.filter(c=>kw.has((c||'').toUpperCase().trim().replace(/[.\s]/g,''))).length>=2;
   };
 
@@ -4025,12 +4025,12 @@ const PresupuestoObraView = () => {
     const map={cod:-1, nat:-1, desc:-1, cant:-1, ud:-1, pu:-1, itbis:-1, rendto:-1, valor:-1};
     headerCols.forEach((h,i)=>{
       const u=(h||'').toUpperCase().trim().replace(/[.\s_]/g,'');
-      if(['COD','CODIGO','CODINSUMO','COD'].includes(u)) map.cod=i;
+      if(['COD','CODIGO','CODINSUMO','ITEM'].includes(u)) map.cod=i;
       else if(['NAT','NATURALEZA','NATURALEZ','TIPO'].includes(u)) map.nat=i;
       else if(['DESC','DESCRIPCION','DESCRIPCIÓN','DESCRIPCION'].includes(u)) map.desc=i;
       else if(['CANT','CANTIDAD'].includes(u)) map.cant=i;
       else if(['UD','UND','UNIDAD','UNID'].includes(u)) map.ud=i;
-      else if(['PU','P.U.','COSTO','PRECIO','PRECIOUN','COSTOUN','PRECIOUNIT'].includes(u)) map.pu=i;
+      else if(['PU','PUNITARIO','PRECIOUNITARIO','COSTO','PRECIO','PRECIOUN','COSTOUN','PRECIOUNIT'].includes(u)) map.pu=i;
       else if(['ITBIS','IVA','TAX'].includes(u)) map.itbis=i;
       else if(['RENDTO','RENDIMIENTO'].includes(u)) map.rendto=i;
       else if(['VALOR','TOTAL','SUBTOTAL'].includes(u)) map.valor=i;
@@ -4042,32 +4042,55 @@ const PresupuestoObraView = () => {
   const xlGet = (cols, idx) => idx>=0&&idx<cols.length ? (cols[idx]||'').trim() : '';
 
   // ── PASTE APU — pega insumos en análisis de costo ──────────────────────
-  // Formato estándar RD: COD | NAT? | DESCRIPCION | CANTIDAD | UD | COSTO | ITBIS? | RENDTO? | VALOR?
+  // Formato Excel RD: ITEM | DESCRIPCION | UD | CANTIDAD | P.UNITARIO
   const handleApuExcelPaste = (capId, scId, pId, text) => {
     if(!text||!text.trim()) return;
     const lines=_splitLines(text).filter(l=>l.trim());
     if(!lines.length) return;
 
-    // ── Paso 1: detectar separador ──
     const sep = lines[0].includes('\t') ? '\t' : ';';
     const split = l => l.split(sep).map(c=>c.replace(/^"|"$/g,'').trim());
 
-    // ── Paso 2: detectar encabezado y construir mapa ──
     const firstCols=split(lines[0]);
     const hasHeader=isHeaderRow(firstCols);
-    let map = hasHeader ? buildColMap(firstCols) : null;
+    let map = null;
 
-    // Si no hay encabezado, usar posiciones fijas estándar:
-    // 0=COD, 1=NAT(opcional), 2=DESC, 3=CANT, 4=UD, 5=COSTO, 6=ITBIS, 7=RENDTO, 8=VALOR
-    // Pero si col0 parece descripción (texto largo, no código), desplazar
+    if(hasHeader){
+      map={cod:-1,nat:-1,desc:-1,cant:-1,ud:-1,pu:-1,itbis:-1,rendto:-1,valor:-1};
+      firstCols.forEach((h,i)=>{
+        const u=(h||'').toUpperCase().trim().replace(/[.\s_]/g,'');
+        if(['COD','CODIGO','ITEM','CODINSUMO'].includes(u))                        map.cod=i;
+        else if(['NAT','NATURALEZA','TIPO'].includes(u))                            map.nat=i;
+        else if(['DESC','DESCRIPCION','DESCRIPCIÓN'].includes(u))                   map.desc=i;
+        else if(['UD','UND','UNIDAD','UNID'].includes(u))                           map.ud=i;
+        else if(['CANT','CANTIDAD'].includes(u))                                    map.cant=i;
+        else if(['PU','PU','PUNITARIO','PRECIOUNITARIO','COSTO','PRECIO'].includes(u)) map.pu=i;
+        else if(['ITBIS','IVA','TAX'].includes(u))                                  map.itbis=i;
+        else if(['RENDTO','RENDIMIENTO'].includes(u))                               map.rendto=i;
+        else if(['VALOR','TOTAL','SUBTOTAL'].includes(u))                           map.valor=i;
+      });
+    }
+
     if(!map){
-      const c0=firstCols[0]||'';
-      const c0IsCod=/^[A-Za-z]{1,6}[\.\-]\d+/.test(c0.trim())||/^\d{3,}$/.test(c0.trim());
+      const c0=(firstCols[0]||'').trim();
+      const c1=(firstCols[1]||'').trim();
+      const c2=(firstCols[2]||'').trim();
+      const c0IsCod=/^[A-Za-z]{1,8}\d{2,}/.test(c0)||/^\d{3,}$/.test(c0);
       if(c0IsCod){
-        map={cod:0, nat:1, desc:2, cant:3, ud:4, pu:5, itbis:6, rendto:7, valor:8};
+        // Detectar si col2 es UD (texto corto) o CANT (número)
+        if(c2 && !isXlNum(c2) && c2.length<=8){
+          // COD | DESC | UD | CANT | PU  ← formato de tu Excel
+          map={cod:0, nat:-1, desc:1, ud:2, cant:3, pu:4, itbis:-1, rendto:-1, valor:5};
+        } else if(isXlNum(c2)){
+          // COD | DESC | CANT | UD | PU
+          map={cod:0, nat:-1, desc:1, cant:2, ud:3, pu:4, itbis:-1, rendto:-1, valor:5};
+        } else {
+          // COD | NAT | DESC | CANT | UD | PU
+          map={cod:0, nat:1, desc:2, cant:3, ud:4, pu:5, itbis:6, rendto:7, valor:8};
+        }
       } else {
-        // Sin código en col0 → col0=DESC, col1=CANT, col2=UD, col3=PU
-        map={cod:-1, nat:-1, desc:0, cant:1, ud:2, pu:3, itbis:-1, rendto:-1, valor:-1};
+        // DESC | UD | CANT | PU
+        map={cod:-1, nat:-1, desc:0, ud:1, cant:2, pu:3, itbis:-1, rendto:-1, valor:-1};
       }
     }
 
