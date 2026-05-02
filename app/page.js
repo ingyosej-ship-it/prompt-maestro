@@ -4282,8 +4282,24 @@ const PresupuestoObraView = () => {
     newCaps.forEach(c=>{if(!c.subcapitulos.length)c.subcapitulos=[{...mkSubcap('Partidas',''),partidas:[]}];});
     const totalParts=newCaps.reduce((s,c)=>(c.subcapitulos||[]).reduce((ss,sc)=>ss+(sc.partidas||[]).length,s),0);
     const totalSC=newCaps.reduce((s,c)=>s+(c.subcapitulos||[]).length,0);
+
+    // Auto-renumerar códigos si el cap tiene código definido
+    const capsConCodigos = newCaps.map((cap,ci) => {
+      const capCod = cap.codigo || String(ci+1).padStart(2,'0');
+      const updSCs = (cap.subcapitulos||[]).map((sc,si) => {
+        const scCod = sc.codigo || (capCod+'.'+String(si+1).padStart(2,'0'));
+        const updParts = (sc.partidas||[]).map((p,pi) => {
+          // Solo renumerar si la partida no tiene código propio
+          const pCod = p.codigo || (scCod+'.'+String(pi+1).padStart(3,'0'));
+          return {...p, codigo: pCod};
+        });
+        return {...sc, codigo: scCod, partidas: updParts};
+      });
+      return {...cap, codigo: capCod, subcapitulos: updSCs};
+    });
+
     let notif='';
-    if(newCaps.length>0||totalParts>0){setCaps(prev=>[...prev,...newCaps]);notif=`✓ ${newCaps.length} cap · ${totalSC} subcap · ${totalParts} partida(s)`;}
+    if(capsConCodigos.length>0||totalParts>0){setCaps(prev=>[...prev,...capsConCodigos]);notif=`✓ ${capsConCodigos.length} cap · ${totalSC} subcap · ${totalParts} partida(s)`;}
     if(newIndirectos.length>0){updateObra({indirectos:[...(obra.indirectos||[]),...newIndirectos]});notif+=(notif?' · ':'')+newIndirectos.length+' indirecto(s)';}
     if(notif){setPasteNotif(notif);setTimeout(()=>setPasteNotif(''),5000);}
     else if(lines.some(l=>l.trim())){setPasteNotif('⚠ Sin partidas — agrega fila COD | DESCRIPCION | UD | CANT | PU en tu Excel');setTimeout(()=>setPasteNotif(''),6000);}
@@ -4855,13 +4871,37 @@ const PresupuestoObraView = () => {
         <tbody>
           {caps.map((cap,ci)=>{
             const ct=getCT(cap);
-            // Usar el código del capítulo si lo tiene, sino generar
             const capCode=cap.codigo||String(ci+1).padStart(2,'0');
+
+            // Renumerar subcaps y partidas cuando cambia el código del capítulo
+            const onCapCodigoChange = (newCod) => {
+              setCaps(prev=>prev.map(c=>{
+                if(c.id!==cap.id) return c;
+                const updSCs=(c.subcapitulos||[]).map((sc,si)=>{
+                  const scCode=newCod+'.'+String(si+1).padStart(2,'0');
+                  const updParts=(sc.partidas||[]).map((p,pi)=>{
+                    const pCode=scCode+'.'+String(pi+1).padStart(3,'0');
+                    return {...p, codigo:pCode};
+                  });
+                  return {...sc, codigo:scCode, partidas:updParts};
+                });
+                return {...c, codigo:newCod, subcapitulos:updSCs};
+              }));
+            };
+
             return (
               <React.Fragment key={cap.id}>
                 {/* CAPÍTULO */}
                 <tr style={{background:CAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color}} onClick={()=>togCap(cap.id)}>
-                  <td style={{padding:'9px 10px',fontFamily:'monospace',color:cap.color,fontWeight:'800',fontSize:'12px',borderRight:'1px solid #c7d2fe'}}>{capCode}</td>
+                  <td style={{padding:'9px 10px',fontFamily:'monospace',color:cap.color,fontWeight:'800',fontSize:'12px',borderRight:'1px solid #c7d2fe'}}
+                    onClick={e=>e.stopPropagation()}>
+                    <input
+                      value={capCode}
+                      onChange={e=>onCapCodigoChange(e.target.value)}
+                      style={{background:'transparent',border:'none',outline:'none',color:cap.color,fontWeight:'800',fontSize:'12px',fontFamily:'monospace',width:'60px',cursor:'text'}}
+                      title="Editar código — subcapítulos y partidas se renumeran automáticamente"
+                    />
+                  </td>
                   <td colSpan={4} style={{padding:'9px 10px',fontWeight:'800',fontSize:'12px',color:'#1e1b4b',textTransform:'uppercase',letterSpacing:'0.05em'}}>
                     <span style={{marginRight:'6px',color:'#6366f1',fontSize:'10px'}}>{cap.abierto?'▼':'▶'}</span>{cap.nombre}
                   </td>
@@ -6088,7 +6128,7 @@ const IndirectoRow = ({ ind, subtotal, onChange }) => (
 // ==================== DASHBOARD WRAPPER ====================
 const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   const isPro     = userProfile?.plan === 'pro' || userProfile?.plan === 'admin';
-  const isAdmin   = userProfile?.plan === 'admin' || userEmail === 'ingyosej@gmail.com';
+  const isAdmin   = userProfile !== null && userProfile !== undefined && userProfile?.plan === 'admin';
   const planLabel = isPro ? (isAdmin ? 'Admin' : 'Pro') : 'Gratuito';
 
   // ── LÍMITE 8 MINUTOS CADA 24H PARA PLAN GRATUITO ──
@@ -6585,7 +6625,13 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   return (
     <div style={{display:'flex', height:'100vh', overflow:'hidden', background:'#f1f5f9'}}>
 
-      <aside style={{
+      {/* Overlay para cerrar sidebar en móvil */}
+      {mobileMenuOpen && (
+        <div onClick={()=>setMobileMenuOpen(false)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:998,display:'block'}}/>
+      )}
+
+      <aside className={`procalc-sidebar${mobileMenuOpen?' procalc-sidebar-open':''}`} style={{
           flexShrink: 0,
           width: sidebarOpen ? '220px' : '64px',
           transition: 'width 0.25s ease',
@@ -6627,7 +6673,6 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
           <NavItem icon={<LayoutTemplate size={19} />} label="Modelos" isOpen={sidebarOpen} active={currentView === 'templates'} onClick={() => handleViewChange('templates')} />
           <NavItem icon={<ClipboardList size={19} />} label="Presupuesto de Obra" isOpen={sidebarOpen} active={currentView === 'presupuestoObra'} onClick={() => handleViewChange('presupuestoObra')} />
           <NavItem icon={<BookOpen size={19} />} label="Biblioteca" isOpen={sidebarOpen} active={currentView === 'biblioteca'} onClick={() => handleViewChange('biblioteca')} />
-          {isAdmin && <NavItem icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>} label="Usuarios" isOpen={sidebarOpen} active={currentView === 'admin'} onClick={() => handleViewChange('admin')} />}
         </nav>
 
         {/* Logout */}
@@ -6642,12 +6687,16 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
         </div>
       </aside>
 
-      <main style={{flex:'1 1 0%', minWidth:0, display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden', background:'#f1f5f9', position:'relative'}}>
-        {/* TOPBAR DESKTOP */}
-        <div style={{height:'56px',background:'white',borderBottom:'1px solid #e2e8f0',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.05)'}}>
+      <main className="procalc-main" style={{flex:'1 1 0%', minWidth:0, display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden', background:'#f1f5f9', position:'relative'}}>
+        {/* TOPBAR */}
+        <div className="procalc-topbar" style={{height:'56px',background:'white',borderBottom:'1px solid #e2e8f0',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.05)'}}>
           <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+            <button className="procalc-hamburger" onClick={()=>setMobileMenuOpen(m=>!m)}
+              style={{background:'none',border:'none',cursor:'pointer',padding:'4px',marginRight:'4px',display:'none'}}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+            </button>
             <div style={{width:'3px',height:'20px',background:'#2563eb',borderRadius:'2px'}}></div>
-            <span style={{fontWeight:'700',fontSize:'15px',color:'#0f172a'}}>
+            <span className="procalc-topbar-title" style={{fontWeight:'700',fontSize:'15px',color:'#0f172a'}}>
               {currentView==='dashboard'&&'Panel Principal'}
               {currentView==='budget'&&'Cotizaciones'}
               {currentView==='calculators'&&'Calculadora de Materiales'}
@@ -6655,6 +6704,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
               {currentView==='templates'&&'Modelos'}
               {currentView==='presupuestoObra'&&'Presupuesto de Obra'}
               {currentView==='biblioteca'&&'Biblioteca Técnica'}
+              {currentView==='admin'&&'Usuarios'}
             </span>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
@@ -7531,6 +7581,86 @@ export default function ProCalcApp() {
   const [session, setSession]         = useState(null);
   const [profile, setProfile]         = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+
+  // Inyectar viewport meta y CSS responsive globalmente
+  useEffect(() => {
+    // Viewport meta para móvil
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'viewport';
+      document.head.appendChild(meta);
+    }
+    meta.content = 'width=device-width, initial-scale=1, maximum-scale=5';
+
+    // CSS responsive global
+    const style = document.createElement('style');
+    style.id = 'procalc-responsive';
+    style.textContent = `
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; }
+
+      @media (max-width: 768px) {
+        /* Sidebar oculto en móvil */
+        .procalc-sidebar { width: 0 !important; min-width: 0 !important; overflow: hidden !important; padding: 0 !important; }
+        .procalc-main { width: 100vw !important; }
+        .procalc-topbar-title { font-size: 13px !important; }
+        .procalc-hamburger { display: flex !important; }
+
+        /* Login — columna izquierda oculta */
+        .login-left { display: none !important; }
+        .login-mobile-header { display: flex !important; }
+
+        /* Dock login — más compacto */
+        .login-dock { bottom: 8px !important; gap: 3px !important; padding: 6px 8px !important; }
+        .login-dock button { padding: 5px 8px !important; font-size: 10px !important; }
+
+        /* Dashboard cards — 1 columna */
+        .dashboard-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+
+        /* Calculadoras — 1 columna */
+        .calc-grid { grid-template-columns: 1fr !important; }
+
+        /* Tablas — scroll horizontal */
+        .procalc-table-wrap, .db-table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+        table { min-width: 520px; }
+
+        /* Presupuesto toolbar — scroll horizontal */
+        .presup-toolbar { overflow-x: auto; white-space: nowrap; gap: 6px !important; padding: 6px 10px !important; }
+
+        /* APU panel — full screen */
+        .apu-panel { min-width: 100vw !important; font-size: 11px !important; }
+
+        /* Base de datos tabs — scroll */
+        .db-tabs { overflow-x: auto; white-space: nowrap; }
+
+        /* Inputs touch-friendly */
+        input, select, button { min-height: 38px; font-size: 14px !important; }
+        input[type="text"], input[type="email"], input[type="password"] { min-height: 44px; }
+
+        /* Modal full screen en móvil */
+        .procalc-modal { width: 100vw !important; height: 100vh !important; border-radius: 0 !important; max-height: 100vh !important; }
+
+        /* Ocultar columnas no esenciales en tablas */
+        .col-hide-mobile { display: none !important; }
+
+        /* Topbar más compacto */
+        .procalc-topbar { height: 48px !important; padding: 0 12px !important; }
+
+        /* Sidebar flotante cuando abierto */
+        .procalc-sidebar-open { position: fixed !important; left: 0 !important; top: 0 !important; bottom: 0 !important; width: 220px !important; z-index: 999 !important; box-shadow: 4px 0 24px rgba(0,0,0,0.5) !important; }
+      }
+
+      @media (max-width: 480px) {
+        .procalc-topbar { padding: 0 8px !important; }
+        .login-dock button span:last-child { display: none; }
+        .presup-totales { flex-direction: column !important; gap: 4px !important; }
+      }
+    `;
+    if (!document.getElementById('procalc-responsive')) {
+      document.head.appendChild(style);
+    }
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
