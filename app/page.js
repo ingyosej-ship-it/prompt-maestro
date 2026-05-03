@@ -1457,12 +1457,6 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',minWidth:'900px'}}>
                 <thead>
-                  {/* Fila 35 — grupos */}
-                  <tr style={{background:'#1e3a5f'}}>
-                    <th style={{padding:'6px 10px',color:'white',textAlign:'left',position:'sticky',left:0,background:'#1e3a5f',zIndex:2}}></th>
-                    <th colSpan={9} style={{padding:'5px 8px',color:'#93c5fd',textAlign:'center',fontWeight:'700',fontSize:'10px',borderRight:'3px solid #f59e0b'}}>Ingresar acero en At</th>
-                    <th colSpan={4} style={{padding:'5px 8px',color:'#fbbf24',textAlign:'center',fontWeight:'700',fontSize:'10px',background:'#92400e'}}>Ingresar acero en Unidad</th>
-                  </tr>
                   {/* Fila 36 — nombres de columnas */}
                   <tr style={{background:'#1e3a5f'}}>
                     <th style={{padding:'8px 10px',color:'white',textAlign:'left',fontWeight:'700',fontSize:'10px',minWidth:'160px',position:'sticky',left:0,background:'#1e3a5f',zIndex:2}}>DESCRIPCIÓN</th>
@@ -1526,6 +1520,11 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',minWidth:'900px'}}>
                 <thead>
+                  <tr style={{background:'#1e3a5f'}}>
+                    <th style={{padding:'5px 10px',color:'white',textAlign:'left',position:'sticky',left:0,background:'#1e3a5f',zIndex:2}}></th>
+                    <th colSpan={9} style={{padding:'5px 8px',color:'#93c5fd',textAlign:'center',fontWeight:'700',fontSize:'10px',borderRight:'3px solid #f59e0b'}}>Ingresar acero en At</th>
+                    <th colSpan={4} style={{padding:'5px 8px',color:'#fbbf24',textAlign:'center',fontWeight:'700',fontSize:'10px',background:'#92400e'}}>Ingresar acero en Unidad</th>
+                  </tr>
                   <tr style={{background:'#1e3a5f'}}>
                     <th style={{padding:'8px 10px',color:'white',textAlign:'left',fontWeight:'700',fontSize:'10px',minWidth:'160px',position:'sticky',left:0,background:'#1e3a5f'}}>Resumen</th>
                     {COLS.map(c=>(
