@@ -443,6 +443,12 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
   });
   const [resultado, setResultado] = useState(null);
 
+  // ── Acero Comercial — estados al nivel del componente (Rules of Hooks) ──────
+  const mkAcRow = (desc='') => ({id: Date.now()+Math.random(), desc, b:'',c:'',d:'',e:'',f:'',g:'',h:'',i:'',j:'',k:'',l:'',m:'',n:''});
+  const [acRows,    setAcRows]    = useState(()=>Array.from({length:10},()=>mkAcRow('')));
+  const [aceroObra, setAceroObra] = useState(()=>mkAcRow('Acero en Obra'));
+  const [acResult,  setAcResult]  = useState(null);
+
   // ── Forms ───────────────────────────────────────────────────────────────────
   const [fZapata, setFZ] = useState({ B:'1.20', L:'1.20', H:'0.30', diam:'3/8', sep:'0.20', supActiva:false });
   // Estados Zapata Aislada nueva
@@ -1324,9 +1330,281 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
           </div>
           <span style={{fontSize:'18px',color:'#0369a1',fontWeight:'700',alignSelf:'flex-end',marginTop:'auto'}}>›</span>
         </button>
+        {/* ACERO COMERCIAL */}
+        <button onClick={() => { setScreen('aceroComercial'); setResultado(null); }}
+          style={{padding:'16px', background:'white', border:'1px solid #e2e8f0', borderTop:'3px solid #dc2626', borderRadius:'12px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'8px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', transition:'all 0.15s', textAlign:'left'}}
+          onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 6px 18px rgba(220,38,38,0.15)';}}
+          onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0)';e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';}}>
+          <div style={{width:'44px',height:'44px',background:'#fee2e2',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="4" y1="14" x2="14" y2="14"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
+          </div>
+          <div>
+            <div style={{fontSize:'13px',fontWeight:'800',color:'#0f172a'}}>🔩 Acero Comercial</div>
+            <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'500',marginTop:'3px',lineHeight:'1.4'}}>Cálculo de acero para obra por elemento</div>
+          </div>
+          <span style={{fontSize:'18px',color:'#dc2626',fontWeight:'700',alignSelf:'flex-end',marginTop:'auto'}}>›</span>
+        </button>
       </div>
     </div>
   );
+
+  // ── ACERO COMERCIAL PARA OBRA ─────────────────────────────────────────────
+  if (screen === 'aceroComercial') {
+    // Columnas: primeras 9 en QQ (Atados), últimas 4 en UDS
+    const COLS = [
+      {key:'b', label:"Ø 3/8\" de 20'", ud:'At.', grupo:'at'},
+      {key:'c', label:"Ø 3/8\" de 25'", ud:'At.', grupo:'at'},
+      {key:'d', label:"Ø 3/8\" de 30'", ud:'At.', grupo:'at'},
+      {key:'e', label:"Ø 1/2\" de 20'", ud:'At.', grupo:'at'},
+      {key:'f', label:"Ø 1/2\" de 25'", ud:'At.', grupo:'at'},
+      {key:'g', label:"Ø 1/2\" de 30'", ud:'At.', grupo:'at'},
+      {key:'h', label:"Ø 3/4\" de 20'", ud:'At.', grupo:'at'},
+      {key:'i', label:"Ø 3/4\" de 25'", ud:'At.', grupo:'at'},
+      {key:'j', label:"Ø 3/4\" de 30'", ud:'At.', grupo:'at'},
+      {key:'k', label:"Ø 3/4\" de 35' UDS", ud:'UD', grupo:'ud', sep:true},
+      {key:'l', label:"Ø 1\" de 20' UDS",   ud:'UD', grupo:'ud'},
+      {key:'m', label:"Ø 1\" de 30' UDS",   ud:'UD', grupo:'ud'},
+      {key:'n', label:"Ø 1\" de 40' UDS",   ud:'UD', grupo:'ud'},
+    ];
+    const COLS_AT = COLS.filter(c=>c.grupo==='at');
+    const COLS_UD = COLS.filter(c=>c.grupo==='ud');
+    const mkRow = (desc='') => mkAcRow(desc);
+    const fN = v => parseFloat((v||'').toString().replace(/,/g,'.')) || 0;
+
+    // ── Cálculo en tiempo real — fórmulas exactas del Excel ──
+    // At. = subtotal / 22.5   |   UD = subtotal / 1
+    const subtotal = {};
+    const atados   = {};
+    const obra     = {};
+    const comprar  = {};
+    COLS.forEach(c => {
+      const divisor = c.ud === 'At.' ? 22.5 : 1;
+      subtotal[c.key] = acRows.reduce((s,r) => s + fN(r[c.key]), 0);
+      atados[c.key]   = subtotal[c.key] / divisor;   // B37 = +(B32)/22.5
+      obra[c.key]     = fN(aceroObra[c.key]);
+      comprar[c.key]  = atados[c.key] - obra[c.key]; // B39 = B37-B38
+    });
+
+    const exportarExcel = async () => {
+      let XLSX;
+      try {
+        if(!window.XLSX){
+          await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+        }
+        XLSX=window.XLSX;
+      } catch(e){alert('Error cargando Excel');return;}
+
+      const wb=XLSX.utils.book_new();
+      const rows=[];
+      rows.push(['CÁLCULO DE ACERO COMERCIAL PARA OBRA']);
+      rows.push(['© ProCalc — '+new Date().toLocaleDateString('es-DO')]);
+      rows.push([]);
+      // Encabezados
+      rows.push(['DESCRIPCION',...COLS.map(c=>c.label)]);
+      // Filas de entrada
+      acRows.filter(r=>r.desc||COLS.some(c=>r[c.key])).forEach(r=>{
+        rows.push([r.desc,...COLS.map(c=>fN(r[c.key])||'')]);
+      });
+      rows.push([]);
+      rows.push(['Subtotal (QQ ingresados)',...COLS.map(c=>acRows.reduce((s,r)=>s+fN(r[c.key]),0))]);
+      rows.push(['Atados Calculados (÷22.5 para At, ÷1 para UD)',...COLS.map(c=>atados[c.key])]);
+      rows.push([]);
+      if(true){
+        rows.push(['RESUMEN',...COLS.map(c=>c.label)]);
+        rows.push(['Atados Calculados',...COLS.map(c=>atados[c.key])]);
+        rows.push(['Acero en Obra',...COLS.map(c=>obra[c.key])]);
+        rows.push(['Cantidad a Comprar',...COLS.map(c=>comprar[c.key])]);
+        rows.push([]);
+        rows.push(['Total general — Cantidad a Comprar','','','']);
+        rows.push(['Descripcion','Cant.','Ud','Comentario']);
+        COLS.forEach(c=>{rows.push([c.label, comprar[c.key], c.ud,'']);});
+        rows.push([]);
+        rows.push(['Total general — Atados Calculados','','','']);
+        rows.push(['Descripcion','Cant.','Ud','Comentario']);
+        COLS.forEach(c=>{rows.push([c.label, atados[c.key], c.ud,'']);});
+      }
+      rows.push([]);
+      rows.push(['© ProCalc · Ingeniería de Costos · República Dominicana · Solo uso interno']);
+
+      const ws=XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols']=[{wch:30},...COLS.map(()=>({wch:12}))];
+      XLSX.utils.book_append_sheet(wb,ws,'Acero Comercial');
+      XLSX.writeFile(wb,'ProCalc_AceroComercial_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    };
+
+    const inp = {width:'100%',background:'transparent',border:'none',outline:'none',textAlign:'center',fontSize:'11px',padding:'3px',color:'#0f172a',fontFamily:'monospace'};
+    const inpDesc = {width:'100%',background:'transparent',border:'none',outline:'none',fontSize:'11px',padding:'4px 6px',color:'#0f172a'};
+
+    return (
+      <div style={{display:'flex',flexDirection:'column',height:'100%',background:'#f8fafc',fontFamily:'system-ui,sans-serif'}}>
+        {/* Header */}
+        <div style={{background:'white',borderBottom:'1px solid #e2e8f0',padding:'10px 16px',display:'flex',alignItems:'center',gap:'10px',flexShrink:0,flexWrap:'wrap'}}>
+          <button onClick={()=>setScreen('menu')} style={{background:'none',border:'none',cursor:'pointer',color:'#64748b',fontWeight:'700',fontSize:'13px',display:'flex',alignItems:'center',gap:'4px'}}>← Calculadoras</button>
+          <div style={{width:'1px',height:'20px',background:'#e2e8f0'}}/>
+          <div style={{fontWeight:'900',fontSize:'15px',color:'#0f172a'}}>🔩 Cálculo de Acero Comercial para Obra</div>
+          <div style={{marginLeft:'auto',display:'flex',gap:'8px'}}>
+            <button onClick={exportarExcel} style={{padding:'8px 14px',background:'#16a34a',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'5px'}}><Download size={13}/> Descargar Excel</button>
+          </div>
+        </div>
+
+        <div style={{flex:1,overflow:'auto',padding:'12px 16px'}}>
+
+          {/* ── TABLA DE ENTRADA (filas 5-31 del Excel) ── */}
+          <div style={{background:'white',borderRadius:'12px',border:'1px solid #e2e8f0',marginBottom:'16px',overflow:'hidden'}}>
+            <div style={{padding:'10px 14px',borderBottom:'1px solid #f1f5f9',fontWeight:'800',fontSize:'12px',color:'#0f172a',background:'#f8fafc'}}>
+              ACERO DETALLADO — Ingresa las cantidades por elemento
+            </div>
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',minWidth:'900px'}}>
+                <thead>
+                  {/* Fila 35 — grupos */}
+                  <tr style={{background:'#1e3a5f'}}>
+                    <th style={{padding:'6px 10px',color:'white',textAlign:'left',position:'sticky',left:0,background:'#1e3a5f',zIndex:2}}></th>
+                    <th colSpan={9} style={{padding:'5px 8px',color:'#93c5fd',textAlign:'center',fontWeight:'700',fontSize:'10px',borderRight:'3px solid #f59e0b'}}>Ingresar acero en At</th>
+                    <th colSpan={4} style={{padding:'5px 8px',color:'#fbbf24',textAlign:'center',fontWeight:'700',fontSize:'10px',background:'#92400e'}}>Ingresar acero en Unidad</th>
+                  </tr>
+                  {/* Fila 36 — nombres de columnas */}
+                  <tr style={{background:'#1e3a5f'}}>
+                    <th style={{padding:'8px 10px',color:'white',textAlign:'left',fontWeight:'700',fontSize:'10px',minWidth:'160px',position:'sticky',left:0,background:'#1e3a5f',zIndex:2}}>DESCRIPCIÓN</th>
+                    {COLS.map(c=>(
+                      <th key={c.key} style={{padding:'6px 4px',textAlign:'center',fontWeight:'700',fontSize:'9px',minWidth:'72px',
+                        color: c.grupo==='ud' ? '#1e3a5f' : 'white',
+                        background: c.grupo==='ud' ? '#fbbf24' : '#1e3a5f',
+                        borderLeft: c.sep ? '3px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)'}}>
+                        {c.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {acRows.map((row,ri)=>(
+                    <tr key={row.id} style={{background:ri%2===0?'white':'#f8fafc'}}>
+                      <td style={{padding:'2px',borderBottom:'1px solid #f1f5f9',position:'sticky',left:0,background:ri%2===0?'white':'#f8fafc',zIndex:1}}>
+                        <input value={row.desc} onChange={e=>setAcRows(prev=>prev.map((r,i)=>i===ri?{...r,desc:e.target.value}:r))}
+                          placeholder={`Elemento ${ri+1}`} style={{...inpDesc,width:'100%'}}/>
+                      </td>
+                      {COLS.map(c=>(
+                        <td key={c.key} style={{padding:'2px',borderBottom:'1px solid #f1f5f9',
+                          borderLeft: c.sep ? '3px solid #f59e0b' : '1px solid #f1f5f9',
+                          background: c.grupo==='ud' ? '#fffbeb' : 'inherit'}}>
+                          <input value={row[c.key]} onChange={e=>setAcRows(prev=>prev.map((r,i)=>i===ri?{...r,[c.key]:e.target.value}:r))}
+                            style={{...inp, background:'transparent'}} type="number" step="any" min="0"/>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{background:'#1e3a5f'}}>
+                    <td style={{padding:'7px 10px',color:'white',fontWeight:'800',fontSize:'11px',position:'sticky',left:0,background:'#1e3a5f',zIndex:2}}>Subtotal</td>
+                    {COLS.map(c=>{
+                      const sum=acRows.reduce((s,r)=>s+fN(r[c.key]),0);
+                      return <td key={c.key} style={{padding:'7px 4px',fontWeight:'800',textAlign:'center',fontFamily:'monospace',fontSize:'11px',
+                        borderLeft:c.sep?'3px solid #f59e0b':'1px solid rgba(255,255,255,0.1)',
+                        color: c.grupo==='ud' ? '#1e3a5f' : 'white',
+                        background: c.grupo==='ud' ? '#fbbf24' : 'inherit'}}>
+                        {sum>0?sum.toFixed(2):''}
+                      </td>;
+                    })}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div style={{padding:'8px 14px',borderTop:'1px solid #f1f5f9',display:'flex',gap:'8px'}}>
+              <button onClick={()=>setAcRows(prev=>[...prev,mkRow()])}
+                style={{padding:'5px 12px',background:'#eff6ff',color:'#2563eb',border:'1px solid #bfdbfe',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>+ Agregar fila</button>
+              {acRows.length>1 && <button onClick={()=>setAcRows(prev=>prev.slice(0,-1))}
+                style={{padding:'5px 12px',background:'#fef2f2',color:'#dc2626',border:'1px solid #fecaca',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}>− Quitar última</button>}
+            </div>
+          </div>
+
+          {/* ── RESUMEN SIEMPRE VISIBLE (filas 36-39 del Excel) ── */}
+          <div style={{background:'white',borderRadius:'12px',border:'1px solid #e2e8f0',marginBottom:'16px',overflow:'hidden'}}>
+            <div style={{padding:'10px 14px',borderBottom:'1px solid #f1f5f9',fontWeight:'800',fontSize:'12px',color:'#0f172a',background:'#f8fafc'}}>
+              RESUMEN
+            </div>
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',minWidth:'900px'}}>
+                <thead>
+                  <tr style={{background:'#1e3a5f'}}>
+                    <th style={{padding:'8px 10px',color:'white',textAlign:'left',fontWeight:'700',fontSize:'10px',minWidth:'160px',position:'sticky',left:0,background:'#1e3a5f'}}>Resumen</th>
+                    {COLS.map(c=>(
+                      <th key={c.key} style={{padding:'6px 4px',textAlign:'center',fontWeight:'700',fontSize:'9px',minWidth:'72px',
+                        borderLeft:c.sep?'3px solid #f59e0b':'1px solid rgba(255,255,255,0.1)',
+                        color: c.grupo==='ud'?'#1e3a5f':'white',
+                        background: c.grupo==='ud'?'#fbbf24':'#1e3a5f'}}>{c.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    {label:'Atados Calculados', data:atados,  bg:'#f0f9ff', fc:'#0369a1', bold:false},
+                    {label:'Acero en Obra',     data:obra,    bg:'#f0fdf4', fc:'#166534', editable:true},
+                    {label:'Cantidad a Comprar',data:comprar, bg:'#fff7ed', fc:'#c2410c', bold:true},
+                  ].map((row,ri)=>(
+                    <tr key={ri} style={{background:row.bg}}>
+                      <td style={{padding:'8px 10px',fontWeight:row.bold?'900':'700',fontSize:'11px',color:row.fc,position:'sticky',left:0,background:row.bg}}>{row.label}</td>
+                      {COLS.map(c=>{
+                        const val = row.data[c.key];
+                        return (
+                          <td key={c.key} style={{padding:'4px',textAlign:'center',
+                            borderLeft:c.sep?'3px solid #f59e0b':'1px solid #e2e8f0',
+                            background: c.grupo==='ud' ? (ri===1?'#fef9c3':ri===2?'#fef08a':'#fef3c7') : 'inherit'}}>
+                            {row.editable
+                              ? <input value={aceroObra[c.key]}
+                                  onChange={e=>setAceroObra(prev=>({...prev,[c.key]:e.target.value}))}
+                                  style={{width:'100%',background:'transparent',border:'none',outline:'none',textAlign:'center',fontSize:'11px',color:'#166534',fontWeight:'700',fontFamily:'monospace',padding:'2px'}}
+                                  type="number" step="any"/>
+                              : <span style={{fontFamily:'monospace',fontWeight:row.bold?'900':'700',color:val<0?'#dc2626':row.fc,fontSize:'11px'}}>
+                                  {val !== 0 ? val.toFixed(2) : '0.00'}
+                                </span>
+                            }
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ── TABLAS TOTALES SIEMPRE VISIBLES ── */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'16px'}}>
+            {[
+              {title:'Total General — Cantidad a Comprar', data:comprar, color:'#c2410c', bg:'#fff7ed'},
+              {title:'Total General — Atados Calculados  (= Subtotal ÷ 22.5 para At. / ÷ 1 para UD)',  data:atados,  color:'#dc2626', bg:'#fff1f2'},
+            ].map((sec,si)=>(
+              <div key={si} style={{background:'white',borderRadius:'12px',border:'1px solid #e2e8f0',overflow:'hidden'}}>
+                <div style={{padding:'10px 14px',fontWeight:'800',fontSize:'11px',color:sec.color,background:sec.bg,borderBottom:'1px solid #e2e8f0'}}>{sec.title}</div>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
+                  <thead>
+                    <tr style={{background:'#f8fafc'}}>
+                      <th style={{padding:'7px 10px',textAlign:'left',fontWeight:'700',fontSize:'10px',color:'#374151',borderBottom:'1px solid #e2e8f0'}}>Descripción</th>
+                      <th style={{padding:'7px 8px',textAlign:'center',fontWeight:'700',fontSize:'10px',color:'#374151',borderBottom:'1px solid #e2e8f0'}}>Cant.</th>
+                      <th style={{padding:'7px 8px',textAlign:'center',fontWeight:'700',fontSize:'10px',color:'#374151',borderBottom:'1px solid #e2e8f0'}}>Ud</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {COLS.map((c,ci)=>{
+                      const val = sec.data[c.key];
+                      return (
+                        <tr key={c.key} style={{background:ci%2===0?'white':'#f8fafc',borderBottom:'1px solid #f1f5f9'}}>
+                          <td style={{padding:'6px 10px',color:'#374151'}}>{c.label}</td>
+                          <td style={{padding:'6px 8px',textAlign:'center',fontFamily:'monospace',fontWeight:'700',color:val<0?'#dc2626':val>0?sec.color:'#94a3b8'}}>{val.toFixed(2)}</td>
+                          <td style={{padding:'6px 8px',textAlign:'center',color:'#64748b',fontWeight:'600'}}>{c.ud}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── ZAPATA AISLADA ───────────────────────────────────────────────────────────
   if (screen === 'zapata') {
