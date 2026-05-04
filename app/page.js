@@ -130,10 +130,10 @@ const MODELO_VIVIENDA = (mkCapFn, mkSubFn, mkPartFn, mkMedFn, uid) => {
 const APU_DETAILS = {
   '3.01': {
     materials: [
-      { name: 'Bloques de Hormigón 6"', unit: 'ud', quantity: 12.5, price: 34.00 },
-      { name: 'Cemento Gris Titán', unit: 'fda', quantity: 0.18, price: 385.00 },
-      { name: 'Arena de Pañete', unit: 'm3', quantity: 0.04, price: 1100.00 },
-      { name: 'Agua', unit: 'gl', quantity: 5.00, price: 0.50 }
+      { name: 'Bloques de Hormigón 6"', unit: 'ud', quantity: 12.5, price: 43.90 },
+      { name: 'Cemento Gris Titán', unit: 'fda', quantity: 0.18, price: 565.00 },
+      { name: 'Arena itabo de mina', unit: 'm3', quantity: 0.04, price: 1440.00 },
+      { name: 'Agua', unit: 'gl', quantity: 5.00, price: 0.61 }
     ],
     labor: [
       { name: 'Albañil de Primera (Colocación)', unit: 'm2', quantity: 1.00, price: 350.00 },
@@ -329,94 +329,11 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
   const [screen, setScreen] = useState('menu');
 
   // ── Precios desde Supabase (se actualizan solos) ───────────────────────────
-  const [preciosCargados, setPreciosCargados] = useState(false);
+  const [preciosCargados, setPreciosCargados] = useState(true);
+  // Precios fijos 34va Edición Feb 2026 — todos c/ITBIS incluido
+  // No se sobreescriben desde Supabase para garantizar exactitud
+  useEffect(() => { setPreciosCargados(true); }, []);
 
-  useEffect(() => {
-    const cargarPrecios = async () => {
-      try {
-        // Buscar precios en analisis_costo y mo_cuadrillas
-        const busquedas = [
-          { key:'acero38',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Acero 3/8"',                          tipo_fila:'item' },
-          { key:'acero12',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Acero ½"',                            tipo_fila:'item' },
-          { key:'acero34',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Acero ¾"',                            tipo_fila:'item' },
-          { key:'acero1',   tabla:'analisis_costo',  campo:'precio_unitario', desc:'Acero 1"',                            tipo_fila:'item' },
-          { key:'alambre',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Alambre #18',                         tipo_fila:'item' },
-          { key:'cemento',  tabla:'analisis_costo',  campo:'precio_unitario', desc:'Cemento gris',                        tipo_fila:'item' },
-          { key:'arena',    tabla:'analisis_costo',  campo:'precio_unitario', desc:'Arena gruesa lavada',                 tipo_fila:'item' },
-          { key:'grava',    tabla:'analisis_costo',  campo:'precio_unitario', desc:'Grava combinada',                     tipo_fila:'item' },
-          { key:'agua',     tabla:'analisis_costo',  campo:'precio_unitario', desc:'Agua',                                tipo_fila:'item' },
-          { key:'carp',     tabla:'analisis_costo',  campo:'precio_unitario', desc:'Confección e instalación de madera',  tipo_fila:'item' },
-          { key:'moAcero',  tabla:'mo_cuadrillas',   campo:'precio_unitario', desc:'Coloc. acero col. 3/8" ó ½"',        tipo_fila:null   },
-          { key:'bloque',   tabla:'analisis_costo',  campo:'precio_unitario', desc:'Bloque',                              tipo_fila:'item' },
-          { key:'moBloque', tabla:'mo_cuadrillas',   campo:'precio_unitario', desc:'bloque',                              tipo_fila:null   },
-        ];
-
-        const nuevosPrecios = {};
-        for (const b of busquedas) {
-          let q = supabase.from(b.tabla).select(b.campo).ilike('descripcion', `%${b.desc}%`).limit(1);
-          if (b.tipo_fila) q = q.eq('tipo_fila', b.tipo_fila);
-          const { data } = await q;
-          if (data && data[0] && data[0][b.campo]) {
-            nuevosPrecios[b.key] = parseFloat(data[0][b.campo]);
-          }
-        }
-
-        // Hormigones industriales — buscar precio_total de cada partida
-        const hormKeys = [
-          { label:'140 Kg/cm²', desc:'HORM. 140 Kg/Cm' },
-          { label:'160 Kg/cm²', desc:'HORM. 160 Kg/Cm' },
-          { label:'180 Kg/cm²', desc:'HORM. 180 Kg/Cm' },
-          { label:'210 Kg/cm²', desc:'HORM. 210 Kg/Cm' },
-          { label:'240 Kg/cm²', desc:'HORM. 240 Kg/Cm' },
-          { label:'250 Kg/cm²', desc:'HORM. 250 Kg/Cm' },
-          { label:'260 Kg/cm²', desc:'HORM. 260 Kg/Cm' },
-          { label:'280 Kg/cm²', desc:'HORM. 280 Kg/Cm' },
-          { label:'300 Kg/cm²', desc:'HORM. 300 Kg/Cm' },
-          { label:'350 Kg/cm²', desc:'HORM. 350 Kg/Cm' },
-          { label:'400 Kg/cm²', desc:'HORM. 400 Kg/Cm' },
-        ];
-
-        for (const h of hormKeys) {
-          // Buscar la partida y luego su fila total
-          const { data: partida } = await supabase
-            .from('analisis_costo')
-            .select('codigo')
-            .eq('tipo_fila', 'partida')
-            .ilike('descripcion', `%${h.desc}%`)
-            .limit(1);
-
-          if (partida && partida[0]) {
-            const { data: totalRow } = await supabase
-              .from('analisis_costo')
-              .select('precio_con_itbis')
-              .eq('tipo_fila', 'total')
-              .eq('partida_codigo', partida[0].codigo)
-              .limit(1);
-
-            if (totalRow && totalRow[0] && totalRow[0].precio_con_itbis) {
-              nuevosPrecios[`horm_${h.label}`] = parseFloat(totalRow[0].precio_con_itbis);
-            }
-          }
-        }
-
-        // Actualizar hormigones en PRECIOS_REF
-        if (Object.keys(nuevosPrecios).length > 0) {
-          const hormigones = { ...PRECIOS_REF.current.hormigones };
-          hormKeys.forEach(h => {
-            if (nuevosPrecios[`horm_${h.label}`]) {
-              hormigones[h.label] = nuevosPrecios[`horm_${h.label}`];
-              delete nuevosPrecios[`horm_${h.label}`];
-            }
-          });
-          Object.assign(PRECIOS_REF.current, nuevosPrecios, { hormigones });
-          setPreciosCargados(true);
-        }
-      } catch(e) {
-        console.error('Error cargando precios:', e);
-      }
-    };
-    cargarPrecios();
-  }, []);
 
   // ── Estado Cuantía Columna ─────────────────────────────────────────────────
   const [fCuantia, setFCuantia] = useState({
@@ -833,13 +750,13 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
       precioHorm=cemFds*(P.cemento||0)+arenM3*(P.arenaHorm||0)+graM3*(P.grava||0);
       descHorm=`Hormigón Manual ${fLosaMaciza.resManual} Kg/cm² (${hD.prop})`;
     } else {
-      precioHorm=vol*(P.hormigones[fLosaMaciza.hormInd]||P.hormigones['210 Kg/cm²']||8826.40);
+      precioHorm=vol*(P.hormigones[fLosaMaciza.hormInd]||P.hormigones['210 Kg/cm²']||8474.00);
       descHorm=`Hormigón Industrial ${fLosaMaciza.hormInd}`;
     }
 
     // ── Costos ──
     // PU del hormigón (por m³)
-    const puHorm = esManual ? (precioHorm/vol) : (P.hormigones[fLosaMaciza.hormInd]||P.hormigones['210 Kg/cm²']||8826.40);
+    const puHorm = esManual ? (precioHorm/vol) : (P.hormigones[fLosaMaciza.hormInd]||P.hormigones['210 Kg/cm²']||8474.00);
     const costoAcero12 = qq12      * (P.acero12||P.acero38||0);
     const costoAcero38 = qq38      * (P.acero38||0);
     const costoAlambre = alambreLb * (P.alambre||0);
@@ -985,38 +902,83 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
 
   // Precios base — 14va. Edición MOPC 2014
   const PRECIOS_REF = useRef({
-    acero38:  2651.04,   // Acero grado 60, ⅜" x 20' (Ins 50014)
-    acero12:  2662.15,   // Acero grado 60, ½" x 20'  (Ins 50019)
-    acero34:  2655.01,   // Acero grado 60, ¾" x 20'  (Ins 50024)
-    acero1:   2626.92,   // Acero grado 60, 1" x 20'  (Ins 50029)
-    alambre:    37.77,   // Alambre galv. Cal.18 (Ins 50046)
-    moAcero:   246.86,   // Coloc. acero normal qq (MOC 6800009)
-    carp:      167.56,   // Carpintería referencia
-    cemento:   276.91,   // Cemento Gris 94 lb. Portland (Ins 150005)
-    arena:    1012.15,   // Arena gruesa lavada (Ins 60002) — para mortero/hormigón
-    arenaHorm:1356.89,   // Arena triturada lavada (Ins 60004) — para hormigón industrial
-    grava:     924.98,   // Grava ¾"–½" triturada (Ins 60011)
-    agua:        0.61,   // Agua, camión 2,000 gls. (Ins 270006)
-    moBadenCic:  998.40, // Badén ciclópeo frotado+pulido (MOC 6000401)
-    moColocPied: 316.00, // Cimiento de piedra / colocar piedras (MOC 6200002)
-    moPulidoPiso: 59.05, // Piso cemento pulido fino (MOC 6001602)
-    mortPulido: 7087.21, // Mortero 1:2 para pulido por m³ (Ana 308)
+    // ── Aceros Grado 60 (QQ) — 34va Edición Feb 2026, INACE, c/ITBIS ──
+    acero38:  3144.65,   // INACE 10000001 Acero grado 60, 3/8" x 20'
+    acero12:  3156.00,   // INACE 10000006 Acero grado 60, 1/2" x 20'
+    acero34:  3193.88,   // INACE 10000016 Acero grado 60, 3/4" x 20'
+    acero1:   3165.40,   // INACE 10000026 Acero grado 60, 1"  x 20'
+    acero58:  3214.12,   // INACE 10000011 Acero grado 60, 5/8" x 20'
+    acero78:  3215.58,   // INACE 10000021 Acero grado 60, 7/8" x 20'
+    alambre:    61.11,   // INACE 10000063 Alambre galv. Cal.18 para amarrar
+    alambre14:  59.92,   // INACE 10000062 Alambre galv. Cal.14 para encofrados
+    mallaD23_10x10: 16936.08, // INACE 10000051 Malla D2.3x10x10 Rollo 2.4x40m
+    mallaD23_15x15: 13114.72, // INACE 10000052 Malla D2.3x15x15 Rollo 2.4x40m
+    mallaD25_10x10: 18949.35, // INACE 10000054 Malla D2.5x10x10 Rollo 2.4x40m
+    moAcero:   246.86,
+    carp:       71.00,   // Pino 1"x4"x12' bruto pt
+    // ── Cemento y áridos — 34va Edición Feb 2026, c/ITBIS ──
+    cemento:   565.00,   // INCEM 10100005 Cemento Gris 94 lb. "Titan"
+    cementoBlanco: 1295.00, // INCEM 10100004 Cemento Blanco 40kg "Titan"
+    cal:       435.01,   // INCEM 10100003 Cal Hidratada 20kg "Perla"
+    morteroAguayo: 219.44,   // INCEM 10100008 Mortero "Aguayo" para bloques
+    morteroEmpanete: 275.00, // INCEM 10100009 Mortero "Aguayo" para empañete
+    arena:    1440.00,   // INAGR 10010003 Arena itabo de mina — SIEMPRE arena de mina
+    arenaHorm: 2542.37,  // INAGR 10010004 Arena triturada azul para hormigón
+    arenaPanete:2372.88, // INAGR 10010001 Arena fina para empañete
+    arenaGruesa:3127.00, // INAGR 10010002 Arena gruesa lavada
+    grava:    1327.50,   // INAGR 10010013 Grava triturada 3/4" transp. incl.
+    grava12_1: 1327.50,  // INAGR 10010011 Grava 1/2"-1" transp. incl.
+    gravarena: 1386.50,  // INAGR 10010015 Gravarena 1/4"-5/16" transp. incl.
+    cascajo:  1699.20,   // INAGR 10010008 Cascajo de mina
+    agua:        0.61,   // INHOR 10230006 Agua camión 2,500 gls.
+    // ── Bloques de cemento — 34va Ed. Feb 2026, INBLC, c/ITBIS ──
+    bloque4:    38.48,   // INBLC 10050001 Bloque 4"x8"x16" liso
+    bloque5:    38.96,   // INBLC 10050002 Bloque 5"x8"x16" liso
+    bloque6:    39.95,   // INBLC 10050005 Bloque 6"x8"x16" liso (Bisono)
+    bloque6var: 43.90,   // INBLC 10050007 Bloque 6"x8"x16" p/varilla
+    bloque6euro:48.82,   // INBLC 10050006 Bloque 6"x8"x16" liso Euro
+    bloque8:    50.23,   // INBLC 10050010 Bloque 8"x8"x16" liso
+    bloque8var: 56.07,   // INBLC 10050012 Bloque 8"x8"x16" p/varilla
+    bloque8euro:61.86,   // INBLC 10050011 Bloque 8"x8"x16" liso Euro
+    bloque12:  112.43,   // INBLC 10050015 Bloque 12"x8"x16" liso
+    // ── Bovedillas — 34va Ed. Feb 2026, INBOV ──
+    bovedilla: 3676.92,  // INBOV 10080001 Bovedillas macizas "ISOFILL" m3
+    // ── Maderas y encofrado — 34va Ed. Feb 2026, INMAD ──
+    pino1x4x12: 71.00,   // INMAD 10280013 Pino 1"x4"x12' bruto (4pt) pt
+    pino1x6x12: 74.00,   // INMAD 10280025 Pino 1"x6"x12' bruto (6pt) pt
+    pino2x4x12: 59.00,   // INMAD 10280090 Pino 2"x4"x12' bruto pt
+    clavo2_5:   55.00,   // INMAD 10280005 Clavo corriente metalizado 2.5"x10 lb
+    clavo1_5:    0.44,   // INMAD 10280006 Clavo de acero 1.5" (ud)
+    plywood34: 2900.00,  // INMAD 10280191 Plywood Virola 4'x8'x3/4" 18mm
+    plywood12: 2000.00,  // INMAD 10280190 Plywood Virola 4'x8'x1/2" 12mm
+    // ── Hormigones adicionales ──
+    impermeabilizante: 490.00, // INHOR 10230029
+    moBadenCic:  998.40,
+    moColocPied: 316.00,
+    moPulidoPiso: 59.05,
+    mortPulido: 7087.21,
+    // ── Hormigones industriales directo c/ITBIS — INHOR 34va Ed. Feb 2026 ──
     hormigones: {
-      '140 Kg/cm²': 8307.20,
-      '160 Kg/cm²': 8307.20,
-      '180 Kg/cm²': 8566.80,
-      '210 Kg/cm²': 8826.40,
-      '240 Kg/cm²': 9345.60,
-      '250 Kg/cm²': 9540.30,
-      '260 Kg/cm²': 9735.00,
-      '280 Kg/cm²':10059.50,
-      '300 Kg/cm²':10254.20,
-      '350 Kg/cm²':11097.90,
-      '400 Kg/cm²':11811.80,
+      '100 Kg/cm²':  7580.00,   // INHOR 10230011
+      '140 Kg/cm²':  8750.00,   // INHOR 10230012
+      '150 Kg/cm²':  8000.00,   // INHOR 10230013
+      '160 Kg/cm²':  8800.00,   // INHOR 10230014
+      '180 Kg/cm²':  8224.00,   // INHOR 10230015
+      '210 Kg/cm²':  8474.00,   // INHOR 10230017
+      '210 Kg/cm² Bomba': 10250.00, // INHOR 10230016
+      '240 Kg/cm²':  8824.00,   // INHOR 10230018
+      '245 Kg/cm²':  5825.68,   // INHOR 10230019
+      '250 Kg/cm²': 10000.00,   // INHOR 10230020
+      '260 Kg/cm²':  6216.75,   // INHOR 10230021
+      '280 Kg/cm²':  9323.99,   // INHOR 10230022
+      '300 Kg/cm²':  9524.00,   // INHOR 10230023
+      '315 Kg/cm²':  6744.16,   // INHOR 10230024
+      '350 Kg/cm²': 10124.00,   // INHOR 10230025
+      '400 Kg/cm²': 12250.00,   // INHOR 10230026
+      '450 Kg/cm²': 13250.00,   // INHOR 10230027
+      '500 Kg/cm²': 14800.00,   // INHOR 10230028
     }
   });
-
-  // Alias para usar en el código (siempre apunta al ref actualizado)
   const PRECIOS = PRECIOS_REF.current;
 
   const calcCuantiaColumna = () => {
@@ -3166,35 +3128,35 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
 
           {resHdr()}
           <div style={{fontSize:'9px',fontWeight:'800',color:'#7c3aed',textTransform:'uppercase',padding:'4px 8px',background:'#faf5ff',borderRadius:'4px',marginBottom:'2px'}}>ACERO</div>
-          {resRow(`Acero losa piso (${C10}")`,      n(J11,3), 'qq')}
-          {resRow(`Acero losa superior (${E10}")`,  n(J12,3), 'qq')}
-          {resRow('MO Varillero (piso+sup)',         n(J30,3), 'pt')}
+          {resRow(`Acero losa piso (${C10}")`,      n(J11,3), 'qq',  'RD$3,266.87 (Ana)')}
+          {resRow(`Acero losa superior (${E10}")`,  n(J12,3), 'qq',  'RD$3,278.22 (Ana)')}
+          {resRow('MO Coloc. acero alta resist.',   n(J30,3), 'qq',  'RD$723.92')}
 
           <div style={{fontSize:'9px',fontWeight:'800',color:'#0369a1',textTransform:'uppercase',padding:'4px 8px',background:'#eff6ff',borderRadius:'4px',marginBottom:'2px',marginTop:'6px'}}>ALAMBRE Y CLAVOS</div>
-          {resRow('Alambre calibre #14 (.15lb/m²)', n(J14,2), 'lb')}
-          {resRow('Clavos corrientes (5lb/100pt)',   n(J19,2), 'lb')}
-          {resRow('Clavos de acero (.08lb/m²)',      n(J20,2), 'lb')}
+          {resRow('Alambre galv. Cal.14 (encofr.)', n(J14,2), 'lb',  'RD$59.92')}
+          {resRow('Clavos corrientes 2½" (madera)', n(J19,2), 'lb',  'RD$55.00')}
+          {resRow('Clavos de acero 2½" (.5lb/m)',   n(J20,2), 'lb',  'RD$55.00')}
 
           <div style={{fontSize:'9px',fontWeight:'800',color:'#92400e',textTransform:'uppercase',padding:'4px 8px',background:'#fef3c7',borderRadius:'4px',marginBottom:'2px',marginTop:'6px'}}>BLOQUES Y HORMIGÓN</div>
-          {resRow('Bloques 6" en tapa',              n(J15,2), 'm²')}
-          {resRow('Bloques 8" huecos llenos',        n(J16,2), 'ud')}
-          {resRow('Hormigón 1:2:4 losa piso',        n(J27,3), 'm³')}
-          {resRow('Hormigón 1:2:4 losa superior',    n(J28,3), 'm³')}
+          {resRow('Bloques 6" en tapa (Ana)',        n(J15,2), 'm²',  'RD$1,958.88/m²')}
+          {resRow('Bloques 8" cám.llenas 3/8"@40',  n(J16,2), 'm²',  'RD$3,605.62/m²')}
+          {resRow('Hormigón (1:2:4) losa piso',      n(J27,3), 'm³',  'RD$9,539.11')}
+          {resRow('Hormigón (1:2:4) losa superior',  n(J28,3), 'm³',  'RD$9,539.11')}
 
           <div style={{fontSize:'9px',fontWeight:'800',color:'#374151',textTransform:'uppercase',padding:'4px 8px',background:'#f9fafb',borderRadius:'4px',marginBottom:'2px',marginTop:'6px'}}>MADERA Y ENCOFRADO</div>
-          {resRow('Confección madera',               n(J21,2), 'm²')}
-          {resRow('Desencofrado',                    n(J22,2), 'm²')}
-          {resRow('Madera bruta amr. (4 usos)',       n(J29,2), 'pt')}
-          {resRow('Cantos en tapa',                  n(J18,2), 'm')}
+          {resRow('Conf. madera (falso piso)',        n(J21,2), 'm²',  'RD$246.50')}
+          {resRow('Desencofrado falso piso',          n(J22,2), 'm²',  'RD$52.57')}
+          {resRow('Pino 1"×4"×12\' bruto (4 usos)',  n(J29,2), 'pt',  'RD$71.00')}
+          {resRow('Cantos en tapa (M.O.)',            n(J18,2), 'm',   'RD$166.21')}
 
-          <div style={{fontSize:'9px',fontWeight:'800',color:'#0f766e',textTransform:'uppercase',padding:'4px 8px',background:'#f0fdf4',borderRadius:'4px',marginBottom:'2px',marginTop:'6px'}}>EMPAÑETES</div>
-          {resRow('Empañete liso en tapa',           n(J23,2), 'm²')}
-          {resRow('Empañete paredes int.',            n(J24,2), 'm²')}
-          {resRow('Empañete pulido piso',             n(J25,2), 'm²')}
+          <div style={{fontSize:'9px',fontWeight:'800',color:'#0f766e',textTransform:'uppercase',padding:'4px 8px',background:'#f0fdf4',borderRadius:'4px',marginBottom:'2px',marginTop:'6px'}}>EMPAÑETES (Análisis)</div>
+          {resRow('Empañete maestrado ext. (tapa)',   n(J23,2), 'm²',  'RD$531.34')}
+          {resRow('Empañete pulido s/color (paredes)', n(J24,2), 'm²', 'RD$561.17')}
+          {resRow('Empañete pulido piso',             n(J25,2), 'm²',  'RD$561.17')}
 
           <div style={{fontSize:'9px',fontWeight:'800',color:'#b91c1c',textTransform:'uppercase',padding:'4px 8px',background:'#fef2f2',borderRadius:'4px',marginBottom:'2px',marginTop:'6px'}}>EXCAVACIÓN</div>
-          {resRow(`Bote mat. excavado (Abult.${(abult*100).toFixed(0)}%)`, n(J17,2), 'm³', '', true)}
-          {resRow('Vol. Exc. neto (Lng.X×Y×Alta)',   n(J10,2), 'm³')}
+          {resRow(`Bote mat. (Abult.${(abult*100).toFixed(0)}%)`, n(J17,2), 'm³', 'RD$591.45', true)}
+          {resRow('Vol. Exc. neto',                  n(J10,2), 'm³')}
           {resRow('Excavación +1m c/lado',            n(J26,2), 'm³')}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px',marginTop:'6px',padding:'6px 8px',background:'#fef3c7',borderRadius:'6px',fontSize:'10px',fontWeight:'700',color:'#92400e'}}>
             <div>Lng.X: <span style={{fontFamily:'monospace'}}>{n(J4,2)}m</span></div>
@@ -3203,7 +3165,28 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
           </div>
 
           <div style={{fontSize:'9px',fontWeight:'800',color:'#374151',textTransform:'uppercase',padding:'4px 8px',background:'#f9fafb',borderRadius:'4px',marginBottom:'2px',marginTop:'6px'}}>OTROS</div>
-          {resRow('Zabaletas esq./paredes/piso',     n(J31,2), 'm')}
+          {resRow('Zabaleta piso esq. paredes/piso', n(J31,2), 'm',   'RD$179.30')}
+          {resRow('Tapa cisterna 27"×27" aluminio',  n(G6,0),  'u',   'RD$3,577.02')}
+
+          <div style={{marginTop:'10px',padding:'10px',background:'#f0f9ff',borderRadius:'8px',border:'1px solid #bae6fd'}}>
+            <div style={{fontSize:'9px',fontWeight:'800',color:'#0369a1',marginBottom:'5px',textTransform:'uppercase'}}>📋 PU — 34va Ed. Feb 2026 (c/ITBIS)</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2px',fontSize:'10px',color:'#475569',lineHeight:1.7}}>
+              <div>Acero 3/8" (Ana): <strong>RD$3,266.87/qq</strong></div>
+              <div>M.O. Acero: <strong>RD$723.92/qq</strong></div>
+              <div>Alambre Cal.14: <strong>RD$59.92/lb</strong></div>
+              <div>Clavos 2½": <strong>RD$55.00/lb</strong></div>
+              <div>Bloque 6" Ana: <strong>RD$1,958.88/m²</strong></div>
+              <div>Bloque 8" Ana: <strong>RD$3,605.62/m²</strong></div>
+              <div>Horm.(1:2:4): <strong>RD$9,539.11/m³</strong></div>
+              <div>Pino 1"×4"×12': <strong>RD$71.00/pt</strong></div>
+              <div>Emp. pulido: <strong>RD$561.17/m²</strong></div>
+              <div>Emp. maestrado: <strong>RD$531.34/m²</strong></div>
+              <div>Zabaleta: <strong>RD$179.30/m</strong></div>
+              <div>Tapa 27"×27": <strong>RD$3,577.02/u</strong></div>
+              <div>Bote mat.: <strong>RD$591.45/m³</strong></div>
+              <div>Conf. madera: <strong>RD$246.50/m²</strong></div>
+            </div>
+          </div>
         </>)}
 
         {!fc._calculado && (
