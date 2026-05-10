@@ -455,7 +455,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     act_yy12:false, sep_yy12:'0.25', // fila 7: Y-Y 1/2"
     act_yy38:false, sep_yy38:'0.25', // fila 8: Y-Y 3/8"
     tipoHorm:'industrial', resManual:'210', hormInd:'210 Kg/cm²',
-    moVarillero:246.86, moConfeccion:59.05, moDesencofrado:59.05, subaAcero:50.00,
+    moVarillero:481.56, moConfeccion:246.50, moDesencofrado:52.57, subaAcero:723.92,
   });
 
   // ── Estado Cisterna ────────────────────────────────────────────────────────
@@ -726,98 +726,85 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     const totalQQ = qq12 + qq38;
     const moVarPM3 = cuant12 + cuant38;  // = B11 = totalQQ/vol
 
-    // ── Alambre = (ΣpiezasXX × ΣpiezasYY) / vol / 80 × 1.1  (lb total, no por m³) ──
-    // Fórmula Excel: =((SUMA(F5:F6))*(SUMA(F7:F8)))*1/F1/80*1.1
+    // ── Alambre ──
     const sumXX = F5 + F6;
     const sumYY = F7 + F8;
     const alambreLb = (sumXX>0 && sumYY>0) ? sumXX * sumYY / vol / 80 * 1.1 : 0;
 
-    // ── Clavos = REDONDEAR(G15*factor, 2) donde G15 = totalQQ (Subida Acero) ──
-    const confPM3    = area / vol;  // = C3*B3/F1  (usado para confección/desencofrado)
+    // ── Mano de obra (precios 34va Ed.) ──
+    // Excel usa M.O. Coloc. acero ALTA RESISTENCIA (MOVA 50900002) = RD$723.92/qq
+    const moVar   = parseFloat(fLosaMaciza.moVarillero)   || P.moAceroAR  || 723.92;
+    const moConf  = parseFloat(fLosaMaciza.moConfeccion)  || P.carp       || 246.50;
+    const moDesen = parseFloat(fLosaMaciza.moDesencofrado)|| P.moDesencofr|| 52.57;
 
-    // ── Mano de obra (costos) ──
-    const moVar   = parseFloat(fLosaMaciza.moVarillero)   || P.moAcero      || 246.86;
-    const subaAc  = parseFloat(fLosaMaciza.subaAcero)     || 50;
-    const moConf  = parseFloat(fLosaMaciza.moConfeccion)  || P.moPulidoPiso || 59.05;
-    const moDesen = parseFloat(fLosaMaciza.moDesencofrado)|| P.moPulidoPiso || 59.05;
-
-    // ── Hormigón ──
+    // ── Hormigón +10% desperdicio (igual que Excel: 1.1 × vol) ──
     const esManual = fLosaMaciza.tipoHorm==='manual';
     let precioHorm=0, descHorm='', cemFds=0, arenM3=0, graM3=0;
     if(esManual){
       const hD=HORMIGON_DATA[fLosaMaciza.resManual]||HORMIGON_DATA['210'];
-      cemFds=vol*hD.cemento; arenM3=vol*hD.arena; graM3=vol*hD.grava;
+      const volH=vol*1.10;
+      cemFds=volH*hD.cemento; arenM3=volH*hD.arena; graM3=volH*hD.grava;
       precioHorm=cemFds*(P.cemento||0)+arenM3*(P.arenaHorm||0)+graM3*(P.grava||0);
-      descHorm=`Hormigón Manual ${fLosaMaciza.resManual} Kg/cm² (${hD.prop})`;
+      descHorm=`Hormigón Manual ${fLosaMaciza.resManual}Kg/cm² (${hD.prop}) +10%`;
     } else {
-      precioHorm=vol*(P.hormigones[fLosaMaciza.hormInd]||P.hormigones['210 Kg/cm²']||8474.00);
-      descHorm=`Hormigón Industrial ${fLosaMaciza.hormInd}`;
+      const puH=P.hormigones[fLosaMaciza.hormInd]||P.hormigones['210 Kg/cm²']||8474.00;
+      precioHorm=vol*1.10*puH;
+      descHorm=`Hormigón Industrial ${fLosaMaciza.hormInd} +10%`;
     }
+    const puHorm = vol>0 ? precioHorm/(vol*1.10) : 0;
 
-    // ── Costos ──
-    // PU del hormigón (por m³)
-    const puHorm = esManual ? (precioHorm/vol) : (P.hormigones[fLosaMaciza.hormInd]||P.hormigones['210 Kg/cm²']||8474.00);
-    const costoAcero12 = qq12      * (P.acero12||P.acero38||0);
-    const costoAcero38 = qq38      * (P.acero38||0);
-    const costoAlambre = alambreLb * (P.alambre||0);
-    const costoMoVar   = totalQQ   * moVar;
-    const costoSubida  = totalQQ   * subaAc;
+    // ── Acero +10% desperdicio (igual que Excel: 1.1 × qq) ──
+    const qq12d    = qq12 * 1.10;
+    const qq38d    = qq38 * 1.10;
+    const totalQQd = qq12d + qq38d;
+    const pAcero   = P.acero38 || 3278.22; // precio único todos los diámetros
+    const costoAcero12 = qq12d * pAcero;
+    const costoAcero38 = qq38d * pAcero;
+    const costoAlambre = alambreLb * (P.alambre||61.11);
 
-    // ── Confección/Desencofrado = C3*B3/F1 = A*B/vol (m²) ──
-    // Esta es la cantidad real de encofrado en m² según la hoja Excel
-    const confM2  = area / vol;   // = G16 = G17 del Excel
+    // M.O. Varillero sobre qq+10%
+    const costoMoVar  = totalQQd * moVar;
+    // Subida acero = 10% de M.O. (MOVA 50900014)
+    const costoSubida = costoMoVar * 0.10;
 
-    // ── Clavos: G15 = REDONDEAR(G16*0.08, 2), G14 = REDONDEAR(G15*1.3, 2) ──
-    const clavosAcero_lb = Math.round(confM2 * 0.08 * 100) / 100;          // G15
-    const clavosCorr_lb  = Math.round(clavosAcero_lb * 1.3 * 100) / 100;   // G14
-    const costoClavosC   = clavosCorr_lb  * (P.clavosCorr||3.50);
-    const costoClavosA   = clavosAcero_lb * (P.clavosAcero||8.00);
-    const costoConf      = confM2 * moConf;    // G17 × precio/m²
-    const costoDesen     = confM2 * moDesen;   // G17 × precio/m²
-    const costoTotal     = precioHorm+costoAcero12+costoAcero38+costoAlambre
-                          +costoMoVar+costoSubida+costoClavosC+costoClavosA+costoConf+costoDesen;
-    const pu_m2          = area>0 ? costoTotal/area : 0;
+    // ── Encofrado losa (AnaEncofr 70080001) — precio total por m² ──
+    const confM2     = area;
+    const puEncofLosa = esp <= 0.11 ? 885.57 : 873.10; // h=0.10→885.57 h=0.12→873.10
+    const costoEncof  = confM2 * puEncofLosa;
 
-    // ── Filas de resultado ──
+    const costoTotal = precioHorm + costoAcero12 + costoAcero38 + costoAlambre
+                      + costoMoVar + costoSubida + costoEncof;
+    const pu_m2 = area > 0 ? costoTotal / area : 0;
+
+    // ── Filas de resultado (exactamente los 5 insumos del Excel) ──
     const rows = [];
 
-    // HORMIGÓN — siempre primero
-    rows.push({label:descHorm, cant:n(vol,3), uni:'m³', pu:fmtRD(puHorm), total:fmtRD(precioHorm)});
+    // 1. Acero +10%
+    rows.push({label:'Acero 3/8" ×20\' +10% desp.',  cant:n(qq38d,4), uni:'qq', pu:fmtRD(pAcero), total:fmtRD(costoAcero38)});
+    rows.push({label:'Acero 1/2" ×20\' +10% desp.',  cant:n(qq12d,4), uni:'qq', pu:fmtRD(pAcero), total:fmtRD(costoAcero12)});
+    rows.push({label:'Alambre Cal.18',                cant:n(alambreLb,3), uni:'lb', pu:fmtRD(P.alambre||61.11), total:fmtRD(costoAlambre)});
+    // 2. M.O. Varillero alta resistencia
+    rows.push({label:'M.O. Acero Alta Resist.',       cant:n(totalQQd,4), uni:'qq', pu:fmtRD(moVar), total:fmtRD(costoMoVar)});
+    // 3. Subida acero 10%
+    rows.push({label:'Subida Acero (10% M.O.)',       cant:'10%', uni:'%', pu:'', total:fmtRD(costoSubida)});
+    // 4. Encofrado losa monolítica (AnaEnco 70080001)
+    rows.push({label:`Encof. Losa Monolítica h=${esp}m`, cant:n(confM2,2), uni:'m²', pu:fmtRD(puEncofLosa), total:fmtRD(costoEncof)});
+    // 5. Hormigón +10%
+    rows.push({label:descHorm, cant:n(vol*1.10,3), uni:'m³', pu:fmtRD(puHorm), total:fmtRD(precioHorm)});
     if(esManual){
-      rows.push({label:`  Cemento ${fLosaMaciza.resManual} Kg/cm²`, cant:n(cemFds,2), uni:'fds', pu:fmtRD(P.cemento||0),    total:fmtRD(cemFds*(P.cemento||0)), sub:true});
-      rows.push({label:'  Arena',                                    cant:n(arenM3,3), uni:'m³',  pu:fmtRD(P.arenaHorm||0), total:fmtRD(arenM3*(P.arenaHorm||0)), sub:true});
-      rows.push({label:'  Grava',                                    cant:n(graM3,3),  uni:'m³',  pu:fmtRD(P.grava||0),     total:fmtRD(graM3*(P.grava||0)), sub:true});
+      rows.push({label:'  └ Cemento gris', cant:n(cemFds,2), uni:'fds', pu:fmtRD(P.cemento||0), total:fmtRD(cemFds*(P.cemento||0)), sub:true});
+      rows.push({label:'  └ Arena triturada', cant:n(arenM3,3), uni:'m³', pu:fmtRD(P.arenaHorm||0), total:fmtRD(arenM3*(P.arenaHorm||0)), sub:true});
+      rows.push({label:'  └ Grava', cant:n(graM3,3), uni:'m³', pu:fmtRD(P.grava||0), total:fmtRD(graM3*(P.grava||0)), sub:true});
     }
-
-    // ACERO
-    // Nota: cant muestra qq/m³ (como el Excel G9/G10/B11), PU se ajusta × vol para que cant×PU=total
-    const puAc12pm3 = vol>0 ? (P.acero12||P.acero38||0) * vol : 0;
-    const puAc38pm3 = vol>0 ? (P.acero38||0) * vol : 0;
-    const puVarpm3  = vol>0 ? moVar * vol : 0;
-    const puSubpm3  = vol>0 ? subaAc * vol : 0;
-    rows.push(
-      {label:'Cuantía 1/2" (qq/m³)',   cant:n(cuant12,4),    uni:'qq/m³', pu:'',                              total:'', sub:true},
-      {label:'Cuantía 3/8" (qq/m³)',   cant:n(cuant38,4),    uni:'qq/m³', pu:'',                              total:'', sub:true},
-      {label:'Piezas  XX: 1/2"/3/8"', cant:`${F5} / ${F6}`, uni:'pzs',   pu:'',                              total:'', sub:true},
-      {label:'Piezas  YY: 1/2"/3/8"', cant:`${F7} / ${F8}`, uni:'pzs',   pu:'',                              total:'', sub:true},
-      // G9/G10 del Excel = cuantía total (qq/m³) sumando ambas direcciones
-      {label:'Total Acero 1/2"',       cant:n(cuant12,4),     uni:'qq/m³', pu:fmtRD(puAc12pm3),               total:fmtRD(costoAcero12)},
-      {label:'Total Acero 3/8"',       cant:n(cuant38,4),     uni:'qq/m³', pu:fmtRD(puAc38pm3),               total:fmtRD(costoAcero38)},
-      {label:'Total Alambre',          cant:n(alambreLb,3),   uni:'lb/m³', pu:fmtRD(P.alambre||0),            total:fmtRD(costoAlambre)},
-      // M.O. Varillero (B11) = cuant12+cuant38 en qq/m³; costo = totalQQ × precio
-      {label:'M.O. Varillero',         cant:n(moVarPM3,3),    uni:'qq/m³', pu:fmtRD(puVarpm3),                total:fmtRD(costoMoVar)},
-      {label:'Subida Acero',           cant:n(moVarPM3,3),    uni:'qq/m³', pu:fmtRD(puSubpm3),                total:fmtRD(costoSubida)},
-      // Clavos = REDONDEAR(confPM3×factor, 2) × vol
-      {label:'Clavos Corrientes',      cant:n(clavosCorr_lb,2),  uni:'lb', pu:'RD$ 3.50',                     total:fmtRD(costoClavosC)},
-      {label:'Clavos de Acero',        cant:n(clavosAcero_lb,2), uni:'lb', pu:'RD$ 8.00',                     total:fmtRD(costoClavosA)},
-      // Encofrado = C3*B3/F1 = area/vol
-      {label:'M.O. Confección',        cant:n(confM2,2),      uni:'m²',    pu:fmtRD(moConf),                  total:fmtRD(costoConf)},
-      {label:'M.O. Desencofrado',      cant:n(confM2,2),      uni:'m²',    pu:fmtRD(moDesen),                 total:fmtRD(costoDesen)},
-      // Totales
-      {label:'COSTO TOTAL',            cant:'',               uni:'',      pu:'',                              total:fmtRD(costoTotal)},
-      {label:'PU (RD$/m²)',            cant:fmtRD(pu_m2),     uni:'/m²',   pu:'',                              total:'', sub:true},
-    );
-
+    // Info cuantías
+    rows.push({label:'──────────────────────', cant:'', uni:'', pu:'', total:''});
+    rows.push({label:'Cuantía 1/2" (qq/m³)', cant:n(cuant12,4), uni:'qq/m³', pu:'', total:'', sub:true});
+    rows.push({label:'Cuantía 3/8" (qq/m³)', cant:n(cuant38,4), uni:'qq/m³', pu:'', total:'', sub:true});
+    rows.push({label:'Piezas XX: 1/2"/3/8"', cant:`${F5} / ${F6}`, uni:'pzs', pu:'', total:'', sub:true});
+    rows.push({label:'Piezas YY: 1/2"/3/8"', cant:`${F7} / ${F8}`, uni:'pzs', pu:'', total:'', sub:true});
+    // Totales
+    rows.push({label:'COSTO TOTAL', cant:'', uni:'', pu:'', total:fmtRD(costoTotal)});
+    rows.push({label:'PU (RD$/m²)', cant:fmtRD(pu_m2), uni:'/m²', pu:'', total:'', sub:true});
     setResultado({tipo:'Losa Maciza',modulo:'losaMaciza',desc:`${A}×${B}m e=${esp}m`,grandTotal:costoTotal,items:rows});
   };
 
@@ -902,20 +889,32 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
 
   // Precios base — 14va. Edición MOPC 2014
   const PRECIOS_REF = useRef({
-    // ── Aceros Grado 60 (QQ) — 34va Edición Feb 2026, INACE, c/ITBIS ──
-    acero38:  3144.65,   // INACE 10000001 Acero grado 60, 3/8" x 20'
-    acero12:  3156.00,   // INACE 10000006 Acero grado 60, 1/2" x 20'
-    acero34:  3193.88,   // INACE 10000016 Acero grado 60, 3/4" x 20'
-    acero1:   3165.40,   // INACE 10000026 Acero grado 60, 1"  x 20'
-    acero58:  3214.12,   // INACE 10000011 Acero grado 60, 5/8" x 20'
-    acero78:  3215.58,   // INACE 10000021 Acero grado 60, 7/8" x 20'
+    // ── Aceros Grado 60 (QQ) — 34va Edición Feb 2026 — Precio único RD$3,278.22/qq ──
+    acero38:  3278.22,
+    acero12:  3278.22,
+    acero34:  3278.22,
+    acero1:   3278.22,
+    acero58:  3278.22,
+    acero78:  3278.22,
+    acero38_ins:  3278.22,
+    acero12_ins:  3278.22,
+    acero34_ins:  3278.22,
+    acero1_ins:   3278.22,
     alambre:    61.11,   // INACE 10000063 Alambre galv. Cal.18 para amarrar
     alambre14:  59.92,   // INACE 10000062 Alambre galv. Cal.14 para encofrados
     mallaD23_10x10: 16936.08, // INACE 10000051 Malla D2.3x10x10 Rollo 2.4x40m
     mallaD23_15x15: 13114.72, // INACE 10000052 Malla D2.3x15x15 Rollo 2.4x40m
     mallaD25_10x10: 18949.35, // INACE 10000054 Malla D2.5x10x10 Rollo 2.4x40m
-    moAcero:   246.86,
-    carp:       71.00,   // Pino 1"x4"x12' bruto pt
+    moAcero:   481.56,   // MOVA 50900009 M.O. Coloc. acero normal qq
+    moAceroAR: 723.92,   // MOVA 50900002 M.O. Coloc. acero alta resistencia qq
+    moAceroLosa:1085.86, // MOVA 50900007 M.O. Coloc. acero losa Lima Hoya/Lima Tesa qq
+    carp:      246.50,   // MOCA 50110007 M.O. Falso piso/Confección madera hasta 2.75m m²
+    moEncofLosa: 435.00, // MOCA 50113017 M.O. Encof.+desencof. Losa plana hasta 2.75m m²
+    moEncofCol:  625.93, // MOCA 50113008 M.O. Encof.+desencof. Columna hasta 30×30cm m
+    moEncofViga: 578.20, // MOCA 50113021 M.O. Encof.+desencof. Viga 20×40cm m
+    moSubidaAr2: 334.35, // MOAL 50029002 M.O. Subir arena polea 2do nivel m³
+    moSubidaAr3: 477.63, // MOAL 50029003 M.O. Subir arena polea 3er nivel m³
+    moSubidaMat: 334.35, // Subida general materiales 2do nivel m³
     // ── Cemento y áridos — 34va Edición Feb 2026, c/ITBIS ──
     cemento:   565.00,   // INCEM 10100005 Cemento Gris 94 lb. "Titan"
     cementoBlanco: 1295.00, // INCEM 10100004 Cemento Blanco 40kg "Titan"
@@ -953,10 +952,11 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     plywood12: 2000.00,  // INMAD 10280190 Plywood Virola 4'x8'x1/2" 12mm
     // ── Hormigones adicionales ──
     impermeabilizante: 490.00, // INHOR 10230029
-    moBadenCic:  998.40,
-    moColocPied: 316.00,
-    moPulidoPiso: 59.05,
-    mortPulido: 7087.21,
+    moBadenCic:  2259.38, // MOAL 50013001 M.O. Badén ciclópeo frotado/pulido m³
+    moColocPied:  316.00, // Referencia colocar piedras m³
+    moPulidoPiso: 133.65, // MOAL 50025002 M.O. Piso cemento pulido fino m²
+    moDesencofr:   52.57, // MOCA 50108004 M.O. Desencof. Falso Piso hasta 2.75m m²
+    mortPulido: 14326.80, // AnaBasic 60030005 Mortero 1:2 para pulido m³
     // ── Hormigones industriales directo c/ITBIS — INHOR 34va Ed. Feb 2026 ──
     hormigones: {
       '100 Kg/cm²':  7580.00,   // INHOR 10230011
@@ -1734,9 +1734,9 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
   if (screen === 'murosBloques') {
     const COLOR = '#b45309';
     const TIPO_DATA = {
-      '10':{ label:'4" (10 cm)',volMort:0.012,volRell:0.15,desc:'Bloque 4"', pBloque:27.24,pColoc:193.05},
-      '15':{ label:'6" (15 cm)',volMort:0.016,volRell:0.20,desc:'Bloque 6"', pBloque:31.51,pColoc:160.81},
-      '20':{ label:'8" (20 cm)',volMort:0.023,volRell:0.30,desc:'Bloque 8"', pBloque:40.71,pColoc:178.75},
+      '10':{ label:'4" (10 cm)',volMort:0.012,volRell:0.15,desc:'Bloque 4"', pBloque:PRECIOS.bloque4||38.48,pColoc:437.00},
+      '15':{ label:'6" (15 cm)',volMort:0.016,volRell:0.20,desc:'Bloque 6"', pBloque:PRECIOS.bloque6||39.95,pColoc:364.00},
+      '20':{ label:'8" (20 cm)',volMort:0.023,volRell:0.30,desc:'Bloque 8"', pBloque:PRECIOS.bloque8||50.23,pColoc:404.56},
     };
     const MORTERO_DATA_M={
       '1:2':{cem:11.97,are:0.97,agua:235},'1:3':{cem:10.66,are:1.10,agua:203},
@@ -1986,12 +1986,12 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
       if (fBaden.tipoHorm==='manual') {
         const hD=HORMIGON_DATA[fBaden.resHorm];
         if (hD) {
-          const cC=hD.cemento*volHA*PRECIOS.cemento,cA=hD.arena*volHA*(PRECIOS.arenaHorm||PRECIOS.arena),cG=hD.grava*volHA*PRECIOS.grava,cW=hD.agua*volHA*PRECIOS.agua;
+          const cC=hD.cemento*volHA*PRECIOS.cemento,cA=hD.arena*volHA*PRECIOS.arena,cG=hD.grava*volHA*PRECIOS.grava,cW=hD.agua*volHA*PRECIOS.agua;
           tHormHA=cC+cA+cG+cW;
           hormHAItems=[
             {label:`Hormigón H.A. ${fBaden.resHorm}Kg/cm² (${hD.prop}) +2% desp.`,cant:fn2(volHA,3),uni:'m³',pu:'-',total:'-'},
             {label:'  └ Cemento gris',    cant:fn2(hD.cemento*volHA,2),uni:'fds',pu:fRD(PRECIOS.cemento),                   total:fRD(cC),sub:true},
-            {label:'  └ Arena triturada', cant:fn2(hD.arena*volHA,3),  uni:'m³', pu:fRD(PRECIOS.arenaHorm||PRECIOS.arena), total:fRD(cA),sub:true},
+            {label:'  └ Arena itabo de mina', cant:fn2(hD.arena*volHA,3),  uni:'m³', pu:fRD(PRECIOS.arena), total:fRD(cA),sub:true},
             {label:'  └ Grava combinada', cant:fn2(hD.grava*volHA,3),  uni:'m³', pu:fRD(PRECIOS.grava),                   total:fRD(cG),sub:true},
             {label:'  └ Agua',            cant:fn2(hD.agua*volHA,3),   uni:'Lts',pu:fRD(PRECIOS.agua),                    total:fRD(cW),sub:true},
           ];
@@ -2009,12 +2009,12 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
       if (fBaden.tipoCic==='manual') {
         const hC=HORMIGON_DATA[fBaden.resCic];
         if (hC) {
-          const cC=hC.cemento*volCicHorm*PRECIOS.cemento,cA=hC.arena*volCicHorm*(PRECIOS.arenaHorm||PRECIOS.arena),cG=hC.grava*volCicHorm*PRECIOS.grava;
+          const cC=hC.cemento*volCicHorm*PRECIOS.cemento,cA=hC.arena*volCicHorm*PRECIOS.arena,cG=hC.grava*volCicHorm*PRECIOS.grava;
           tCicHorm=cC+cA+cG;
           cCicItems=[
             {label:`Base Ciclópeo ${fBaden.resCic}Kg/cm² (${hC.prop}), 15%vol +10%desp.`,cant:fn2(volCicHorm,3),uni:'m³',pu:'-',total:'-'},
             {label:'  └ Cemento gris',    cant:fn2(hC.cemento*volCicHorm,2),uni:'fds',pu:fRD(PRECIOS.cemento),                   total:fRD(cC),sub:true},
-            {label:'  └ Arena triturada', cant:fn2(hC.arena*volCicHorm,3),  uni:'m³', pu:fRD(PRECIOS.arenaHorm||PRECIOS.arena), total:fRD(cA),sub:true},
+            {label:'  └ Arena itabo de mina', cant:fn2(hC.arena*volCicHorm,3),  uni:'m³', pu:fRD(PRECIOS.arena), total:fRD(cA),sub:true},
             {label:'  └ Grava combinada', cant:fn2(hC.grava*volCicHorm,3),  uni:'m³', pu:fRD(PRECIOS.grava),                   total:fRD(cG),sub:true},
           ];
         }
@@ -3710,10 +3710,6 @@ const CostAnalysisView = () => {
               />
               <span style={{ position:'absolute', left:'10px', top:'8px', color:'#94a3b8', fontSize:'13px' }}>🔍</span>
             </div>
-            <button onClick={descargarConMarcaAgua}
-              style={{ display:'flex', alignItems:'center', gap:'6px', padding:'7px 14px', background:'#16a34a', color:'white', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'700', cursor:'pointer' }}>
-              <Download size={14}/> Descargar Excel
-            </button>
           </div>
         </div>
 
@@ -7841,6 +7837,9 @@ export default function ProCalcApp() {
   const [session, setSession]         = useState(null);
   const [profile, setProfile]         = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [isRecovery, setIsRecovery]   = useState(false);
+  const [newPwd, setNewPwd]           = useState('');
+  const [newPwdMsg, setNewPwdMsg]     = useState('');
 
   // Inyectar viewport meta y CSS responsive globalmente
   useEffect(() => {
@@ -7923,15 +7922,30 @@ export default function ProCalcApp() {
   }, []);
 
   useEffect(() => {
+    // Detectar token de recuperación en la URL (cuando viene del enlace de Supabase)
+    const hash = window.location.hash;
+    if (hash && hash.includes('type=recovery')) {
+      // Supabase ya procesó el token automáticamente via onAuthStateChange
+      // Solo asegurarse de que se muestre el formulario de nueva contraseña
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) loadProfile(session.user.id);
       else setLoadingAuth(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      if (session) loadProfile(session.user.id);
-      else { setProfile(null); setLoadingAuth(false); }
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecovery(true);
+        setLoadingAuth(false);
+        // No cargar perfil aún — esperar que establezca nueva contraseña
+      } else if (session) {
+        loadProfile(session.user.id);
+      } else {
+        setProfile(null);
+        setLoadingAuth(false);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -7959,6 +7973,44 @@ export default function ProCalcApp() {
         <div style={{fontSize:'13px',color:'#94a3b8',fontWeight:'600'}}>Cargando ProCalc...</div>
       </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
+    </div>
+  );
+
+  // ── Formulario de nueva contraseña (viene del enlace de recuperación) ──
+  if (isRecovery) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#0f172a',padding:'16px'}}>
+      <div style={{background:'white',borderRadius:'16px',padding:'32px',width:'100%',maxWidth:'380px',boxShadow:'0 24px 60px rgba(0,0,0,0.4)'}}>
+        <div style={{textAlign:'center',marginBottom:'24px'}}>
+          <div style={{width:'48px',height:'48px',background:'#2563eb',borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div style={{fontWeight:'900',fontSize:'20px',color:'#0f172a'}}>Nueva Contraseña</div>
+          <div style={{fontSize:'12px',color:'#64748b',marginTop:'4px'}}>Ingresa tu nueva contraseña para ProCalc</div>
+        </div>
+
+        {newPwdMsg && <div style={{background:newPwdMsg.includes('✓')?'#dcfce7':'#fee2e2',border:`1px solid ${newPwdMsg.includes('✓')?'#86efac':'#fca5a5'}`,borderRadius:'8px',padding:'10px 12px',marginBottom:'16px',fontSize:'12px',color:newPwdMsg.includes('✓')?'#166534':'#dc2626',fontWeight:'600'}}>{newPwdMsg}</div>}
+
+        <form onSubmit={async e => {
+          e.preventDefault();
+          if (newPwd.length < 6) { setNewPwdMsg('Mínimo 6 caracteres'); return; }
+          const { error } = await supabase.auth.updateUser({ password: newPwd });
+          if (error) { setNewPwdMsg(error.message); }
+          else {
+            setNewPwdMsg('✓ Contraseña actualizada. Redirigiendo...');
+            setTimeout(() => { setIsRecovery(false); setNewPwd(''); }, 2000);
+          }
+        }}>
+          <div style={{marginBottom:'16px'}}>
+            <label style={{fontSize:'11px',fontWeight:'700',color:'#374151',display:'block',marginBottom:'5px'}}>Nueva contraseña</label>
+            <input type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)}
+              placeholder="Mínimo 6 caracteres" required minLength={6}
+              style={{width:'100%',padding:'11px 14px',border:'1px solid #e2e8f0',borderRadius:'9px',fontSize:'14px',outline:'none',boxSizing:'border-box'}}/>
+          </div>
+          <button type="submit" style={{width:'100%',padding:'13px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontSize:'14px',fontWeight:'800',cursor:'pointer'}}>
+            Guardar Contraseña
+          </button>
+        </form>
+      </div>
     </div>
   );
 
