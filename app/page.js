@@ -4018,6 +4018,23 @@ const TemplatesView = () => {
 };
 
 // ==================== VISTA: PRESUPUESTO DE OBRA ====================
+// ── Inputs con estado local para evitar re-render al escribir ─────────────────
+const LocalInput = ({ value, onCommit, style, type='text', placeholder='' }) => {
+  const [val, setVal] = React.useState(value??'');
+  React.useEffect(()=>{ setVal(value??''); }, [value]);
+  return (
+    <input
+      type={type}
+      value={val}
+      onChange={e=>setVal(e.target.value)}
+      onBlur={()=>onCommit(val)}
+      onKeyDown={e=>{ if(e.key==='Enter') e.target.blur(); }}
+      style={style}
+      placeholder={placeholder}
+    />
+  );
+};
+
 const PresupuestoObraView = () => {
 
   const uid = () => '_' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
@@ -5148,7 +5165,7 @@ const PresupuestoObraView = () => {
             return (
               <React.Fragment key={cap.id}>
                 {/* CAPÍTULO */}
-                <tr style={{background:CAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color}} onClick={()=>togCap(cap.id)}>
+                <tr style={{background:CAP_BG,userSelect:'none',borderLeft:'4px solid '+cap.color}}>
                   <td style={{padding:'9px 10px',fontFamily:'monospace',color:cap.color,fontWeight:'800',fontSize:'12px',borderRight:'1px solid #c7d2fe'}}
                     onClick={e=>e.stopPropagation()}>
                     <input
@@ -5159,7 +5176,13 @@ const PresupuestoObraView = () => {
                     />
                   </td>
                   <td colSpan={4} style={{padding:'9px 10px',fontWeight:'800',fontSize:'12px',color:'#1e1b4b',textTransform:'uppercase',letterSpacing:'0.05em'}}>
-                    <span style={{marginRight:'6px',color:'#6366f1',fontSize:'10px'}}>{cap.abierto?'▼':'▶'}</span>{cap.nombre}
+                    <span style={{marginRight:'6px',color:'#6366f1',fontSize:'10px',cursor:'pointer'}} onClick={()=>togCap(cap.id)}>{cap.abierto?'▼':'▶'}</span>
+                    <LocalInput
+                      value={cap.nombre||''}
+                      onCommit={v=>setCaps(prev=>prev.map(c=>c.id===cap.id?{...c,nombre:v}:c))}
+                      style={{background:'transparent',border:'none',outline:'none',fontWeight:'800',fontSize:'12px',color:'#1e1b4b',textTransform:'uppercase',letterSpacing:'0.05em',width:'calc(100% - 20px)',cursor:'text'}}
+                      placeholder="Nombre del capítulo"
+                    />
                   </td>
                   <td style={{padding:'9px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:cap.color,borderLeft:'1px solid #c7d2fe',borderRight:'1px solid #c7d2fe'}}>{fmt(ct)}</td>
                   <td style={{background:CAP_BG,textAlign:'center',padding:'4px'}}>
@@ -5172,10 +5195,16 @@ const PresupuestoObraView = () => {
                   return (
                     <React.Fragment key={sc.id}>
                       {/* SUBCAPÍTULO */}
-                      <tr style={{background:SUBCAP_BG,cursor:'pointer',userSelect:'none',borderLeft:'4px solid '+cap.color+'66'}} onClick={()=>togSC(cap.id,sc.id)}>
+                      <tr style={{background:SUBCAP_BG,userSelect:'none',borderLeft:'4px solid '+cap.color+'66'}}>
                         <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#475569',fontWeight:'700',fontSize:'11px',borderRight:'1px solid #cbd5e1'}}>{scCode}</td>
                         <td colSpan={4} style={{padding:'7px 10px',fontWeight:'700',fontSize:'11px',color:'#334155'}}>
-                          <span style={{marginRight:'6px',color:'#94a3b8',fontSize:'9px'}}>{sc.abierto?'▼':'▶'}</span>{sc.nombre}
+                          <span style={{marginRight:'6px',color:'#94a3b8',fontSize:'9px',cursor:'pointer'}} onClick={()=>togSC(cap.id,sc.id)}>{sc.abierto?'▼':'▶'}</span>
+                          <LocalInput
+                            value={sc.nombre||''}
+                            onCommit={v=>setCaps(prev=>prev.map(c=>c.id===cap.id?{...c,subcapitulos:c.subcapitulos.map(s=>s.id===sc.id?{...s,nombre:v}:s)}:c))}
+                            style={{background:'transparent',border:'none',outline:'none',fontWeight:'700',fontSize:'11px',color:'#334155',width:'calc(100% - 20px)',cursor:'text'}}
+                            placeholder="Nombre del subcapítulo"
+                          />
                         </td>
                         <td style={{padding:'7px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#475569',fontSize:'11px',borderLeft:'1px solid #cbd5e1',borderRight:'1px solid #cbd5e1'}}>{fmt(sct)}</td>
                         <td style={{background:SUBCAP_BG,textAlign:'center',padding:'4px'}}>
@@ -5205,20 +5234,27 @@ const PresupuestoObraView = () => {
                                 }}>
                                 {pCode}
                               </td>
-                              {/* Desc — solo editar */}
-                              <td style={{borderRight:bdr,background:bg,fontWeight:'600',color:'#111827',padding:'5px 8px',cursor:'text'}}
-                                onClick={()=>startEdit(cap.id,sc.id,p.id,'desc',p.desc)}>
-                                {isEd(cap.id,sc.id,p.id,'desc')
-                                  ?<input autoFocus style={cInp} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>
-                                  :<span style={{display:'flex',alignItems:'center',gap:'5px',wordBreak:'break-word'}}>
-                                    {p.temporal&&<span style={{fontSize:'8px',background:'#fef3c7',color:'#b45309',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>TEMP</span>}
-                                    {hasComps&&<span style={{fontSize:'8px',background:'#e0e7ff',color:'#3730a3',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>APU</span>}
-                                    {p.desc}
-                                  </span>}
+                              {/* Desc — edición directa */}
+                              <td style={{borderRight:bdr,background:bg,fontWeight:'600',color:'#111827',padding:'5px 8px'}}>
+                                <div style={{display:'flex',alignItems:'center',gap:'5px'}}>
+                                  {p.temporal&&<span style={{fontSize:'8px',background:'#fef3c7',color:'#b45309',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>TEMP</span>}
+                                  {hasComps&&<span style={{fontSize:'8px',background:'#e0e7ff',color:'#3730a3',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>APU</span>}
+                                  <LocalInput
+                                    value={p.desc||''}
+                                    onCommit={v=>updatePart(cap.id,sc.id,p.id,{desc:v})}
+                                    style={{background:'transparent',border:'none',outline:'none',fontWeight:'600',fontSize:'12px',color:'#111827',width:'100%',cursor:'text'}}
+                                    placeholder="Descripción de la partida"
+                                  />
+                                </div>
                               </td>
                               {/* Unidad */}
-                              <td style={{borderRight:bdr,background:bg,textAlign:'center',padding:'5px 6px',cursor:'text'}} onClick={()=>startEdit(cap.id,sc.id,p.id,'unidad',p.unidad||'')}>
-                                {isEd(cap.id,sc.id,p.id,'unidad')?<input autoFocus style={{...cInp,textAlign:'center'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>:<span style={{color:'#374151'}}>{p.unidad}</span>}
+                              <td style={{borderRight:bdr,background:bg,textAlign:'center',padding:'5px 6px'}}>
+                                <LocalInput
+                                  value={p.unidad||''}
+                                  onCommit={v=>updatePart(cap.id,sc.id,p.id,{unidad:v})}
+                                  style={{background:'transparent',border:'none',outline:'none',fontSize:'12px',color:'#374151',textAlign:'center',width:'100%',cursor:'text'}}
+                                  placeholder="ud"
+                                />
                               </td>
                               {/* Cantidad — clic edita manual (rojo), clic en "med." abre mediciones (negro calculado) */}
                               <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'3px 8px',fontFamily:'monospace',fontWeight:'700'}}>
@@ -5353,20 +5389,19 @@ const PresupuestoObraView = () => {
                                             <div style={{fontSize:'6px',color:nI.tx+'aa',lineHeight:1,marginTop:'1px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>▾</div>
                                           </td>
                                           <td style={{padding:'0',borderRight:'1px solid #f0f0f0'}}>
-                                            <input value={comp.desc||''} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{desc:e.target.value})}
+                                            <LocalInput value={comp.desc||''} onCommit={v=>updComp(cap.id,sc.id,p.id,comp.id,{desc:v})}
                                               style={{...iX,fontStyle:comp.naturaleza==='O'?'italic':'normal'}} placeholder="Descripción del insumo..."/>
                                           </td>
                                           <td style={{padding:'0',borderRight:'1px solid #f0f0f0'}}>
-                                            <input type="number" value={comp.cantidad||''} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{cantidad:e.target.value})}
+                                            <LocalInput type="number" value={String(comp.cantidad||'')} onCommit={v=>{updComp(cap.id,sc.id,p.id,comp.id,{cantidad:v});saveCompToDB({...comp,cantidad:v});}}
                                               style={{...iX,textAlign:'right',fontFamily:'monospace'}} placeholder="0"/>
                                           </td>
                                           <td style={{padding:'0',borderRight:'1px solid #f0f0f0'}}>
-                                            <input value={comp.unidad||''} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{unidad:e.target.value})}
+                                            <LocalInput value={comp.unidad||''} onCommit={v=>updComp(cap.id,sc.id,p.id,comp.id,{unidad:v})}
                                               style={{...iX,textAlign:'center'}} placeholder="ud"/>
                                           </td>
                                           <td style={{padding:'0',borderRight:'1px solid #f0f0f0'}}>
-                                            <input type="number" value={comp.pu||''} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{pu:e.target.value})}
-                                              onBlur={()=>saveCompToDB({...comp})}
+                                            <LocalInput type="number" value={String(comp.pu||'')} onCommit={v=>{updComp(cap.id,sc.id,p.id,comp.id,{pu:v});saveCompToDB({...comp,pu:v});}}
                                               style={{...iX,textAlign:'right',fontFamily:'monospace'}} placeholder="0.00"/>
                                           </td>
                                           <td style={{padding:'2px 4px',borderRight:'1px solid #f0f0f0',background:'#fffbf0',textAlign:'center'}}>
@@ -5377,9 +5412,8 @@ const PresupuestoObraView = () => {
                                             >{(parseFloat(comp.itbis)||0)>0?'✓ 18%':'NO'}</button>
                                           </td>
                                           <td style={{padding:'0',borderRight:'1px solid #f0f0f0',background:'#f0fdf4'}}>
-                                            <input type="number" value={comp.rendimiento===undefined?1:comp.rendimiento} onChange={e=>updComp(cap.id,sc.id,p.id,comp.id,{rendimiento:e.target.value})}
-                                              onBlur={()=>saveCompToDB({...comp})}
-                                              style={{...iX,textAlign:'right',fontFamily:'monospace',color:'#166534'}} placeholder="1.00" step="0.0001"/>
+                                            <LocalInput type="number" value={String(comp.rendimiento===undefined?1:comp.rendimiento)} onCommit={v=>{updComp(cap.id,sc.id,p.id,comp.id,{rendimiento:v});saveCompToDB({...comp,rendimiento:v});}}
+                                              style={{...iX,textAlign:'right',fontFamily:'monospace',color:'#166534'}} placeholder="1.00"/>
                                           </td>
                                           <td style={{padding:'3px 6px',textAlign:'right',fontFamily:'monospace',fontWeight:'700',color:'#111827',borderRight:'1px solid #f0f0f0',background:ci2%2===0?'#f9fafb':'#fef9c3'}}>{fmtN(compTot,2)}</td>
                                           <td style={{textAlign:'center',padding:'1px'}}>
@@ -6242,7 +6276,7 @@ const AdminPanel = ({ supabase }) => {
 
   const toggleBloqueo = async (userId, bloqueado) => {
     setSaving(userId + '_blk');
-    await supabase.from('profiles').update({ bloqueado }).eq('id', userId);
+    await supabase.from('profiles').update({ suscripcion_activa: !bloqueado }).eq('id', userId);
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, bloqueado } : u));
     setSaving(null);
   };
@@ -6294,11 +6328,11 @@ const AdminPanel = ({ supabase }) => {
                     <td style={{ padding:'10px 14px' }}>
                       <button
                         disabled={saving === u.id + '_blk'}
-                        onClick={() => toggleBloqueo(u.id, !u.bloqueado)}
+                        onClick={() => toggleBloqueo(u.id, u.suscripcion_activa)}
                         style={{ padding:'5px 12px', borderRadius:'6px', border:'none', fontWeight:'700', fontSize:'11px', cursor:'pointer',
-                          background: u.bloqueado ? '#fee2e2' : '#dcfce7',
+                          background: !u.suscripcion_activa ? '#fee2e2' : '#dcfce7',
                           color: u.bloqueado ? '#dc2626' : '#16a34a' }}>
-                        {saving === u.id + '_blk' ? '...' : u.bloqueado ? '🔒 Bloqueado' : '✓ Activo'}
+                        {saving === u.id + '_blk' ? '...' : !u.suscripcion_activa ? '🔒 Bloqueado' : '✓ Activo'}
                       </button>
                     </td>
                   </tr>
@@ -6368,10 +6402,12 @@ const DashboardHome = ({ goToBudget, goToCostAnalysis, goToTemplates, goToCalcul
 const IndirectoRow = ({ ind, subtotal, onChange }) => (
   <div style={{display:'flex',alignItems:'center',gap:'6px',background:'#0f172a',borderRadius:'8px',padding:'6px 10px',border:ind.activo?'1px solid #3b82f6':'1px solid #334155'}}>
     <input type="checkbox" checked={ind.activo} onChange={e => onChange(ind.id,'activo',e.target.checked)} style={{cursor:'pointer',accentColor:'#3b82f6'}}/>
-    <input value={ind.label} onChange={e => onChange(ind.id,'label',e.target.value)}
+    <LocalInput value={ind.label}
+      onCommit={v => onChange(ind.id,'label',v)}
       style={{background:'none',border:'none',color:ind.activo?'#e2e8f0':'#475569',fontSize:'12px',fontWeight:'600',width:'130px',outline:'none'}}/>
-    <input type="number" value={ind.pct} min="0" max="100" step="0.5" onChange={e => onChange(ind.id,'pct',e.target.value)}
-      style={{width:'46px',background:'#1e293b',border:'1px solid #334155',borderRadius:'4px',color:'#60a5fa',fontSize:'13px',fontWeight:'700',padding:'2px 4px',textAlign:'right',outline:'none'}}/>
+    <LocalInput type="number" value={String(ind.pct)}
+      onCommit={v => onChange(ind.id,'pct',v)}
+      style={{width:'46px',background:'#1e293b',border:'1px solid #334151',borderRadius:'4px',color:'#60a5fa',fontSize:'13px',fontWeight:'700',padding:'2px 4px',textAlign:'right',outline:'none'}}/>
     <span style={{color:'#475569',fontSize:'12px'}}>%</span>
     {ind.activo && ind.pct > 0 && (
       <span style={{color:'#34d399',fontSize:'11px',fontFamily:'monospace',marginLeft:'2px'}}>
@@ -6383,9 +6419,16 @@ const IndirectoRow = ({ ind, subtotal, onChange }) => (
 
 // ==================== DASHBOARD WRAPPER ====================
 const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
-  const isPro     = userProfile?.plan === 'pro' || userProfile?.plan === 'admin';
-  const isAdmin   = userProfile !== null && userProfile !== undefined && userProfile?.plan === 'admin';
+  const isPro   = userProfile?.plan === 'pro' || userProfile?.plan === 'admin' || userProfile?.plan === 'active';
+  const isAdmin = userProfile !== null && userProfile !== undefined && userProfile?.plan === 'admin';
   const planLabel = isPro ? (isAdmin ? 'Admin' : 'Pro') : 'Gratuito';
+
+  // ── Verificar vencimiento de licencia ──
+  const fechaVenc = userProfile?.fecha_vencimiento ? new Date(userProfile.fecha_vencimiento) : null;
+  const hoy = new Date();
+  const diasRestantes = fechaVenc ? Math.ceil((fechaVenc - hoy) / (1000 * 60 * 60 * 24)) : null;
+  const licenciaVencida = fechaVenc && fechaVenc < hoy && !isAdmin;
+  const licenciaPorVencer = diasRestantes !== null && diasRestantes <= 30 && diasRestantes > 0 && !isAdmin;
 
   // ── LÍMITE 8 MINUTOS CADA 24H PARA PLAN GRATUITO ──
   const SESSION_LIMIT = 8 * 60; // 8 minutos en segundos
@@ -6395,7 +6438,13 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   const timerRef = useRef(null);
 
   useEffect(() => {
-    if (isPro) return; // Pro y Admin no tienen límite
+    if (isPro) {
+      // Admin y Pro — limpiar cualquier restricción de localStorage
+      localStorage.removeItem(STORAGE_KEY);
+      setSesionExpirada(false);
+      setTiempoRestante(null);
+      return;
+    }
 
     const ahora = Date.now();
     let stored = {};
@@ -6458,6 +6507,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   const [validezDias, setValidezDias] = useState(30);
   const [showAnaModal, setShowAnaModal] = useState(false);
   const [showIndirectos, setShowIndirectos] = useState(false);
+  const [aplicarITBIS,   setAplicarITBIS]   = useState(true);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [anaSearch, setAnaSearch] = useState('');
   const [anaResults, setAnaResults] = useState([]);
@@ -6481,7 +6531,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   }, 0);
   const totalIndirectos = indirectos.filter(i => i.activo).reduce((s, i) => s + subtotal * (parseFloat(i.pct)||0) / 100, 0);
   const subtotalConInd = subtotal + totalIndirectos;
-  const itbisAmt = subtotalConInd * 0.18;
+  const itbisAmt = aplicarITBIS ? subtotalConInd * 0.18 : 0;
   const total = subtotalConInd + itbisAmt;
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -6614,7 +6664,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
     const today = new Date().toLocaleDateString('es-DO');
     const validUntil = new Date(Date.now()+validezDias*86400000).toLocaleDateString('es-DO');
     const subtotalCot = (pr.partidas||[]).filter(p=>p.enCotizacion!==false).reduce((s,p)=>(s+(parseFloat(p.cantidad)||0)*(parseFloat(p.precio_unitario)||0)),0);
-    const itbisAmtCot = subtotalCot*0.18;
+    const itbisAmtCot = aplicarITBIS ? subtotalCot*0.18 : 0;
     const totalIndCot = indirectos.filter(i=>i.activo).reduce((s,i)=>s+subtotalCot*(parseFloat(i.pct)||0)/100,0);
     const totalCot = subtotalCot+totalIndCot+itbisAmtCot;
 
@@ -6756,7 +6806,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
     const today = new Date().toLocaleDateString('es-DO');
     const validUntil = new Date(Date.now()+validezDias*86400000).toLocaleDateString('es-DO');
     const subtotalCot = (pr.partidas||[]).filter(p=>p.enCotizacion!==false).reduce((s,p)=>(s+(parseFloat(p.cantidad)||0)*(parseFloat(p.precio_unitario)||0)),0);
-    const itbisAmtCot = subtotalCot*0.18;
+    const itbisAmtCot = aplicarITBIS ? subtotalCot*0.18 : 0;
     const totalIndCot = indirectos.filter(i=>i.activo).reduce((s,i)=>s+subtotalCot*(parseFloat(i.pct)||0)/100,0);
     const totalCot = subtotalCot+totalIndCot+itbisAmtCot;
 
@@ -6970,6 +7020,16 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
                 ⏱ {Math.floor(tiempoRestante/60)}:{String(tiempoRestante%60).padStart(2,'0')} restante
               </span>
             )}
+            {licenciaPorVencer && (
+              <span style={{fontSize:'10px',fontWeight:'800',background:'#fef3c7',color:'#92400e',padding:'3px 10px',borderRadius:'20px'}}>
+                ⚠ Vence en {diasRestantes} días
+              </span>
+            )}
+            {licenciaVencida && (
+              <span style={{fontSize:'10px',fontWeight:'800',background:'#fee2e2',color:'#dc2626',padding:'3px 10px',borderRadius:'20px'}}>
+                ⛔ Licencia vencida
+              </span>
+            )}
             {!isPro && !sesionExpirada && (
               <span style={{fontSize:'9px',fontWeight:'800',background:'#fef3c7',color:'#92400e',padding:'2px 8px',borderRadius:'20px',textTransform:'uppercase',letterSpacing:'0.06em'}}>Plan Gratuito</span>
             )}
@@ -6997,9 +7057,9 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
                 Tu acceso se renueva automáticamente mañana.<br/>
                 Activa el Plan Pro para acceso ilimitado.
               </div>
-              <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')}
+              <button onClick={()=>window.open('mailto:ingyosej@gmail.com?subject=Suscripción Plan Pro ProCalc&body=Hola, quiero suscribirme al Plan Pro. Mi email de registro es: ','_blank')}
                 style={{padding:'13px 32px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
-                💎 Suscribirse — $40/año
+                ✉️ Escribir para suscribirse
               </button>
               <button onClick={onLogout}
                 style={{padding:'8px 20px',background:'transparent',color:'#64748b',border:'1px solid #334155',borderRadius:'8px',fontWeight:'600',fontSize:'12px',cursor:'pointer'}}>
@@ -7012,8 +7072,8 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
           )}
           {currentView === 'dashboard' && <DashboardHome goToBudget={() => handleViewChange('budget')} goToCostAnalysis={() => handleViewChange('costAnalysis')} goToTemplates={() => handleViewChange('templates')} goToCalculators={() => handleViewChange('calculators')} goToPresupuesto={() => handleViewChange('presupuestoObra')} goToBiblioteca={() => handleViewChange('biblioteca')} />}
 
-          {/* Módulos restringidos — solo Pro/Admin pueden interactuar */}
-          {['costAnalysis','templates','presupuestoObra','calculators','budget'].includes(currentView) && !isPro && (
+          {/* Módulos bloqueados — plan gratuito O licencia vencida */}
+          {['costAnalysis','templates','presupuestoObra','calculators','budget'].includes(currentView) && (!isPro || licenciaVencida) && (
             <div style={{position:'absolute',inset:0,zIndex:50,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(15,23,42,0.92)',backdropFilter:'blur(4px)',gap:'16px',padding:'32px',textAlign:'center'}}>
               <div style={{fontSize:'48px'}}>🔒</div>
               <div style={{fontSize:'20px',fontWeight:'900',color:'white'}}>Acceso Plan Pro</div>
@@ -7021,9 +7081,9 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
                 Con el plan gratuito solo puedes navegar el panel principal y la biblioteca.<br/>
                 Activa el Plan Pro para acceder a todos los módulos.
               </div>
-              <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')}
+              <button onClick={()=>window.open('mailto:ingyosej@gmail.com?subject=Suscripción Plan Pro ProCalc&body=Hola, quiero suscribirme al Plan Pro. Mi email de registro es: ','_blank')}
                 style={{padding:'12px 28px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
-                💎 Suscribirse — $40/año
+                ✉️ Escribir para suscribirse
               </button>
               <div style={{fontSize:'11px',color:'#475569'}}>
                 Luego de pagar escribe a <strong style={{color:'#93c5fd'}}>ingyosej@gmail.com</strong> con tu email de registro.
@@ -7076,10 +7136,10 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
                         <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'600',textTransform:'uppercase'}}>Subtotal</div>
                         <div style={{fontSize:'13px',fontWeight:'700',color:'#1e293b',fontFamily:'monospace'}}>RD$ {subtotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
                       </div>
-                      <div style={{textAlign:'right'}}>
+                      {aplicarITBIS && <div style={{textAlign:'right'}}>
                         <div style={{fontSize:'10px',color:'#94a3b8',fontWeight:'600',textTransform:'uppercase'}}>ITBIS 18%</div>
                         <div style={{fontSize:'13px',fontWeight:'700',color:'#1e293b',fontFamily:'monospace'}}>RD$ {itbisAmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-                      </div>
+                      </div>}
                       <div style={{textAlign:'right'}}>
                         <div style={{fontSize:'10px',color:'#2563eb',fontWeight:'700',textTransform:'uppercase'}}>Total</div>
                         <div style={{fontSize:'17px',fontWeight:'800',color:'#1d4ed8',fontFamily:'monospace'}}>RD$ {total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
@@ -7153,7 +7213,10 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
                     </button>
                     <div style={{flex:1}}/>
                     <button onClick={() => setShowIndirectos(v => !v)} style={{padding:'5px 12px',background:showIndirectos?'#0f172a':'white',color:showIndirectos?'white':'#475569',border:'1px solid #cbd5e1',borderRadius:'6px',fontSize:'11px',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
-                      <Percent size={12}/> Costos Indirectos
+                      % Indirectos
+                    </button>
+                    <button onClick={() => setAplicarITBIS(v => !v)} style={{padding:'5px 12px',background:aplicarITBIS?'#0f172a':'white',color:aplicarITBIS?'white':'#475569',border:'1px solid #cbd5e1',borderRadius:'6px',fontSize:'11px',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+                      {aplicarITBIS ? '✓' : '○'} ITBIS 18%
                     </button>
                   </div>
 
@@ -7313,12 +7376,12 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
                             <span style={{fontFamily:'monospace',color:'#1e293b',fontSize:'12px'}}>RD$ {(subtotal*ind.pct/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
                           </div>
                         ))}
-                        <div style={{display:'flex',justifyContent:'space-between',padding:'5px 12px',background:'#f8fafc',borderRadius:'6px'}}>
+                        {aplicarITBIS && <div style={{display:'flex',justifyContent:'space-between',padding:'5px 12px',background:'#f8fafc',borderRadius:'6px'}}>
                           <span style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>ITBIS (18%)</span>
                           <span style={{fontFamily:'monospace',fontWeight:'700',color:'#1e293b',fontSize:'13px'}}>RD$ {itbisAmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-                        </div>
+                        </div>}
                         <div style={{display:'flex',justifyContent:'space-between',padding:'10px 12px',background:'#1d4ed8',borderRadius:'8px',marginTop:'2px'}}>
-                          <span style={{fontSize:'13px',color:'white',fontWeight:'700'}}>TOTAL CON ITBIS</span>
+                          <span style={{fontSize:'13px',color:'white',fontWeight:'700'}}>{aplicarITBIS ? 'TOTAL CON ITBIS' : 'TOTAL'}</span>
                           <span style={{fontFamily:'monospace',fontWeight:'800',color:'white',fontSize:'15px'}}>RD$ {total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
                         </div>
                       </div>
@@ -7468,8 +7531,8 @@ const AuthSystem = () => {
     if (error) { setError(error.message === 'Invalid login credentials' ? 'Email o contraseña incorrectos.' : error.message); }
     else {
       // Verificar si el usuario está bloqueado
-      const { data: prof } = await supabase.from('profiles').select('bloqueado').eq('id', data.user.id).single();
-      if (prof?.bloqueado) {
+      const { data: prof } = await supabase.from('profiles').select('suscripcion_activa, plan').eq('id', data.user.id).single();
+      if (prof?.suscripcion_activa === false && prof?.plan !== 'admin') {
         await supabase.auth.signOut();
         setError('Tu acceso ha sido desactivado. Contacta a ingyosej@gmail.com');
       }
@@ -7490,8 +7553,8 @@ const AuthSystem = () => {
           id: data.user.id,
           email: email,
           nombre: nombre,
-          plan: 'gratuito',
-          bloqueado: false,
+          plan: 'free',
+          suscripcion_activa: true,
           created_at: new Date().toISOString(),
         });
         // Notificación al admin via Supabase Edge Function o email directo
@@ -7574,9 +7637,9 @@ const AuthSystem = () => {
               <span style={{flexShrink:0,color:'#34d399'}}>✓</span>{f}
             </div>
           ))}
-          <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')}
+          <button onClick={()=>window.open('mailto:ingyosej@gmail.com?subject=Suscripción Plan Pro ProCalc&body=Hola, quiero suscribirme al Plan Pro. Mi email de registro es: ','_blank')}
             style={{width:'100%',padding:'11px',background:'#fbbf24',color:'#0f172a',border:'none',borderRadius:'8px',fontWeight:'900',fontSize:'13px',cursor:'pointer',marginTop:'14px'}}>
-            💳 Suscribirse — $40/año
+            ✉️ Escribir para suscribirse
           </button>
         </div>
       </div>)
@@ -7609,7 +7672,7 @@ const AuthSystem = () => {
           <div style={{fontSize:'11px',fontWeight:'700',color:'#4ade80',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'8px'}}>📧 Contacto directo</div>
           <div style={{background:'rgba(255,255,255,0.05)',borderRadius:'8px',padding:'12px',fontSize:'13px',color:'#86efac',fontWeight:'600'}}>ingyosej@gmail.com</div>
         </div>
-        {[['¿Cómo activo el Plan Pro?','Después del pago por PayPal envía tu email de registro y lo activamos en menos de 2 horas.'],['¿Los precios están actualizados?','Sí. La base de datos se actualiza mensualmente con datos del MOPC y DGODT.'],['¿Puedo exportar mis presupuestos?','Sí. Puedes exportar a PDF, Excel (.csv) y formato BC3.']].map(([q,a],i)=>(
+        {[['¿Cómo activo el Plan Pro?','Escríbenos a ingyosej@gmail.com con tu nombre y email. Te enviamos los datos de pago y activamos en menos de 2 horas.'],['¿Los precios están actualizados?','Sí. La base de datos se actualiza mensualmente con datos del MOPC y DGODT.'],['¿Puedo exportar mis presupuestos?','Sí. Puedes exportar a PDF, Excel (.csv) y formato BC3.']].map(([q,a],i)=>(
           <div key={i} style={{marginBottom:'10px',background:'rgba(255,255,255,0.04)',borderRadius:'8px',padding:'10px 12px'}}>
             <div style={{fontSize:'12px',fontWeight:'700',color:'#4ade80',marginBottom:'4px'}}>❓ {q}</div>
             <div style={{fontSize:'11px',color:'#94a3b8',lineHeight:1.6}}>{a}</div>
@@ -7715,7 +7778,7 @@ const AuthSystem = () => {
         </div>
 
         {/* ── Columna derecha — formulario ── */}
-        <div style={{width:'100%',maxWidth:'390px',background:'white',display:'flex',flexDirection:'column'}}>
+        <div style={{width:'100%',maxWidth:'390px',background:'white',display:'flex',flexDirection:'column',maxHeight:'90vh',overflowY:'auto'}}>
           {/* Header */}
           <div style={{background:'rgba(15,23,42,0.92)',backdropFilter:'blur(12px)',padding:'20px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
@@ -7784,7 +7847,7 @@ const AuthSystem = () => {
                 <div style={{border:'1px solid #e2e8f0',borderRadius:'12px',padding:'16px',marginBottom:'10px'}}>
                   <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a',marginBottom:'2px'}}>Plan Gratuito</div>
                   <div style={{fontSize:'22px',fontWeight:'900',color:'#0f172a',marginBottom:'10px'}}>$0 <span style={{fontSize:'12px',fontWeight:'500',color:'#64748b'}}>/siempre</span></div>
-                  {[{ok:false,text:'Visualizar 5 minutos cada 24 horas'},{ok:false,text:'Sin acceso a cálculos'},{ok:false,text:'Sin cotizaciones ni base de datos'},{ok:true,text:'Vista previa de la plataforma'}].map((f,i)=>(
+                  {[{ok:false,text:'Visualizar 8 minutos cada 24 horas'},{ok:false,text:'Sin acceso a cálculos'},{ok:false,text:'Sin cotizaciones ni base de datos'},{ok:true,text:'Vista previa de la plataforma'}].map((f,i)=>(
                     <div key={i} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:f.ok?'#64748b':'#94a3b8'}}><span style={{color:f.ok?'#10b981':'#94a3b8',flexShrink:0}}>{f.ok?'✓':'○'}</span>{f.text}</div>
                   ))}
                   <button onClick={()=>setView('register')} style={{width:'100%',padding:'10px',background:'#f1f5f9',color:'#475569',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',marginTop:'12px'}}>Empezar Gratis</button>
@@ -7796,12 +7859,27 @@ const AuthSystem = () => {
                   {['Cálculos ilimitados','Todas las calculadoras','Cotizaciones profesionales','Base de datos completa actualizada','Modelos de presupuesto','Precios de construcción por m²','Nuevas funciones incluidas'].map((f,i)=>(
                     <div key={i} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:'#1e3a5f',fontWeight:'600'}}><span style={{color:'#2563eb',flexShrink:0}}>✓</span>{f}</div>
                   ))}
-                  <button onClick={()=>window.open('https://www.paypal.com/invoice/p/#5EJMEETPXCZJ7DZ8','_blank')} style={{width:'100%',padding:'12px',background:'#2563eb',color:'white',border:'none',borderRadius:'8px',fontWeight:'800',fontSize:'13px',cursor:'pointer',marginTop:'12px',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788.06-.26.76-4.852.816-5.09a.932.932 0 0 1 .923-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.471z"/></svg>
-                    Suscribirse — $40/año
-                  </button>
+                  {/* Pasos para suscribirse */}
+                  <div style={{background:'#eff6ff',borderRadius:'8px',padding:'12px',marginTop:'12px',marginBottom:'10px'}}>
+                    <div style={{fontSize:'11px',fontWeight:'800',color:'#1e40af',marginBottom:'6px'}}>¿Cómo suscribirse?</div>
+                    <div style={{fontSize:'11px',color:'#1e3a5f',lineHeight:1.7}}>
+                      <div>1️⃣ Regístrate con tu email</div>
+                      <div>2️⃣ Escríbenos y te enviamos los datos de pago</div>
+                      <div>3️⃣ Envía tu email a <strong>ingyosej@gmail.com</strong></div>
+                      <div>4️⃣ Activamos tu cuenta en menos de 2 horas</div>
+                    </div>
+                  </div>
+                  <div style={{background:'#1e3a5f',borderRadius:'8px',padding:'14px',marginTop:'12px',textAlign:'center'}}>
+                    <div style={{fontSize:'13px',fontWeight:'800',color:'white',marginBottom:'6px'}}>💎 Plan Pro — $40/año</div>
+                    <div style={{fontSize:'11px',color:'#93c5fd',lineHeight:1.8}}>
+                      Para suscribirte escribe a:<br/>
+                      <strong style={{color:'white',fontSize:'13px'}}>ingyosej@gmail.com</strong><br/>
+                      con tu nombre y email de registro.<br/>
+                      Te enviamos los datos de pago.
+                    </div>
+                  </div>
                 </div>
-                <p style={{textAlign:'center',marginTop:'10px',fontSize:'10px',color:'#94a3b8',lineHeight:1.5}}>Después del pago envía tu email de registro para activar.</p>
+                <p style={{textAlign:'center',marginTop:'10px',fontSize:'10px',color:'#94a3b8',lineHeight:1.5}}>Después del pago envía tu email de registro a <strong>ingyosej@gmail.com</strong> para activar.</p>
               </div>
             )}
 
@@ -7951,13 +8029,25 @@ export default function ProCalcApp() {
   }, []);
 
   const loadProfile = async (userId) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    // Si está bloqueado, cerrar sesión inmediatamente
-    if (data?.bloqueado) {
+    console.log('loadProfile llamado para:', userId);
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    console.log('profiles data:', data, 'error:', error);
+    if (error) {
+      console.error('loadProfile error:', error);
+      // Si hay error leyendo profiles, verificar si es el admin por email
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user?.email === 'ingyosej@gmail.com') {
+        setProfile({ id: userId, email: 'ingyosej@gmail.com', plan: 'admin', suscripcion_activa: true });
+      }
+      setLoadingAuth(false);
+      return;
+    }
+    if (data?.suscripcion_activa === false && data?.plan !== 'admin') {
       await supabase.auth.signOut();
       setLoadingAuth(false);
       return;
     }
+    console.log('plan detectado:', data?.plan);
     setProfile(data);
     setLoadingAuth(false);
   };
