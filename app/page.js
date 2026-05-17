@@ -4153,7 +4153,14 @@ const PresupuestoObraView = () => {
   });
 
   // ─── State ────────────────────────────────────────────────────────────────
-  const [pantalla,setPantalla]         = React.useState('inicio');
+  const [pantalla,setPantalla] = React.useState(()=>{
+    try { return localStorage.getItem('procalc_pantalla')||'inicio'; } catch{ return 'inicio'; }
+  });
+
+  const cambiarPantalla = (p) => {
+    setPantalla(p);
+    try { localStorage.setItem('procalc_pantalla', p); } catch{}
+  };
   const [obras,setObras]               = React.useState([]);
   const [obra,setObra]                 = React.useState(null);
   const [vista,setVista]               = React.useState('presupuesto');
@@ -4171,6 +4178,24 @@ const PresupuestoObraView = () => {
   const [modalModelos,setModalModelos] = React.useState(false);
   // apuOpen: id de la partida que tiene el acordeón APU desplegado inline
   const [apuOpen,setApuOpen] = React.useState(null);
+  // ── Buscador de análisis de costo en presupuesto ──
+  const [anaPresModal, setAnaPresModal] = React.useState(null); // {capId,scId,pId}
+  const [anaPresSearch, setAnaPresSearch] = React.useState('');
+  const [anaPresResults, setAnaPresResults] = React.useState([]);
+  const [anaPresLoading, setAnaPresLoading] = React.useState(false);
+
+  const buscarAnaPres = async (term) => {
+    setAnaPresSearch(term);
+    if(term.length < 2){ setAnaPresResults([]); return; }
+    setAnaPresLoading(true);
+    const {data} = await supabase.from('analisis_costo')
+      .select('id,codigo,descripcion,unidad,precio_unitario,precio_con_itbis,tipo_fila')
+      .ilike('descripcion','%'+term+'%')
+      .eq('tipo_fila','partida')
+      .limit(40);
+    setAnaPresResults(data||[]);
+    setAnaPresLoading(false);
+  };
   const [natMenuAddMode,setNatMenuAddMode] = React.useState(false);
   const [natMenuNewLabel,setNatMenuNewLabel] = React.useState('');
   const [natMenuNewColor,setNatMenuNewColor] = React.useState('#6366f1');
@@ -4716,7 +4741,7 @@ const PresupuestoObraView = () => {
 
   // ─── Exports ─────────────────────────────────────────────────────────────
   const descargarObra=()=>{const blob=new Blob([JSON.stringify(obra,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.obra.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
-  const abrirArchivo=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const o=JSON.parse(ev.target.result);if(o&&o.capitulos){if(!o.indirectos)o.indirectos=[];if(o.iva===undefined)o.iva=18;if(!o.moneda)o.moneda='RD$';if(!o.tasaUSD)o.tasaUSD=60;if(!o.tasaEUR)o.tasaEUR=65;setObra(o);guardarObra(o);setPantalla('editor');}else alert('Archivo no valido.');}catch{alert('Error al leer.');}};reader.readAsText(file);e.target.value='';};
+  const abrirArchivo=e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const o=JSON.parse(ev.target.result);if(o&&o.capitulos){if(!o.indirectos)o.indirectos=[];if(o.iva===undefined)o.iva=18;if(!o.moneda)o.moneda='RD$';if(!o.tasaUSD)o.tasaUSD=60;if(!o.tasaEUR)o.tasaEUR=65;setObra(o);guardarObra(o);cambiarPantalla('editor');}else alert('Archivo no valido.');}catch{alert('Error al leer.');}};reader.readAsText(file);e.target.value='';};
   const exportarBC3=()=>{const hoy=new Date().toISOString().slice(0,10).replace(/-/g,'');let bc3='~V|PROCALC||'+obra.nombre+'|||'+hoy+'\n';(obra.capitulos||[]).forEach(c=>{bc3+='~C|'+c.nombre.replace(/\s/g,'_')+'|Ud|'+c.nombre+'|0|\n';(c.subcapitulos||[]).forEach(sc=>(sc.partidas||[]).forEach(p=>{bc3+='~V|'+(p.codigo||p.id)+'|'+p.unidad+'|'+p.desc+'|'+calcPU(p).toFixed(2)+'||\n';bc3+='~D|'+(p.codigo||p.id)+'|||'+calcCant(p).toFixed(4)+'|\n';}));});const blob=new Blob([bc3],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.bc3';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
   const importarBC3=()=>{
     const lines=bc3Text.trim().split('\n');
@@ -4792,7 +4817,7 @@ const PresupuestoObraView = () => {
         {/* 3 acciones principales */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:'16px',maxWidth:'720px',width:'100%',marginBottom:'40px'}}>
           {/* Nuevo en blanco */}
-          <div onClick={()=>{const o=emptyObra();setObra(o);guardarObra(o);setPantalla('editor');}}
+          <div onClick={()=>{const o=emptyObra();setObra(o);guardarObra(o);cambiarPantalla('editor');}}
             style={{background:'#1e293b',border:'2px solid #6366f1',borderRadius:'14px',padding:'28px 20px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:'12px',transition:'all 0.15s'}}
             onMouseEnter={e=>{e.currentTarget.style.background='#312e81';e.currentTarget.style.boxShadow='0 8px 24px #6366f144';}}
             onMouseLeave={e=>{e.currentTarget.style.background='#1e293b';e.currentTarget.style.boxShadow='none';}}>
@@ -4841,7 +4866,7 @@ const PresupuestoObraView = () => {
             <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
               {obras.slice().reverse().slice(0,6).map(o=>(
                 <div key={o.id} style={{background:'#1e293b',borderRadius:'10px',padding:'12px 16px',display:'flex',alignItems:'center',gap:'12px',cursor:'pointer',border:'1px solid #334155',transition:'all 0.12s'}}
-                  onClick={()=>{setObra(o);setPantalla('editor');}}
+                  onClick={()=>{setObra(o);cambiarPantalla('editor');}}
                   onMouseEnter={e=>{e.currentTarget.style.background='#334155';e.currentTarget.style.borderColor='#6366f1';}}
                   onMouseLeave={e=>{e.currentTarget.style.background='#1e293b';e.currentTarget.style.borderColor='#334155';}}>
                   <div style={{width:'34px',height:'34px',background:'#374151',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
@@ -4884,7 +4909,7 @@ const PresupuestoObraView = () => {
                     } else {
                       o.capitulos=[{...mkCap('01 - '+t.category,CAP_COLORS[0]),subcapitulos:[{...mkSubcap('Partidas'),partidas:[]}]}];
                     }
-                    setObra(o);guardarObra(o);setPantalla('editor');setModalModelos(false);
+                    setObra(o);guardarObra(o);cambiarPantalla('editor');setModalModelos(false);
                   }}
                     style={{background:'#0f172a',border:'1px solid #334155',borderRadius:'10px',padding:'14px 16px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',transition:'all 0.1s'}}
                     onMouseEnter={e=>{e.currentTarget.style.borderColor='#f59e0b';}}
@@ -5222,19 +5247,38 @@ const PresupuestoObraView = () => {
                           <React.Fragment key={p.id}>
                             <tr style={{borderBottom:bdr,borderLeft:'4px solid '+cap.color+'33',background:bg}}>
                               {/* Código — 1 clic abre/cierra APU acordeón */}
-                              <td style={{borderRight:bdr,background:apuOpen===p.id?'#fef3c7':bg,padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',fontSize:'11px',cursor:'pointer',color:apuOpen===p.id?'#b45309':'#4b5563',textDecoration:'underline',textDecorationStyle:'dotted',userSelect:'none'}}
-                                onClick={e=>{
-                                  e.stopPropagation();
-                                  const willOpen=apuOpen!==p.id;
-                                  setApuOpen(willOpen?p.id:null);
-                                  setCodSugest(null);
-                                  if(willOpen&&(!p.componentes||p.componentes.length===0)){
-                                    updatePart(cap.id,sc.id,p.id,{componentes:Array.from({length:5},()=>({...mkComp()}))});
-                                  }
-                                }}>
-                                {pCode}
+                              {/* Código — editable + lookup ana_gral al salir */}
+                              {/* Código — editable + APU toggle + lookup analisis_costo */}
+                              <td style={{borderRight:bdr,background:apuOpen===p.id?'#fef3c7':bg,padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',fontSize:'11px',color:apuOpen===p.id?'#b45309':'#4b5563'}}>
+                                <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                                  <span title="Abrir/cerrar APU" style={{cursor:'pointer',fontSize:'10px'}}
+                                    onClick={e=>{e.stopPropagation();const willOpen=apuOpen!==p.id;setApuOpen(willOpen?p.id:null);if(willOpen&&(!p.componentes||p.componentes.length===0)){updatePart(cap.id,sc.id,p.id,{componentes:Array.from({length:5},()=>({...mkComp()}))});}}}>
+                                    {apuOpen===p.id?'📂':'📁'}
+                                  </span>
+                                  <LocalInput
+                                    value={p.codigo||pCode}
+                                    onCommit={async v=>{
+                                      updatePart(cap.id,sc.id,p.id,{codigo:v});
+                                      if(v&&v.trim().length>=3){
+                                        const {data}=await supabase.from('analisis_costo')
+                                          .select('descripcion,unidad,precio_con_itbis,precio_unitario')
+                                          .eq('codigo',v.trim()).eq('tipo_fila','partida').limit(1);
+                                        if(data&&data[0]){
+                                          updatePart(cap.id,sc.id,p.id,{
+                                            codigo:v,desc:data[0].descripcion||p.desc,
+                                            unidad:data[0].unidad||p.unidad,
+                                            puManual:data[0].precio_con_itbis||data[0].precio_unitario||p.puManual,
+                                            temporal:false,
+                                          });
+                                        }
+                                      }
+                                    }}
+                                    style={{background:'transparent',border:'none',outline:'none',fontFamily:'monospace',fontWeight:'700',fontSize:'11px',color:apuOpen===p.id?'#b45309':'#4b5563',width:'100%',cursor:'text'}}
+                                    placeholder="Código"
+                                  />
+                                </div>
                               </td>
-                              {/* Desc — edición directa */}
+                              {/* Desc — edición directa + buscador análisis */}
                               <td style={{borderRight:bdr,background:bg,fontWeight:'600',color:'#111827',padding:'5px 8px'}}>
                                 <div style={{display:'flex',alignItems:'center',gap:'5px'}}>
                                   {p.temporal&&<span style={{fontSize:'8px',background:'#fef3c7',color:'#b45309',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>TEMP</span>}
@@ -5245,6 +5289,14 @@ const PresupuestoObraView = () => {
                                     style={{background:'transparent',border:'none',outline:'none',fontWeight:'600',fontSize:'12px',color:'#111827',width:'100%',cursor:'text'}}
                                     placeholder="Descripción de la partida"
                                   />
+                                  <button
+                                    onClick={e=>{e.stopPropagation();setAnaPresModal({capId:cap.id,scId:sc.id,pId:p.id});setAnaPresSearch('');setAnaPresResults([]);}}
+                                    title="Buscar en análisis de costo"
+                                    style={{background:'none',border:'none',cursor:'pointer',color:'#6366f1',fontSize:'13px',flexShrink:0,padding:'0 2px',opacity:0.6}}
+                                    onMouseEnter={e=>e.target.style.opacity=1}
+                                    onMouseLeave={e=>e.target.style.opacity=0.6}>
+                                    🔍
+                                  </button>
                                 </div>
                               </td>
                               {/* Unidad */}
@@ -5497,47 +5549,56 @@ const PresupuestoObraView = () => {
                                       const iM={width:'100%',border:'1px solid #ddd6fe',borderRadius:'3px',padding:'3px 5px',fontSize:'11px',outline:'none',background:'white',fontFamily:'monospace',textAlign:'right',boxSizing:'border-box'};
                                       const hasF=(m.formula||'').trim();
                                       const hasDirect=m.direct!==undefined&&m.direct!==''&&m.direct!==null;
-                                      const modeDisabled=hasF||hasDirect;
                                       return (
-                                        <tr key={m.id} style={{borderBottom:'1px solid #ede9fe',background:mi%2===0?'white':'#faf5ff'}}>
+                                        <tr key={m.id} style={{borderBottom:'1px solid #ede9fe',background:mi%2===0?'white':'#faf5ff'}}
+                                          onPaste={e=>{
+                                            // Pegar desde Excel: COD | DESC | CANT | UNIDAD | COSTO
+                                            const txt=e.clipboardData&&e.clipboardData.getData('text');
+                                            if(!txt||!txt.includes('\t')) return;
+                                            e.preventDefault();
+                                            const lines=txt.trim().split('\n').filter(l=>l.trim());
+                                            const newMeds=[...(p.mediciones||[])];
+                                            // Detectar si primera fila es encabezado
+                                            const firstCols=lines[0].split('\t');
+                                            const isHeader=isNaN(parseFloat(firstCols[0]))&&isNaN(parseFloat(firstCols[2]));
+                                            const dataLines=isHeader?lines.slice(1):lines;
+                                            const idx=newMeds.findIndex(x=>x.id===m.id);
+                                            const toInsert=dataLines.map(line=>{
+                                              const cols=line.split('\t').map(c=>c.trim());
+                                              // Formato: COD | DESC | CANT | UNIDAD | COSTO
+                                              const concepto=cols[1]||cols[0]||'';
+                                              const cant=parseFloat(cols[2])||parseFloat(cols[0])||0;
+                                              return {...mkMed(),concepto,direct:cant||'',a:cant?String(cant):'',formula:''};
+                                            });
+                                            newMeds.splice(idx,1,...toInsert);
+                                            updatePart(cap.id,sc.id,p.id,{mediciones:newMeds});
+                                          }}>
                                           <td style={{padding:'3px 8px'}}>
-                                            <input value={m.concepto||''} onChange={e=>updMed(cap.id,sc.id,p.id,m.id,{concepto:e.target.value})}
+                                            <LocalInput value={m.concepto||''} onCommit={v=>updMed(cap.id,sc.id,p.id,m.id,{concepto:v})}
                                               style={{...iM,textAlign:'left'}} placeholder="Concepto..."/>
                                           </td>
-                                          {/* DIRECTO — valor manual directo, bloquea A,B,C,D y fórmula */}
+                                          {/* DIRECTO */}
                                           <td style={{padding:'3px 4px',borderLeft:'2px solid #c4b5fd',background:hasDirect?'#f5f3ff':'transparent'}}>
-                                            <input
-                                              type="number"
-                                              value={m.direct===undefined||m.direct===null?'':m.direct}
-                                              onChange={e=>{
-                                                const v=e.target.value;
-                                                updMed(cap.id,sc.id,p.id,m.id,{direct:v===''?'':parseFloat(v)||0,formula:'',a:'',b:'',c:'',d:''});
-                                              }}
+                                            <LocalInput type="number" value={m.direct===undefined||m.direct===null?'':String(m.direct)}
+                                              onCommit={v=>updMed(cap.id,sc.id,p.id,m.id,{direct:v===''?'':parseFloat(v)||0,formula:'',a:'',b:'',c:'',d:''})}
                                               style={{...iM,color:'#7c3aed',background:hasDirect?'#ede9fe':'white',fontWeight:hasDirect?'800':'400'}}
-                                              placeholder="0"
-                                              title="Valor directo — escribe el total directamente"/>
+                                              placeholder="0"/>
                                           </td>
-                                          {/* A, B, C, D — solo activos si no hay directo ni fórmula */}
+                                          {/* A, B, C, D */}
                                           {['a','b','c','d'].map(k=>(
                                             <td key={k} style={{padding:'3px 4px',borderLeft:'1px solid #ddd6fe'}}>
-                                              <input value={m[k]||''} onChange={e=>updMed(cap.id,sc.id,p.id,m.id,{[k]:e.target.value,direct:''})}
-                                                disabled={!!hasF||hasDirect}
-                                                style={{...iM,opacity:(hasF||hasDirect)?.35:1,color:'#1e40af'}} placeholder="0"/>
+                                              <LocalInput value={m[k]||''} onCommit={v=>updMed(cap.id,sc.id,p.id,m.id,{[k]:v,direct:''})}
+                                                style={{...iM,opacity:(hasF||hasDirect)?.35:1,color:'#1e40af',pointerEvents:(hasF||hasDirect)?'none':'auto'}} placeholder="0"/>
                                             </td>
                                           ))}
-                                          {/* Fórmula libre */}
+                                          {/* Fórmula */}
                                           <td style={{padding:'3px 6px',borderLeft:'1px solid #ddd6fe'}}>
                                             <div style={{display:'flex',alignItems:'center',gap:'3px'}}>
                                               <span style={{fontFamily:'monospace',fontWeight:'800',color:'#6366f1',fontSize:'13px',opacity:hasDirect?.3:1}}>= </span>
-                                              <input
-                                                value={(m.formula||'').replace(/^=/,'')}
-                                                onChange={e=>{
-                                                  const v=e.target.value.replace(/^=/,'');
-                                                  updMed(cap.id,sc.id,p.id,m.id,{formula:v,direct:'',a:m.a,b:m.b,c:m.c,d:m.d});
-                                                }}
-                                                disabled={hasDirect}
-                                                style={{...iM,color:'#6366f1',fontSize:'11px',flex:1,opacity:hasDirect?.3:1}}
-                                                placeholder="a*b+c...  ó  5*3.2+1.6"/>
+                                              <LocalInput value={(m.formula||'').replace(/^=/,'')}
+                                                onCommit={v=>updMed(cap.id,sc.id,p.id,m.id,{formula:v,direct:'',a:m.a,b:m.b,c:m.c,d:m.d})}
+                                                style={{...iM,color:'#6366f1',fontSize:'11px',flex:1,opacity:hasDirect?.3:1,pointerEvents:hasDirect?'none':'auto'}}
+                                                placeholder="a*b+c..."/>
                                             </div>
                                             <div style={{textAlign:'right',fontSize:'11px',color:hasDirect?'#7c3aed':hasF?'#6366f1':'#059669',fontFamily:'monospace',fontWeight:'700',marginTop:'1px'}}>{fmtN(parcial,4)}</div>
                                           </td>
@@ -5742,7 +5803,7 @@ const PresupuestoObraView = () => {
       {/* HEADER */}
       <header style={{background:'#1f2937',borderBottom:'1px solid #374151',padding:'8px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.3)',gap:'8px'}}>
         <div style={{display:'flex',alignItems:'center',gap:'8px',minWidth:0}}>
-          <button onClick={()=>{guardarObra(obra);setPantalla('inicio');}} style={{background:'rgba(255,255,255,0.08)',border:'1px solid #374151',cursor:'pointer',color:'#9ca3af',display:'flex',alignItems:'center',gap:'4px',fontWeight:'700',fontSize:'12px',padding:'5px 10px',borderRadius:'6px',whiteSpace:'nowrap'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.15)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'}>
+          <button onClick={()=>{guardarObra(obra);cambiarPantalla('inicio');}} style={{background:'rgba(255,255,255,0.08)',border:'1px solid #374151',cursor:'pointer',color:'#9ca3af',display:'flex',alignItems:'center',gap:'4px',fontWeight:'700',fontSize:'12px',padding:'5px 10px',borderRadius:'6px',whiteSpace:'nowrap'}} onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.15)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'}>
             <ArrowLeft size={13}/> Obras
           </button>
           <ClipboardList size={15} style={{color:'#6366f1',flexShrink:0}}/>
@@ -5834,10 +5895,10 @@ const PresupuestoObraView = () => {
           <ClipboardList size={48} style={{opacity:0.15,color:'#6366f1'}}/>
           <div style={{fontSize:'17px',fontWeight:'600',color:'#6b7280'}}>Presupuesto vacío</div>
           <div style={{display:'flex',gap:'10px',flexWrap:'wrap',justifyContent:'center'}}>
-            <button onClick={()=>setPantalla('inicio')} style={{padding:'10px 22px',background:'#1f2937',color:'white',border:'1px solid #374151',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer',display:'flex',alignItems:'center',gap:'7px'}}>
+            <button onClick={()=>cambiarPantalla('inicio')} style={{padding:'10px 22px',background:'#1f2937',color:'white',border:'1px solid #374151',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer',display:'flex',alignItems:'center',gap:'7px'}}>
               ← Abrir otro presupuesto
             </button>
-            <button onClick={addCap} style={{padding:'10px 22px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar capítulo</button>
+            <button onClick={addCap} style={{padding:'10px 22px',background:'#6366f1',color:'white',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>+ Agregar presupuesto en blanco</button>
           </div>
 
           {/* ── ÁREA DE PEGADO EXCEL ── */}
@@ -6034,6 +6095,59 @@ const PresupuestoObraView = () => {
         </div>
       )}
       <input ref={fileRef} type="file" accept=".json,.obra.json" style={{display:'none'}} onChange={abrirArchivo}/>
+
+      {/* ── Modal buscador análisis de costo ── */}
+      {anaPresModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}>
+          <div style={{background:'white',borderRadius:'16px',width:'100%',maxWidth:'560px',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 24px 60px rgba(0,0,0,0.4)'}}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid #e2e8f0',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a'}}>🔍 Buscar Análisis de Costo</div>
+              <button onClick={()=>{setAnaPresModal(null);setAnaPresSearch('');setAnaPresResults([]);}}
+                style={{background:'none',border:'none',fontSize:'20px',cursor:'pointer',color:'#94a3b8'}}>✕</button>
+            </div>
+            <div style={{padding:'12px 20px',borderBottom:'1px solid #f1f5f9'}}>
+              <input autoFocus value={anaPresSearch}
+                onChange={e=>buscarAnaPres(e.target.value)}
+                placeholder="Buscar... (ej: bloque, hormigón, pintura)"
+                style={{width:'100%',padding:'10px 14px',border:'2px solid #6366f1',borderRadius:'8px',fontSize:'13px',outline:'none',boxSizing:'border-box'}}/>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
+              {anaPresLoading && <div style={{padding:'24px',textAlign:'center',color:'#94a3b8'}}>Buscando...</div>}
+              {!anaPresLoading && anaPresSearch.length < 2 && (
+                <div style={{padding:'24px',textAlign:'center',color:'#94a3b8',fontSize:'13px'}}>Escribe al menos 2 caracteres</div>
+              )}
+              {!anaPresLoading && anaPresSearch.length >= 2 && anaPresResults.length === 0 && (
+                <div style={{padding:'24px',textAlign:'center',color:'#94a3b8',fontSize:'13px'}}>No se encontraron resultados</div>
+              )}
+              {anaPresResults.map(item=>(
+                <div key={item.id}
+                  onClick={()=>{
+                    const {capId,scId,pId}=anaPresModal;
+                    updatePart(capId,scId,pId,{
+                      desc:item.descripcion,
+                      unidad:item.unidad||'u',
+                      puManual:item.precio_con_itbis||item.precio_unitario||0,
+                      temporal:false,
+                    });
+                    setAnaPresModal(null);setAnaPresSearch('');setAnaPresResults([]);
+                  }}
+                  style={{padding:'10px 20px',cursor:'pointer',borderBottom:'1px solid #f1f5f9',display:'flex',justifyContent:'space-between',alignItems:'center'}}
+                  onMouseEnter={e=>e.currentTarget.style.background='#f0f7ff'}
+                  onMouseLeave={e=>e.currentTarget.style.background='white'}>
+                  <div>
+                    <div style={{fontSize:'11px',fontFamily:'monospace',color:'#6366f1',fontWeight:'700'}}>{item.codigo}</div>
+                    <div style={{fontSize:'13px',fontWeight:'600',color:'#0f172a'}}>{item.descripcion}</div>
+                    <div style={{fontSize:'11px',color:'#64748b'}}>{item.unidad}</div>
+                  </div>
+                  <div style={{fontFamily:'monospace',fontWeight:'800',color:'#059669',fontSize:'13px',whiteSpace:'nowrap',marginLeft:'12px'}}>
+                    RD${(item.precio_con_itbis||item.precio_unitario||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -7528,7 +7642,13 @@ const AuthSystem = () => {
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true); setError('');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { setError(error.message === 'Invalid login credentials' ? 'Email o contraseña incorrectos.' : error.message); }
+    if (error) {
+      if (error.message.includes('Email not confirmed')) {
+        setError('Debes confirmar tu email antes de entrar. Revisa tu bandeja de entrada.');
+      } else {
+        setError(error.message === 'Invalid login credentials' ? 'Email o contraseña incorrectos.' : error.message);
+      }
+    }
     else {
       // Verificar si el usuario está bloqueado
       const { data: prof } = await supabase.from('profiles').select('suscripcion_activa, plan').eq('id', data.user.id).single();
@@ -7566,7 +7686,8 @@ const AuthSystem = () => {
           });
         } catch(e) { /* no bloquear registro si falla notificación */ }
       }
-      setMsg('¡Cuenta creada! Revisa tu email para confirmar y luego inicia sesión.'); setView('login');
+      setMsg('¡Cuenta creada! Revisa tu email para confirmar y luego inicia sesión.');
+      setView('login');
     }
     setLoading(false);
   };
