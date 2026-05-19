@@ -4619,9 +4619,11 @@ const PresupuestoObraView = () => {
       const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');
       const list=idx.map(id=>{try{return JSON.parse(localStorage.getItem('obra_'+id)||'null');}catch{return null;}}).filter(Boolean);
       setObras(list);
-      // Si pantalla es editor y no hay obra cargada, cargar la última
+      // Restaurar la obra que estaba abierta
       if(pantalla==='editor' && !obra && list.length>0){
-        setObra(list[list.length-1]);
+        const lastId = localStorage.getItem('procalc_obra_actual_id');
+        const obraActiva = lastId ? list.find(o=>o.id===lastId) : null;
+        setObra(obraActiva || list[list.length-1]);
       }
     }catch(e){}
   },[]);
@@ -4648,9 +4650,9 @@ const PresupuestoObraView = () => {
   const guardarObra = (o) => {
     if(!o) return;
     setObras(prev=>{const i=prev.findIndex(x=>x.id===o.id);if(i>=0){const n=[...prev];n[i]={...o};return n;}return[...prev,{...o}];});
-    setObra({...o});
     try{
       localStorage.setItem('obra_'+o.id,JSON.stringify(o));
+      localStorage.setItem('procalc_obra_actual_id', o.id); // guardar ID de obra activa
       const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');
       if(!idx.includes(o.id)){idx.push(o.id);localStorage.setItem('obras_index',JSON.stringify(idx));}
     }catch(e){}
@@ -4722,7 +4724,7 @@ const PresupuestoObraView = () => {
   const totalFinal = subtConInd+ivaAmt;
 
   // ─── Mutaciones ──────────────────────────────────────────────────────────
-  const updateObra = chg => { const o2={...obra,...chg}; setObra(o2); };
+  const updateObra = chg => { const o2={...obra,...chg}; setObra(o2); guardarObra(o2); };
   const setCaps    = fn  => updateObra({capitulos:fn(obra.capitulos||[])});
   const getPart    = (ci,si,pi) => (obra.capitulos||[]).find(c=>c.id===ci)?.subcapitulos?.find(s=>s.id===si)?.partidas?.find(p=>p.id===pi);
   const updatePart = (ci,si,pi,chg) => setCaps(prev=>prev.map(c=>c.id!==ci?c:{...c,subcapitulos:c.subcapitulos.map(sc=>sc.id!==si?sc:{...sc,partidas:sc.partidas.map(p=>p.id!==pi?p:{...p,...chg})})}));
