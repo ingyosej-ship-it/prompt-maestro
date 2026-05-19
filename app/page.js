@@ -4154,7 +4154,14 @@ const PresupuestoObraView = () => {
 
   // ─── State ────────────────────────────────────────────────────────────────
   const [pantalla,setPantalla] = React.useState(()=>{
-    try { return localStorage.getItem('procalc_pantalla')||'inicio'; } catch{ return 'inicio'; }
+    try {
+      const saved = localStorage.getItem('procalc_pantalla');
+      if(saved === 'editor') {
+        const idx = JSON.parse(localStorage.getItem('obras_index')||'[]');
+        if(idx.length > 0) return 'editor';
+      }
+      return 'inicio';
+    } catch{ return 'inicio'; }
   });
 
   const cambiarPantalla = (p) => {
@@ -4612,6 +4619,10 @@ const PresupuestoObraView = () => {
       const idx=JSON.parse(localStorage.getItem('obras_index')||'[]');
       const list=idx.map(id=>{try{return JSON.parse(localStorage.getItem('obra_'+id)||'null');}catch{return null;}}).filter(Boolean);
       setObras(list);
+      // Si pantalla es editor y no hay obra cargada, cargar la última
+      if(pantalla==='editor' && !obra && list.length>0){
+        setObra(list[list.length-1]);
+      }
     }catch(e){}
   },[]);
 
@@ -8055,7 +8066,7 @@ export default function ProCalcApp() {
     const style = document.createElement('style');
     style.id = 'procalc-responsive';
     style.textContent = `
-      * { box-sizing: border-box; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; }
 
       @media (max-width: 768px) {
@@ -8068,8 +8079,6 @@ export default function ProCalcApp() {
         /* Login — columna izquierda oculta */
         .login-left { display: none !important; }
         .login-mobile-header { display: flex !important; }
-
-        /* Dock login — más compacto */
         .login-dock { bottom: 8px !important; gap: 3px !important; padding: 6px 8px !important; }
         .login-dock button { padding: 5px 8px !important; font-size: 10px !important; }
 
@@ -8081,38 +8090,68 @@ export default function ProCalcApp() {
 
         /* Tablas — scroll horizontal */
         .procalc-table-wrap, .db-table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
-        table { min-width: 520px; }
 
         /* Presupuesto toolbar — scroll horizontal */
         .presup-toolbar { overflow-x: auto; white-space: nowrap; gap: 6px !important; padding: 6px 10px !important; }
-
-        /* APU panel — full screen */
-        .apu-panel { min-width: 100vw !important; font-size: 11px !important; }
 
         /* Base de datos tabs — scroll */
         .db-tabs { overflow-x: auto; white-space: nowrap; }
 
         /* Inputs touch-friendly */
-        input, select, button { min-height: 38px; font-size: 14px !important; }
-        input[type="text"], input[type="email"], input[type="password"] { min-height: 44px; }
+        input, select { min-height: 40px; font-size: 16px !important; }
+        input[type="text"], input[type="email"], input[type="password"], input[type="number"] { 
+          min-height: 44px; font-size: 16px !important; 
+        }
+        button { min-height: 40px; }
 
         /* Modal full screen en móvil */
-        .procalc-modal { width: 100vw !important; height: 100vh !important; border-radius: 0 !important; max-height: 100vh !important; }
+        .procalc-modal { 
+          width: 100vw !important; height: 100vh !important; 
+          border-radius: 0 !important; max-height: 100vh !important; 
+          margin: 0 !important; top: 0 !important; left: 0 !important;
+        }
 
-        /* Ocultar columnas no esenciales en tablas */
+        /* Ocultar columnas no esenciales */
         .col-hide-mobile { display: none !important; }
 
         /* Topbar más compacto */
-        .procalc-topbar { height: 48px !important; padding: 0 12px !important; }
+        .procalc-topbar { height: 52px !important; padding: 0 12px !important; }
 
         /* Sidebar flotante cuando abierto */
-        .procalc-sidebar-open { position: fixed !important; left: 0 !important; top: 0 !important; bottom: 0 !important; width: 220px !important; z-index: 999 !important; box-shadow: 4px 0 24px rgba(0,0,0,0.5) !important; }
+        .procalc-sidebar-open { 
+          position: fixed !important; left: 0 !important; top: 0 !important; 
+          bottom: 0 !important; width: 240px !important; z-index: 9999 !important; 
+          box-shadow: 4px 0 32px rgba(0,0,0,0.6) !important;
+          overflow-y: auto !important;
+        }
+
+        /* Calculadoras resultado */
+        .calc-resultado { padding: 12px !important; font-size: 11px !important; }
+
+        /* Presupuesto tabla */
+        .presup-table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+
+        /* Cotizaciones */
+        .cotiz-panel { flex-direction: column !important; }
+        .cotiz-totales { width: 100% !important; }
       }
 
       @media (max-width: 480px) {
         .procalc-topbar { padding: 0 8px !important; }
         .login-dock button span:last-child { display: none; }
         .presup-totales { flex-direction: column !important; gap: 4px !important; }
+        /* Fuente base más grande para legibilidad */
+        body { font-size: 15px; }
+        /* Sidebar más ancho en teléfonos pequeños */
+        .procalc-sidebar-open { width: 85vw !important; }
+      }
+
+      /* Touch scroll suave en toda la app */
+      .procalc-main, .procalc-sidebar { -webkit-overflow-scrolling: touch; }
+      
+      /* Evitar zoom al tocar inputs en iOS */
+      @media (max-width: 768px) {
+        input, select, textarea { font-size: 16px !important; }
       }
     `;
     if (!document.getElementById('procalc-responsive')) {
