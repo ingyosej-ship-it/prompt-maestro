@@ -524,18 +524,24 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     const qqCangr = qq((B+0.15-0.10)*cantC, dC)*1.07;
     const totalAcero=qqLong+qqCangr;
     const prop=CONCRETE_DATA[fZMuro.prop]||CONCRETE_DATA['1:3:5'];
+    // MO acero zapata = RD$160.51/m (MOVA 50900013)
+    const moAceroM = PRECIOS.moAceroZapata || 160.51;
+    const tMOAcero = L * moAceroM;
+    // MO hormigon
+    const tMO = vol * (PRECIOS.moAceroAR || 723.92);
     setResultado({
       tipo:'Zapata Muro', modulo:'zapataMuro',
       desc:`${L}ml × ${B}m × ${H}m`,
       items:[
-        {label:'Volumen Hormigón', val:n(vol,3), unit:'m³'},
-        {label:`Acero Long. (${d})`, val:n(qqLong,3), unit:'QQ'},
-        {label:`Cangrejos (${dC})`, val:n(qqCangr,3), unit:'QQ'},
+        {label:'Volumen Hormigón', val:n(vol,3), unit:'m³', pu:fmtRD(PRECIOS.hormigones?.['210 Kg/cm²']||8474), total:fmtRD(vol*(PRECIOS.hormigones?.['210 Kg/cm²']||8474))},
+        {label:`Acero Long. (${d}) +${Math.round(waste*100)}%`, val:n(qqLong,3), unit:'QQ', pu:fmtRD(PRECIOS.acero38||3278.22), total:fmtRD(qqLong*(PRECIOS.acero38||3278.22))},
+        {label:`Cangrejos (${dC})`, val:n(qqCangr,3), unit:'QQ', pu:fmtRD(PRECIOS.acero38||3278.22), total:fmtRD(qqCangr*(PRECIOS.acero38||3278.22))},
         {label:'Total Acero', val:n(totalAcero,3), unit:'QQ'},
-        {label:'Alambre', val:n(totalAcero*1.43,3), unit:'lb'},
-        {label:`Cemento (${fZMuro.prop})`, val:n(vol*prop.cemento,2), unit:'fds'},
-        {label:'Arena', val:n(vol*prop.arena,3), unit:'m³'},
-        {label:'Grava', val:n(vol*prop.grava,3), unit:'m³'},
+        {label:'Alambre', val:n(totalAcero*1.43,3), unit:'lb', pu:fmtRD(PRECIOS.alambre||61.11), total:fmtRD(totalAcero*1.43*(PRECIOS.alambre||61.11))},
+        {label:'M.O. Acero zapata (RD$160.51/m)', val:n(L,2), unit:'m', pu:fmtRD(moAceroM), total:fmtRD(tMOAcero)},
+        {label:`Cemento (${fZMuro.prop})`, val:n(vol*prop.cemento,2), unit:'fds', pu:fmtRD(PRECIOS.cemento||565), total:fmtRD(vol*prop.cemento*(PRECIOS.cemento||565))},
+        {label:'Arena itabo mina', val:n(vol*prop.arena,3), unit:'m³', pu:fmtRD(PRECIOS.arena||1440), total:fmtRD(vol*prop.arena*(PRECIOS.arena||1440))},
+        {label:'Grava', val:n(vol*prop.grava,3), unit:'m³', pu:fmtRD(PRECIOS.grava||1327.50), total:fmtRD(vol*prop.grava*(PRECIOS.grava||1327.50))},
       ]
     });
   };
@@ -908,6 +914,9 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     moAcero:   481.56,   // MOVA 50900009 M.O. Coloc. acero normal qq
     moAceroAR: 723.92,   // MOVA 50900002 M.O. Coloc. acero alta resistencia qq
     moAceroLosa:1085.86, // MOVA 50900007 M.O. Coloc. acero losa Lima Hoya/Lima Tesa qq
+    moAceroZapata: 160.51, // MOVA 50900013 M.O. Coloc. acero zapata de muros m
+    moAceroCol:  160.51,   // MOVA 50900003 M.O. Coloc. acero columna m
+    moAceroViga: 160.51,   // MOVA 50900005 M.O. Coloc. acero viga m
     carp:      246.50,   // MOCA 50110007 M.O. Falso piso/Confección madera hasta 2.75m m²
     moEncofLosa: 435.00, // MOCA 50113017 M.O. Encof.+desencof. Losa plana hasta 2.75m m²
     moEncofCol:  625.93, // MOCA 50113008 M.O. Encof.+desencof. Columna hasta 30×30cm m
@@ -1780,7 +1789,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
       const qqAcero=qqBast+qqAcH;
       const lbAlambre=qqAcero*1.8;
       const tAlambre=lbAlambre*PRECIOS.alambre;
-      const tMO=qqAcero*PRECIOS.moAcero;
+      const tMO=qqAcero*PRECIOS.moAceroAR;
       const P_ANDAMIO=130;
       let cantAndamios=0,tAndamios=0;
       if(mBloques.andamios){cantAndamios=area*0.63;tAndamios=cantAndamios*P_ANDAMIO;}
@@ -2161,24 +2170,24 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
       <h3 style={{fontWeight:'800', color:'#4c1d95', marginBottom:'14px'}}>🧱 Zapata Muro Corrida</h3>
       <div className={card}>
         {sectionHdr('#8b5cf6','Geometría')}
-        {fld('Metros Lineales', <input type="number" step="0.01" value={fZMuro.metros} onChange={e=>setFZM({...fZMuro,metros:e.target.value})} className={inp}/>)}
+        {fld('Metros Lineales', <LocalInputC value={fZMuro.metros} onCommit={v=>setFZM({...fZMuro,metros:v})} className={inp} step="0.01"/>)}
         {grid2(<>
-          {fld('Ancho (m)', <input type="number" step="0.01" value={fZMuro.ancho} onChange={e=>setFZM({...fZMuro,ancho:e.target.value})} className={inp}/>)}
-          {fld('Espesor (m)', <input type="number" step="0.01" value={fZMuro.espesor} onChange={e=>setFZM({...fZMuro,espesor:e.target.value})} className={inp}/>)}
+          {fld('Ancho (m)', <LocalInputC value={fZMuro.ancho} onCommit={v=>setFZM({...fZMuro,ancho:v})} className={inp} step="0.01"/>)}
+          {fld('Espesor (m)', <LocalInputC value={fZMuro.espesor} onCommit={v=>setFZM({...fZMuro,espesor:v})} className={inp} step="0.01"/>)}
         </>)}
       </div>
       <div className={card}>
         {sectionHdr('#8b5cf6','Acero Principal')}
         {grid2(<>
-          {fld('Cantidad Barras', <input type="number" value={fZMuro.cantLong} onChange={e=>setFZM({...fZMuro,cantLong:e.target.value})} className={inp}/>)}
+          {fld('Cantidad Barras', <LocalInputC value={fZMuro.cantLong} onCommit={v=>setFZM({...fZMuro,cantLong:v})} className={inp}/>)}
           {fld('Diámetro', diamSel(fZMuro.tipoDiam, v=>setFZM({...fZMuro,tipoDiam:v})))}
         </>)}
         {sectionHdr('#8b5cf6','Cangrejos')}
         {grid2(<>
-          {fld('Separación (m)', <input type="number" step="0.01" value={fZMuro.sepCangr} onChange={e=>setFZM({...fZMuro,sepCangr:e.target.value})} className={inp}/>)}
+          {fld('Separación (m)', <LocalInputC value={fZMuro.sepCangr} onCommit={v=>setFZM({...fZMuro,sepCangr:v})} className={inp} step="0.01"/>)}
           {fld('Diámetro', diamSel(fZMuro.diamCangr, v=>setFZM({...fZMuro,diamCangr:v})))}
         </>)}
-        {fld('% Desperdicio', <input type="number" value={fZMuro.desperdicio} onChange={e=>setFZM({...fZMuro,desperdicio:e.target.value})} className={inp}/>)}
+        {fld('% Desperdicio', <LocalInputC value={fZMuro.desperdicio} onCommit={v=>setFZM({...fZMuro,desperdicio:v})} className={inp}/>)}
       </div>
       <div className={card}>
         {sectionHdr('#8b5cf6','Hormigón')}
@@ -4035,6 +4044,24 @@ const LocalInput = ({ value, onCommit, style, type='text', placeholder='' }) => 
   );
 };
 
+// LocalInput con className (para calculadoras que usan clases CSS)
+const LocalInputC = ({ value, onCommit, className, type='number', step, min }) => {
+  const [val, setVal] = React.useState(value??'');
+  React.useEffect(()=>{ setVal(value??''); }, [value]);
+  return (
+    <input
+      type={type}
+      value={val}
+      className={className}
+      step={step}
+      min={min}
+      onChange={e=>setVal(e.target.value)}
+      onBlur={()=>onCommit(val)}
+      onKeyDown={e=>{ if(e.key==='Enter') e.target.blur(); }}
+    />
+  );
+};
+
 const PresupuestoObraView = () => {
 
   const uid = () => '_' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
@@ -4185,6 +4212,7 @@ const PresupuestoObraView = () => {
   const [modalModelos,setModalModelos] = React.useState(false);
   // apuOpen: id de la partida que tiene el acordeón APU desplegado inline
   const [apuOpen,setApuOpen] = React.useState(null);
+  const [medicionesOpen,setMedicionesOpen] = React.useState(null);
   // ── Buscador de análisis de costo en presupuesto ──
   const [anaPresModal, setAnaPresModal] = React.useState(null); // {capId,scId,pId}
   const [anaPresSearch, setAnaPresSearch] = React.useState('');
@@ -5259,9 +5287,7 @@ const PresupuestoObraView = () => {
                         return (
                           <React.Fragment key={p.id}>
                             <tr style={{borderBottom:bdr,borderLeft:'4px solid '+cap.color+'33',background:bg}}>
-                              {/* Código — 1 clic abre/cierra APU acordeón */}
-                              {/* Código — editable + lookup ana_gral al salir */}
-                              {/* Código — editable + APU toggle + lookup analisis_costo */}
+                              {/* Código — 📁 abre APU, editable, busca en analisis_costo al salir */}
                               <td style={{borderRight:bdr,background:apuOpen===p.id?'#fef3c7':bg,padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',fontSize:'11px',color:apuOpen===p.id?'#b45309':'#4b5563'}}>
                                 <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
                                   <span title="Abrir/cerrar APU" style={{cursor:'pointer',fontSize:'10px'}}
@@ -5291,25 +5317,18 @@ const PresupuestoObraView = () => {
                                   />
                                 </div>
                               </td>
-                              {/* Desc — edición directa + buscador análisis */}
-                              <td style={{borderRight:bdr,background:bg,fontWeight:'600',color:'#111827',padding:'5px 8px'}}>
-                                <div style={{display:'flex',alignItems:'center',gap:'5px'}}>
+                              {/* Desc — clic edita, doble clic abre/cierra mediciones */}
+                              <td style={{borderRight:bdr,background:bg,fontWeight:'600',color:'#111827',padding:'5px 8px',cursor:'text'}}
+                                onDoubleClick={e=>{e.stopPropagation();const willOpen=apuOpen!==p.id;setApuOpen(willOpen?p.id:null);if(willOpen&&(!p.componentes||p.componentes.length===0)){updatePart(cap.id,sc.id,p.id,{componentes:Array.from({length:5},()=>({...mkComp()}))});}}}>
+                                <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
                                   {p.temporal&&<span style={{fontSize:'8px',background:'#fef3c7',color:'#b45309',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>TEMP</span>}
                                   {hasComps&&<span style={{fontSize:'8px',background:'#e0e7ff',color:'#3730a3',padding:'1px 4px',borderRadius:'4px',fontWeight:'800',flexShrink:0}}>APU</span>}
                                   <LocalInput
                                     value={p.desc||''}
                                     onCommit={v=>updatePart(cap.id,sc.id,p.id,{desc:v})}
                                     style={{background:'transparent',border:'none',outline:'none',fontWeight:'600',fontSize:'12px',color:'#111827',width:'100%',cursor:'text'}}
-                                    placeholder="Descripción de la partida"
+                                    placeholder="Descripción..."
                                   />
-                                  <button
-                                    onClick={e=>{e.stopPropagation();setAnaPresModal({capId:cap.id,scId:sc.id,pId:p.id});setAnaPresSearch('');setAnaPresResults([]);}}
-                                    title="Buscar en análisis de costo"
-                                    style={{background:'none',border:'none',cursor:'pointer',color:'#6366f1',fontSize:'13px',flexShrink:0,padding:'0 2px',opacity:0.6}}
-                                    onMouseEnter={e=>e.target.style.opacity=1}
-                                    onMouseLeave={e=>e.target.style.opacity=0.6}>
-                                    🔍
-                                  </button>
                                 </div>
                               </td>
                               {/* Unidad */}
@@ -5352,12 +5371,14 @@ const PresupuestoObraView = () => {
                                     </div>
                                 }
                               </td>
-                              {/* P.U. → editar o ver APU badge */}
-                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 8px',cursor:'text',fontFamily:'monospace',color:'#111827'}}
-                                onClick={()=>startEdit(cap.id,sc.id,p.id,'puManual',p.puManual||0)}>
-                                {isEd(cap.id,sc.id,p.id,'puManual')
-                                  ?<input autoFocus type="number" style={{...cInp,textAlign:'right'}} value={editCellVal} onChange={e=>setEditCellVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==='Enter'&&commitEdit()}/>
-                                  :<span style={{color:hasComps?'#b45309':'#111827',fontWeight:hasComps?'700':'400'}}>{fmt(pu)}</span>}
+                              {/* P.U. → LocalInput para evitar re-render */}
+                              <td style={{borderRight:bdr,background:bg,textAlign:'right',padding:'5px 4px',fontFamily:'monospace',color:'#111827'}}>
+                                {hasComps
+                                  ? <span style={{color:'#b45309',fontWeight:'700',padding:'5px 8px',display:'block'}}>{fmt(pu)}</span>
+                                  : <LocalInput type="number" value={String(p.puManual||0)}
+                                      onCommit={v=>updatePart(cap.id,sc.id,p.id,{puManual:parseFloat(v)||0})}
+                                      style={{background:'transparent',border:'none',outline:'none',fontFamily:'monospace',fontSize:'12px',color:'#111827',textAlign:'right',width:'100%',cursor:'text'}}/>
+                                }
                               </td>
                               {/* Total */}
                               <td style={{textAlign:'right',padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',color:'#111827',borderRight:bdr,background:pi%2===0?'#eef2ff':'#e0e7ff'}}>{fmt(tot)}</td>
@@ -5821,7 +5842,9 @@ const PresupuestoObraView = () => {
           </button>
           <ClipboardList size={15} style={{color:'#6366f1',flexShrink:0}}/>
           {editNombre
-            ?<input autoFocus value={obra.nombre||''} onChange={e=>updateObra({nombre:e.target.value})} onBlur={()=>setEditNombre(false)} onKeyDown={e=>e.key==='Enter'&&setEditNombre(false)} style={{fontWeight:'700',fontSize:'14px',border:'2px solid #6366f1',borderRadius:'6px',padding:'2px 8px',outline:'none',color:'#111827',minWidth:'180px',background:'white'}}/>
+            ?<LocalInput value={obra.nombre||''}
+                onCommit={v=>{updateObra({nombre:v});setEditNombre(false);}}
+                style={{fontWeight:'700',fontSize:'14px',border:'2px solid #6366f1',borderRadius:'6px',padding:'2px 8px',outline:'none',color:'#111827',minWidth:'180px',background:'white'}}/>
             :<div onClick={()=>setEditNombre(true)} style={{cursor:'pointer',display:'flex',alignItems:'center',gap:'5px',minWidth:0}}>
               <span style={{fontWeight:'700',fontSize:'14px',color:'white',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'220px'}}>{obra.nombre}</span>
               <Edit2 size={11} style={{color:'#6b7280',flexShrink:0}}/>
@@ -5890,7 +5913,7 @@ const PresupuestoObraView = () => {
           </button>
           <div style={{position:'relative'}} ref={exportRef}>
             <button onClick={()=>setShowExport(v=>!v)} style={{padding:'6px 11px',background:'#6366f1',color:'white',border:'none',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
-              <Download size={13}/> Exportar
+              <Download size={13}/> Descargar
             </button>
             {showExport&&(
               <div style={{position:'absolute',right:0,top:'110%',background:'#111827',border:'1px solid #374151',borderRadius:'10px',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',zIndex:300,minWidth:'180px',overflow:'hidden'}}>
@@ -6136,10 +6159,12 @@ const PresupuestoObraView = () => {
                 <div key={item.id}
                   onClick={()=>{
                     const {capId,scId,pId}=anaPresModal;
+                    const precioFinal = parseFloat(item.precio_con_itbis)||parseFloat(item.precio_unitario)||0;
+                    const unidadFinal = typeof item.unidad === 'string' && isNaN(parseFloat(item.unidad)) ? item.unidad : 'm²';
                     updatePart(capId,scId,pId,{
-                      desc:item.descripcion,
-                      unidad:item.unidad||'u',
-                      puManual:item.precio_con_itbis||item.precio_unitario||0,
+                      desc:item.descripcion||'',
+                      unidad:unidadFinal,
+                      puManual:precioFinal,
                       temporal:false,
                     });
                     setAnaPresModal(null);setAnaPresSearch('');setAnaPresResults([]);
@@ -6526,7 +6551,7 @@ const DashboardHome = ({ goToBudget, goToCostAnalysis, goToTemplates, goToCalcul
 
 
 // ==================== INDIRECTO ROW (stable component to avoid focus loss) ==
-const IndirectoRow = ({ ind, subtotal, onChange }) => (
+const IndirectoRow = React.memo(({ ind, subtotal, onChange }) => (
   <div style={{display:'flex',alignItems:'center',gap:'6px',background:'#0f172a',borderRadius:'8px',padding:'6px 10px',border:ind.activo?'1px solid #3b82f6':'1px solid #334155'}}>
     <input type="checkbox" checked={ind.activo} onChange={e => onChange(ind.id,'activo',e.target.checked)} style={{cursor:'pointer',accentColor:'#3b82f6'}}/>
     <LocalInput value={ind.label}
@@ -6542,7 +6567,7 @@ const IndirectoRow = ({ ind, subtotal, onChange }) => (
       </span>
     )}
   </div>
-);
+));
 
 // ==================== DASHBOARD WRAPPER ====================
 const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
@@ -7120,7 +7145,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
         </div>
       </aside>
 
-      <main className="procalc-main" style={{flex:'1 1 0%', minWidth:0, display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden', background:'#f1f5f9', position:'relative'}}>
+      <main className="procalc-main" style={{flex:'1 1 0%', minWidth:0, display:'flex', flexDirection:'column', height:'100vh', overflow:'auto', background:'#f1f5f9', position:'relative', WebkitOverflowScrolling:'touch'}}>
         {/* TOPBAR */}
         <div className="procalc-topbar" style={{height:'56px',background:'white',borderBottom:'1px solid #e2e8f0',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',flexShrink:0,boxShadow:'0 1px 3px rgba(0,0,0,0.05)'}}>
           <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
@@ -8175,16 +8200,20 @@ export default function ProCalcApp() {
       else setLoadingAuth(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        setSession(session);
+        if (session) loadProfile(session.user.id);
+      } else if (event === 'PASSWORD_RECOVERY') {
+        setSession(session);
         setIsRecovery(true);
         setLoadingAuth(false);
-        // No cargar perfil aún — esperar que establezca nueva contraseña
-      } else if (session) {
-        loadProfile(session.user.id);
-      } else {
+      } else if (event === 'SIGNED_OUT' || !session) {
+        setSession(null);
         setProfile(null);
         setLoadingAuth(false);
+      } else if (session) {
+        setSession(session);
+        loadProfile(session.user.id);
       }
     });
     return () => subscription.unsubscribe();
