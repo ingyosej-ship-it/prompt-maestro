@@ -13,7 +13,7 @@ import {
   Plus, ArrowUpRight, Clock, Briefcase, Printer, X, Save, Percent, Home,
   Calendar, Folder, ArrowLeft, Hammer, MoreVertical, Bell, Ruler, HardHat,
   Zap, Box, Droplet, Layers, Maximize, ArrowRight, Link as LinkIcon, PanelLeft, Share2,
-  ClipboardList, BookOpen, ChevronDown, Tag, Star, ExternalLink, Edit2, Trash2
+  ClipboardList, BookOpen, ChevronDown, Tag, Star, ExternalLink, Edit2, Trash2, Upload
 } from 'lucide-react';
 
 // ==================== CONFIGURACIÓN GLOBAL ====================
@@ -713,15 +713,21 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     const sYY38 = fLosaMaciza.act_yy38 ? (parseFloat(fLosaMaciza.sep_yy38) || 0) : 0;
 
     // ── Piezas (C5:C8) = REDONDEAR.MAS(dim/sep+1, 0) ──
-    const F5 = sXX12>0 ? Math.ceil(B/sXX12+1) : 0;  // X-X 1/2"  distribuidas en B
-    const F6 = sXX38>0 ? Math.ceil(B/sXX38+1) : 0;  // X-X 3/8"
-    const F7 = sYY12>0 ? Math.ceil(A/sYY12+1) : 0;  // Y-Y 1/2"  distribuidas en A
-    const F8 = sYY38>0 ? Math.ceil(A/sYY38+1) : 0;  // Y-Y 3/8"
+    // Excel: B3=A (largo varilla X-X), C3=B (cantidad piezas X-X se cuentan sobre B)
+    // Piezas X-X se distribuyen a lo largo de B → ceil(B/sep+1)
+    // Piezas Y-Y se distribuyen a lo largo de A → ceil(A/sep+1)
+    const F5 = sXX12>0 ? Math.ceil(B/sXX12+1) : 0;  // X-X 1/2"  piezas en dirección B
+    const F6 = sXX38>0 ? Math.ceil(B/sXX38+1) : 0;  // X-X 3/8"  piezas en dirección B
+    const F7 = sYY12>0 ? Math.ceil(A/sYY12+1) : 0;  // Y-Y 1/2"  piezas en dirección A
+    const F8 = sYY38>0 ? Math.ceil(A/sYY38+1) : 0;  // Y-Y 3/8"  piezas en dirección A
 
     // ── Cuantías (qq/m³) — fórmulas exactas del Excel ──
+    // Excel: =(B3+0.3)*F5/6/7.4/F1*1.1 + (C3+0.3)*F7/6/7.4/F1*1.1
+    // B3=A (largo de la varilla X-X), C3=B (largo de la varilla Y-Y)
     // Cuantía 1/2" = (A+0.3)*F5/6/7.4/vol*1.1 + (B+0.3)*F7/6/7.4/vol*1.1
     const cuant12 = (F5>0 ? (A+0.3)*F5/6/7.4/vol*1.1 : 0)
                   + (F7>0 ? (B+0.3)*F7/6/7.4/vol*1.1 : 0);
+    // Excel: =(B3+0.3)*F6/6/13/F1*1.1 + (C3+0.3)*F8/6/13/F1*1.1
     // Cuantía 3/8" = (A+0.3)*F6/6/13/vol*1.1  + (B+0.3)*F8/6/13/vol*1.1
     const cuant38 = (F6>0 ? (A+0.3)*F6/6/13/vol*1.1  : 0)
                   + (F8>0 ? (B+0.3)*F8/6/13/vol*1.1  : 0);
@@ -759,13 +765,15 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     }
     const puHorm = vol>0 ? precioHorm/(vol*1.10) : 0;
 
-    // ── Acero +10% desperdicio (igual que Excel: 1.1 × qq) ──
-    const qq12d    = qq12 * 1.10;
-    const qq38d    = qq38 * 1.10;
+    // ── Acero: el *1.1 ya está incluido dentro de cuant12/cuant38 (fórmula Excel) ──
+    // NO se aplica otro *1.10 aquí — hacerlo duplicaría el desperdicio
+    const qq12d    = qq12;   // cuantía ya incluye +10% (el *1.1 de la fórmula)
+    const qq38d    = qq38;   // idem
     const totalQQd = qq12d + qq38d;
-    const pAcero   = P.acero38 || 3278.22; // precio único todos los diámetros
-    const costoAcero12 = qq12d * pAcero;
-    const costoAcero38 = qq38d * pAcero;
+    const pAcero12 = P.acero12 || P.acero38 || 3278.22;
+    const pAcero38 = P.acero38 || 3278.22;
+    const costoAcero12 = qq12d * pAcero12;
+    const costoAcero38 = qq38d * pAcero38;
     const costoAlambre = alambreLb * (P.alambre||61.11);
 
     // M.O. Varillero sobre qq+10%
@@ -782,15 +790,15 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
                       + costoMoVar + costoSubida + costoEncof;
     const pu_m2 = area > 0 ? costoTotal / area : 0;
 
-    // ── Filas de resultado (exactamente los 5 insumos del Excel) ──
+    // ── Filas de resultado ──
     const rows = [];
 
-    // 1. Acero +10%
-    rows.push({label:'Acero 3/8" ×20\' +10% desp.',  cant:n(qq38d,4), uni:'qq', pu:fmtRD(pAcero), total:fmtRD(costoAcero38)});
-    rows.push({label:'Acero 1/2" ×20\' +10% desp.',  cant:n(qq12d,4), uni:'qq', pu:fmtRD(pAcero), total:fmtRD(costoAcero12)});
-    rows.push({label:'Alambre Cal.18',                cant:n(alambreLb,3), uni:'lb', pu:fmtRD(P.alambre||61.11), total:fmtRD(costoAlambre)});
+    // 1. Acero: cant = cuantía (qq/m³), total = cuantía × precio
+    rows.push({label:'Acero 3/8" ×20\' +10% desp.',  cant:n(cuant38,4), uni:'qq/m³', pu:fmtRD(pAcero38), total:fmtRD(costoAcero38)});
+    rows.push({label:'Acero 1/2" ×20\' +10% desp.',  cant:n(cuant12,4), uni:'qq/m³', pu:fmtRD(pAcero12), total:fmtRD(costoAcero12)});
+    rows.push({label:'Alambre Cal.18',                cant:n(alambreLb,3), uni:'lb/m³', pu:fmtRD(P.alambre||61.11), total:fmtRD(costoAlambre)});
     // 2. M.O. Varillero alta resistencia
-    rows.push({label:'M.O. Acero Alta Resist.',       cant:n(totalQQd,4), uni:'qq', pu:fmtRD(moVar), total:fmtRD(costoMoVar)});
+    rows.push({label:'M.O. Acero Alta Resist.',       cant:n(totalQQd,4), uni:'qq/m³', pu:fmtRD(moVar), total:fmtRD(costoMoVar)});
     // 3. Subida acero 10%
     rows.push({label:'Subida Acero (10% M.O.)',       cant:'10%', uni:'%', pu:'', total:fmtRD(costoSubida)});
     // 4. Encofrado losa monolítica (AnaEnco 70080001)
@@ -802,12 +810,6 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
       rows.push({label:'  └ Arena triturada', cant:n(arenM3,3), uni:'m³', pu:fmtRD(P.arenaHorm||0), total:fmtRD(arenM3*(P.arenaHorm||0)), sub:true});
       rows.push({label:'  └ Grava', cant:n(graM3,3), uni:'m³', pu:fmtRD(P.grava||0), total:fmtRD(graM3*(P.grava||0)), sub:true});
     }
-    // Info cuantías
-    rows.push({label:'──────────────────────', cant:'', uni:'', pu:'', total:''});
-    rows.push({label:'Cuantía 1/2" (qq/m³)', cant:n(cuant12,4), uni:'qq/m³', pu:'', total:'', sub:true});
-    rows.push({label:'Cuantía 3/8" (qq/m³)', cant:n(cuant38,4), uni:'qq/m³', pu:'', total:'', sub:true});
-    rows.push({label:'Piezas XX: 1/2"/3/8"', cant:`${F5} / ${F6}`, uni:'pzs', pu:'', total:'', sub:true});
-    rows.push({label:'Piezas YY: 1/2"/3/8"', cant:`${F7} / ${F8}`, uni:'pzs', pu:'', total:'', sub:true});
     // Totales
     rows.push({label:'COSTO TOTAL', cant:'', uni:'', pu:'', total:fmtRD(costoTotal)});
     rows.push({label:'PU (RD$/m²)', cant:fmtRD(pu_m2), uni:'/m²', pu:'', total:'', sub:true});
@@ -4408,18 +4410,19 @@ const PresupuestoObraView = () => {
       const c0=(firstCols[0]||'').trim();
       const c1=(firstCols[1]||'').trim();
       const c2=(firstCols[2]||'').trim();
-      const c0IsCod=/^[A-Za-z]{1,8}\d{2,}/.test(c0)||/^\d{3,}$/.test(c0);
+      const c3=(firstCols[3]||'').trim();
+      const c0IsCod=/^[A-Za-z]{1,8}\d{2,}/.test(c0)||/^\d{3,}$/.test(c0)||/^IN[A-Z]{2,}/.test(c0);
       if(c0IsCod){
-        // Detectar si col2 es UD (texto corto) o CANT (número)
-        if(c2 && !isXlNum(c2) && c2.length<=8){
-          // COD | DESC | UD | CANT | PU  ← formato de tu Excel
-          map={cod:0, nat:-1, desc:1, ud:2, cant:3, pu:4, itbis:-1, rendto:-1, valor:5};
-        } else if(isXlNum(c2)){
+        // Detectar formato: COD | DESC | CANT | UD | PU (sin naturaleza)
+        if(isXlNum(c2) && (!c3 || !isXlNum(c3) || c3.length<=8)){
           // COD | DESC | CANT | UD | PU
           map={cod:0, nat:-1, desc:1, cant:2, ud:3, pu:4, itbis:-1, rendto:-1, valor:5};
+        } else if(!isXlNum(c2) && c2.length<=8){
+          // COD | DESC | UD | CANT | PU
+          map={cod:0, nat:-1, desc:1, ud:2, cant:3, pu:4, itbis:-1, rendto:-1, valor:5};
         } else {
-          // COD | NAT | DESC | CANT | UD | PU
-          map={cod:0, nat:1, desc:2, cant:3, ud:4, pu:5, itbis:6, rendto:7, valor:8};
+          // COD | DESC | CANT | UD | PU (fallback)
+          map={cod:0, nat:-1, desc:1, cant:2, ud:3, pu:4, itbis:-1, rendto:-1, valor:5};
         }
       } else {
         // DESC | UD | CANT | PU
@@ -4476,8 +4479,17 @@ const PresupuestoObraView = () => {
         // 3+ sin mapa → NO asignar PU (dejar vacío, usuario lo pone)
       }
 
+      // Auto-detectar naturaleza por prefijo del código
+      let nat = 'M'; // por defecto Material
+      if(cod){
+        const cp = cod.toUpperCase();
+        if(cp.startsWith('MO') || cp.startsWith('MOCA') || cp.startsWith('MOAL') || cp.startsWith('MOVA')) nat='O';
+        else if(cp.startsWith('HE') || cp.startsWith('EQ') || cp.startsWith('HERR')) nat='E';
+        else if(cp.startsWith('IN') || cp.startsWith('MA')) nat='M';
+      }
+
       newComps.push({
-        id:uid(), cod, naturaleza:'M',
+        id:uid(), cod, naturaleza:nat,
         desc:desc.trim(),
         cantidad:cantStr, unidad:ud||'ud', pu:puStr,
         itbis, rendimiento:rend
@@ -4516,12 +4528,14 @@ const PresupuestoObraView = () => {
       colMap={cod:-1,desc:-1,ud:-1,cant:-1,pu:-1};
       firstCols.forEach((h,i)=>{
         const u=(h||'').toUpperCase().trim().replace(/[.\s_]/g,'');
-        if(['COD','CODIGO','CODINSUMO'].includes(u)) colMap.cod=i;
-        else if(['DESC','DESCRIPCION','DESCRIPCIÓN'].includes(u)) colMap.desc=i;
-        else if(['UD','UND','UNIDAD','UNID'].includes(u)) colMap.ud=i;
-        else if(['CANT','CANTIDAD'].includes(u)) colMap.cant=i;
-        else if(['PU','COSTO','PRECIO','PRECIOUN'].includes(u)) colMap.pu=i;
+        if(['COD','CODIGO','CODINSUMO','ITEM','NO'].includes(u)) colMap.cod=i;
+        else if(['DESC','DESCRIPCION','DESCRIPCIÓN','NOMBRE','CONCEPTO'].includes(u)) colMap.desc=i;
+        else if(['UD','UND','UNIDAD','UNID','UN'].includes(u)) colMap.ud=i;
+        else if(['CANT','CANTIDAD','MEDICION','MED'].includes(u)) colMap.cant=i;
+        else if(['PU','COSTO','PRECIO','PRECIOUN','PRECIOUNIT','COSTOUNIT','VALORUNIT'].includes(u)) colMap.pu=i;
       });
+      // Si no encontró desc pero sí cod, asumir col siguiente como desc
+      if(colMap.cod>=0 && colMap.desc<0) colMap.desc=colMap.cod+1;
     }
 
     // tipoNum: ignora el "valor numérico" de códigos como "1.00" para clasificarlos
@@ -4639,6 +4653,33 @@ const PresupuestoObraView = () => {
   };
   const exportRef  = React.useRef(null);
   const fileRef    = React.useRef(null);
+  const xlsxRef    = React.useRef(null); // para importar Excel
+
+  const importarDesdeExcel = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    e.target.value = '';
+    try {
+      // Cargar SheetJS si no está
+      if(!window.XLSX){
+        await new Promise((res,rej)=>{
+          const s=document.createElement('script');
+          s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+          s.onload=res; s.onerror=rej;
+          document.head.appendChild(s);
+        });
+      }
+      const XLSX = window.XLSX;
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_csv(ws, {FS:'\t'});
+      handleSmartPaste(rows);
+    } catch(err) {
+      setPasteNotif('⚠ Error al leer el Excel: '+err.message);
+      setTimeout(()=>setPasteNotif(''),5000);
+    }
+  };
   const monedaRef  = React.useRef(null);
   const tasasRef   = React.useRef(null);
 
@@ -4836,7 +4877,106 @@ const PresupuestoObraView = () => {
     setShowBC3(false);
     setBc3Text('');
   };
-  const exportarCSV=()=>{const mon=obra.moneda||'RD$';let csv='Codigo,Descripcion,Unidad,Cantidad,P.Unitario,Total,Moneda\n';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');csv+='"'+cod+'","'+c.nombre+'","","","","","'+mon+'"\n';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');csv+=',"'+scod+' '+sc.nombre+'","","","","",""\n';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p);csv+='"'+pcod+'","'+p.desc+'","'+p.unidad+'","'+fmtN(cant,4)+'","'+fmtN(pu)+'","'+fmtN(cant*pu)+'","'+mon+'"\n';});});});const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(obra.nombre||'obra').replace(/\s/g,'_')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
+  const exportarCSV=()=>{
+    const mon=obra.moneda||'RD$';
+    const fmP=v=>fmtMon(v,mon);
+    const fmtN2=(v,d=2)=>Number(v||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+    const BLUE='#1e3a5f'; const ACCENT='#6366f1';
+
+    const td=(val,style='')=>`<td style="font-family:Arial;font-size:10pt;border:1px solid #e2e8f0;padding:5px 8px;${style}">${val??''}</td>`;
+    const th=(val,align='left')=>`<th style="font-family:Arial;font-size:9pt;font-weight:bold;background:${BLUE};color:white;padding:7px 8px;text-align:${align};border:1px solid #334155;">${val}</th>`;
+
+    let rows='';
+
+    // Header
+    rows+=`<tr>
+      <td colspan="5" style="font-family:Arial;font-size:16pt;font-weight:900;color:${BLUE};padding:12px 10px;border-bottom:3px solid ${ACCENT};">PRESUPUESTO DE OBRA</td>
+      <td colspan="2" style="font-family:Arial;font-size:12pt;font-weight:700;color:${ACCENT};padding:12px 10px;text-align:right;border-bottom:3px solid ${ACCENT};">ProCalc RD</td>
+    </tr>
+    <tr style="background:#f8fafc;">
+      <td colspan="4" style="font-family:Arial;font-size:11pt;font-weight:700;color:${BLUE};padding:8px 10px;">${obra.nombre||'Sin nombre'}</td>
+      <td colspan="3" style="font-family:Arial;font-size:9pt;color:#64748b;padding:8px 10px;text-align:right;">Moneda: ${mon} &nbsp;|&nbsp; Fecha: ${new Date().toLocaleDateString('es-DO')}</td>
+    </tr>
+    <tr><td colspan="7" style="padding:4px;border:none;">&nbsp;</td></tr>
+    <tr>${th('Código')}${th('Descripción')}${th('Ud.','center')}${th('Cantidad','right')}${th('P. Unitario','right')}${th('Total '+mon,'right')}${th('%','right')}</tr>`;
+
+    const grandT=grandTotal||0;
+
+    (obra.capitulos||[]).forEach((c,ci)=>{
+      const cod=c.codigo||String(ci+1).padStart(2,'0');
+      const ct=getCT(c);
+      const pct=grandT>0?((ct/grandT)*100).toFixed(1):'0.0';
+      rows+=`<tr style="background:#1e3a5f;">
+        <td style="font-family:Courier New;font-size:10pt;font-weight:800;color:white;padding:7px 10px;border-left:4px solid ${c.color||ACCENT};border:1px solid #334155;">${cod}</td>
+        <td colspan="4" style="font-family:Arial;font-size:11pt;font-weight:800;color:white;padding:7px 10px;text-transform:uppercase;border:1px solid #334155;">${c.nombre}</td>
+        <td style="font-family:Courier New;font-size:10pt;font-weight:800;color:white;padding:7px 10px;text-align:right;border:1px solid #334155;">${fmtN2(ct)}</td>
+        <td style="font-family:Arial;font-size:9pt;color:#93c5fd;padding:7px 10px;text-align:right;border:1px solid #334155;">${pct}%</td>
+      </tr>`;
+
+      (c.subcapitulos||[]).forEach((sc,si)=>{
+        const scod=sc.codigo||(cod+'.'+String(si+1).padStart(2,'0'));
+        const sct=getSCT(sc);
+        rows+=`<tr style="background:#374151;">
+          <td style="font-family:Courier New;font-size:9pt;color:#9ca3af;padding:5px 10px;border:1px solid #4b5563;">${scod}</td>
+          <td colspan="4" style="font-family:Arial;font-size:10pt;font-weight:700;color:#d1d5db;padding:5px 20px;border:1px solid #4b5563;">${sc.nombre}</td>
+          <td style="font-family:Courier New;font-size:9pt;color:#9ca3af;padding:5px 10px;text-align:right;border:1px solid #4b5563;">${fmtN2(sct)}</td>
+          <td style="border:1px solid #4b5563;"></td>
+        </tr>`;
+
+        (sc.partidas||[]).forEach((p,pi)=>{
+          const pcod=p.codigo||(scod+'.'+String(pi+1).padStart(3,'0'));
+          const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;
+          const bg=pi%2===0?'#ffffff':'#f0f4ff';
+          rows+=`<tr style="background:${bg};">
+            ${td(pcod,'font-family:Courier New;font-size:9pt;color:#6366f1;font-weight:700;')}
+            ${td(p.desc,'font-weight:600;')}
+            ${td(p.unidad,'text-align:center;font-weight:600;color:#374151;')}
+            ${td(fmtN2(cant,4),'text-align:right;font-family:Courier New;')}
+            ${td(fmtN2(pu),'text-align:right;font-family:Courier New;')}
+            ${td(fmtN2(tot),'text-align:right;font-family:Courier New;font-weight:700;color:${BLUE};')}
+            <td style="border:1px solid #e2e8f0;"></td>
+          </tr>`;
+        });
+      });
+      rows+=`<tr><td colspan="7" style="padding:2px;border:none;"></td></tr>`;
+    });
+
+    // Totales
+    const blank=`<td colspan="4" style="border:none;"></td>`;
+    const totRow=(label,val,bg='#f8fafc',bold=false,big=false)=>
+      `<tr style="background:${bg};">${blank}
+        <td style="font-family:Arial;font-size:${big?'11':'9'}pt;font-weight:${bold?'800':'600'};text-align:right;padding:6px 10px;color:#374151;border:1px solid #e2e8f0;">${label}</td>
+        <td style="font-family:Courier New;font-size:${big?'12':'10'}pt;font-weight:${bold?'800':'700'};text-align:right;padding:6px 10px;border:1px solid #e2e8f0;">${val}</td>
+        <td style="border:none;"></td>
+      </tr>`;
+
+    rows+=totRow('COSTO DIRECTO',fmtN2(grandT),'#eff6ff',true);
+    (obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).forEach(i=>{
+      rows+=totRow(`${i.label} (${i.pct}%)`,fmtN2(grandT*i.pct/100),'#fafafa');
+    });
+    rows+=totRow(`ITBIS (${obra.iva||18}%)`,fmtN2(ivaAmt),'#f1f5f9');
+    rows+=`<tr style="background:${BLUE};">
+      ${blank}
+      <td style="font-family:Arial;font-size:12pt;font-weight:800;text-align:right;padding:8px 10px;color:white;border:1px solid #334155;">TOTAL GENERAL</td>
+      <td style="font-family:Courier New;font-size:13pt;font-weight:800;text-align:right;padding:8px 10px;color:white;border:1px solid #334155;">${fmtN2(totalFinal)}</td>
+      <td style="border:none;"></td>
+    </tr>`;
+
+    const html=`<html><head><meta charset="UTF-8">
+      <style>table{border-collapse:collapse;width:100%;}body{margin:20px;font-family:Arial;}</style>
+    </head><body>
+      <table>${rows}</table>
+      <p style="font-size:9pt;color:#9ca3af;margin-top:16px;text-align:right;">Generado por ProCalc RD • procalcrd.com</p>
+    </body></html>`;
+
+    const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=(obra.nombre||'presupuesto').replace(/\s/g,'_')+'.xls';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  };
   const exportarPDF=()=>{const mon=obra.moneda||'RD$';const fmP=v=>fmtMon(v,mon);let rows='';(obra.capitulos||[]).forEach((c,ci)=>{const cod=String(ci+1).padStart(2,'0');rows+='<tr style="background:#1f2937;color:white;"><td style="padding:8px 14px;font-weight:800;border-left:4px solid '+c.color+'">'+cod+' '+c.nombre+'</td><td colspan="4"></td><td style="padding:8px 14px;text-align:right;font-weight:800;font-family:monospace;">'+fmP(getCT(c))+'</td></tr>';(c.subcapitulos||[]).forEach((sc,si)=>{const scod=cod+'.'+String(si+1).padStart(2,'0');rows+='<tr style="background:#374151;color:#d1d5db;"><td colspan="6" style="padding:5px 14px 5px 22px;font-weight:700;font-size:10px;">'+scod+' '+sc.nombre+'</td></tr>';(sc.partidas||[]).forEach((p,pi)=>{const pcod=scod+'.'+String(pi+1).padStart(3,'0');const cant=calcCant(p),pu=calcPU(p),tot=cant*pu;rows+='<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 8px;font-size:10px;color:#6b7280;font-family:monospace;">'+pcod+'</td><td style="padding:5px 8px;" colspan="2">'+p.desc+'</td><td style="padding:5px 8px;text-align:center;">'+p.unidad+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;">'+fmtN(cant,4)+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:700;">'+fmP(tot)+'</td></tr>';});});});let indRows='';(obra.indirectos||[]).filter(i=>i.activo&&i.pct>0).forEach(i=>{indRows+='<tr><td colspan="4" style="padding:5px 14px;text-align:right;color:#6b7280;">'+i.label+' ('+i.pct+'%)</td><td style="padding:5px 14px;text-align:right;font-family:monospace;">'+fmP(grandTotal*i.pct/100)+'</td></tr>';});const html='<!DOCTYPE html><html><head><title>'+obra.nombre+'</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px auto;max-width:920px;}table{width:100%;border-collapse:collapse;}th{background:#1f2937;color:#9ca3af;padding:8px 10px;font-size:10px;text-transform:uppercase;text-align:left;}@media print{body{margin:0;}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #6366f1;padding-bottom:10px;margin-bottom:16px;"><div><div style="font-size:20px;font-weight:900;">PRESUPUESTO DE OBRA</div><div style="font-size:15px;font-weight:700;margin-top:2px;">'+obra.nombre+'</div><div style="font-size:11px;color:#9ca3af;">Moneda: '+mon+'</div></div><div style="font-size:10px;color:#9ca3af;">ProCalc - '+new Date().toLocaleDateString('es-DO')+'</div></div><table><thead><tr><th>Codigo</th><th colspan="2">Descripcion</th><th style="text-align:center">Ud.</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Total '+mon+'</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4" style="padding:8px;text-align:right;font-weight:700;border-top:2px solid #e5e7eb;">COSTO DIRECTO</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:800;font-size:14px;">'+fmP(grandTotal)+'</td></tr>'+indRows+'<tr style="background:#374151;color:white;"><td colspan="4" style="padding:7px 14px;text-align:right;font-weight:700;">ITBIS ('+obra.iva+'%)</td><td style="padding:7px 14px;text-align:right;font-family:monospace;">'+fmP(ivaAmt)+'</td></tr><tr style="background:#1f2937;color:white;"><td colspan="4" style="padding:10px;text-align:right;font-weight:800;">TOTAL GENERAL</td><td style="padding:10px;text-align:right;font-family:monospace;font-weight:800;font-size:15px;">'+fmP(totalFinal)+'</td></tr></tfoot></table><script>window.onload=()=>{window.print();}<\/script></body></html>';const w=window.open('','_blank','width=960,height=720');if(w){w.document.write(html);w.document.close();}};
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -5287,7 +5427,7 @@ const PresupuestoObraView = () => {
                         return (
                           <React.Fragment key={p.id}>
                             <tr style={{borderBottom:bdr,borderLeft:'4px solid '+cap.color+'33',background:bg}}>
-                              {/* Código — 📁 abre APU, editable, busca en analisis_costo al salir */}
+                              {/* Código — 📁 abre APU, editable libremente */}
                               <td style={{borderRight:bdr,background:apuOpen===p.id?'#fef3c7':bg,padding:'5px 8px',fontFamily:'monospace',fontWeight:'700',fontSize:'11px',color:apuOpen===p.id?'#b45309':'#4b5563'}}>
                                 <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
                                   <span title="Abrir/cerrar APU" style={{cursor:'pointer',fontSize:'10px'}}
@@ -5296,22 +5436,7 @@ const PresupuestoObraView = () => {
                                   </span>
                                   <LocalInput
                                     value={p.codigo||pCode}
-                                    onCommit={async v=>{
-                                      updatePart(cap.id,sc.id,p.id,{codigo:v});
-                                      if(v&&v.trim().length>=3){
-                                        const {data}=await supabase.from('analisis_costo')
-                                          .select('descripcion,unidad,precio_con_itbis,precio_unitario')
-                                          .eq('codigo',v.trim()).eq('tipo_fila','partida').limit(1);
-                                        if(data&&data[0]){
-                                          updatePart(cap.id,sc.id,p.id,{
-                                            codigo:v,desc:data[0].descripcion||p.desc,
-                                            unidad:data[0].unidad||p.unidad,
-                                            puManual:data[0].precio_con_itbis||data[0].precio_unitario||p.puManual,
-                                            temporal:false,
-                                          });
-                                        }
-                                      }
-                                    }}
+                                    onCommit={v=>updatePart(cap.id,sc.id,p.id,{codigo:v})}
                                     style={{background:'transparent',border:'none',outline:'none',fontFamily:'monospace',fontWeight:'700',fontSize:'11px',color:apuOpen===p.id?'#b45309':'#4b5563',width:'100%',cursor:'text'}}
                                     placeholder="Código"
                                   />
@@ -5911,6 +6036,9 @@ const PresupuestoObraView = () => {
           <button onClick={()=>guardarObra(obra)} style={{padding:'6px 11px',background:'#374151',color:'#d1d5db',border:'1px solid #4b5563',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}} onMouseEnter={e=>e.currentTarget.style.background='#4b5563'} onMouseLeave={e=>e.currentTarget.style.background='#374151'}>
             <Save size={13}/> Guardar
           </button>
+          <button onClick={()=>xlsxRef.current&&xlsxRef.current.click()} style={{padding:'6px 11px',background:'#059669',color:'white',border:'none',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
+            <Upload size={13}/> Importar Excel
+          </button>
           <div style={{position:'relative'}} ref={exportRef}>
             <button onClick={()=>setShowExport(v=>!v)} style={{padding:'6px 11px',background:'#6366f1',color:'white',border:'none',borderRadius:'6px',fontWeight:'700',fontSize:'11px',cursor:'pointer',display:'flex',alignItems:'center',gap:'4px'}}>
               <Download size={13}/> Descargar
@@ -6131,6 +6259,7 @@ const PresupuestoObraView = () => {
         </div>
       )}
       <input ref={fileRef} type="file" accept=".json,.obra.json" style={{display:'none'}} onChange={abrirArchivo}/>
+      <input ref={xlsxRef} type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}} onChange={importarDesdeExcel}/>
 
       {/* ── Modal buscador análisis de costo ── */}
       {anaPresModal && (
@@ -7074,9 +7203,9 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
     }
     setShowExportMenu(false);
   }
-  const handleIndirectoChange = (id, field, value) => {
+  const handleIndirectoChange = React.useCallback((id, field, value) => {
     setIndirectos(prev => prev.map(i => i.id === id ? { ...i, [field]: field === 'pct' ? (parseFloat(value)||0) : value } : i));
-  };
+  }, []);
 
   const handleViewChange = (view) => { setCurrentView(view); setMobileMenuOpen(false); };
 
@@ -8194,7 +8323,13 @@ export default function ProCalcApp() {
       // Solo asegurarse de que se muestre el formulario de nueva contraseña
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if(error && error.message?.includes('Refresh Token')) {
+        // Token inválido — limpiar y mostrar login
+        supabase.auth.signOut();
+        setSession(null); setProfile(null); setLoadingAuth(false);
+        return;
+      }
       setSession(session);
       if (session) loadProfile(session.user.id);
       else setLoadingAuth(false);
