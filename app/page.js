@@ -455,7 +455,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     act_yy12:false, sep_yy12:'0.25', // fila 7: Y-Y 1/2"
     act_yy38:false, sep_yy38:'0.25', // fila 8: Y-Y 3/8"
     tipoHorm:'industrial', resManual:'210', hormInd:'210 Kg/cm²',
-    moVarillero:481.56, moConfeccion:246.50, moDesencofrado:52.57, subaAcero:723.92,
+    moVarillero:723.92, moConfeccion:246.50, moDesencofrado:52.57, subaAcero:723.92, actSubida:true,
   });
 
   // ── Estado Cisterna ────────────────────────────────────────────────────────
@@ -765,21 +765,17 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     }
     const puHorm = vol>0 ? precioHorm/(vol*1.10) : 0;
 
-    // ── Acero: el *1.1 ya está incluido dentro de cuant12/cuant38 (fórmula Excel) ──
-    // NO se aplica otro *1.10 aquí — hacerlo duplicaría el desperdicio
-    const qq12d    = qq12;   // cuantía ya incluye +10% (el *1.1 de la fórmula)
-    const qq38d    = qq38;   // idem
-    const totalQQd = qq12d + qq38d;
-    const pAcero12 = P.acero12 || P.acero38 || 3278.22;
-    const pAcero38 = P.acero38 || 3278.22;
-    const costoAcero12 = qq12d * pAcero12;
-    const costoAcero38 = qq38d * pAcero38;
+    // ── Acero: cant = cuantía (qq/m³), total = cuantía × precio (igual que Excel) ──
+    const pAcero   = P.acero38 || 3278.22;
+    const costoAcero12 = cuant12 * pAcero;
+    const costoAcero38 = cuant38 * pAcero;
     const costoAlambre = alambreLb * (P.alambre||61.11);
+    const totalMO      = cuant12 + cuant38;  // qq/m³ para MO (=B11 del Excel)
 
-    // M.O. Varillero sobre qq+10%
-    const costoMoVar  = totalQQd * moVar;
-    // Subida acero = 10% de M.O. (MOVA 50900014)
-    const costoSubida = costoMoVar * 0.10;
+    // M.O. Varillero
+    const costoMoVar  = totalMO * moVar;
+    // Subida acero = 10% de M.O. (MOVA 50900014) — opcional
+    const costoSubida = fLosaMaciza.actSubida ? costoMoVar * 0.10 : 0;
 
     // ── Encofrado losa (AnaEncofr 70080001) — precio total por m² ──
     const confM2     = area;
@@ -793,18 +789,18 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     // ── Filas de resultado ──
     const rows = [];
 
-    // 1. Acero: cant = cuantía (qq/m³), total = cuantía × precio
-    rows.push({label:'Acero 3/8" ×20\' +10% desp.',  cant:n(cuant38,4), uni:'qq/m³', pu:fmtRD(pAcero38), total:fmtRD(costoAcero38)});
-    rows.push({label:'Acero 1/2" ×20\' +10% desp.',  cant:n(cuant12,4), uni:'qq/m³', pu:fmtRD(pAcero12), total:fmtRD(costoAcero12)});
+    // 1. Acero: cant=cuantía(qq/m³), total=cuantía×precio (igual al Excel)
+    rows.push({label:'Acero 3/8" ×20\' +10% desp.',  cant:n(cuant38,4), uni:'qq/m³', pu:fmtRD(pAcero), total:fmtRD(costoAcero38)});
+    rows.push({label:'Acero 1/2" ×20\' +10% desp.',  cant:n(cuant12,4), uni:'qq/m³', pu:fmtRD(pAcero), total:fmtRD(costoAcero12)});
     rows.push({label:'Alambre Cal.18',                cant:n(alambreLb,3), uni:'lb/m³', pu:fmtRD(P.alambre||61.11), total:fmtRD(costoAlambre)});
-    // 2. M.O. Varillero alta resistencia
-    rows.push({label:'M.O. Acero Alta Resist.',       cant:n(totalQQd,4), uni:'qq/m³', pu:fmtRD(moVar), total:fmtRD(costoMoVar)});
-    // 3. Subida acero 10%
-    rows.push({label:'Subida Acero (10% M.O.)',       cant:'10%', uni:'%', pu:'', total:fmtRD(costoSubida)});
+    // 2. M.O. Varillero alta resistencia: cant=B11 del Excel (cuant12+cuant38)
+    rows.push({label:'M.O. Acero Alta Resist.',       cant:n(totalMO,4), uni:'qq/m³', pu:fmtRD(moVar), total:fmtRD(costoMoVar)});
+    // 3. Subida acero 10% — solo si está activa
+    if(fLosaMaciza.actSubida) rows.push({label:'Subida Acero (10% M.O.)',       cant:'10%', uni:'%', pu:'', total:fmtRD(costoSubida)});
     // 4. Encofrado losa monolítica (AnaEnco 70080001)
     rows.push({label:`Encof. Losa Monolítica h=${esp}m`, cant:n(confM2,2), uni:'m²', pu:fmtRD(puEncofLosa), total:fmtRD(costoEncof)});
     // 5. Hormigón +10%
-    rows.push({label:descHorm, cant:n(vol*1.10,3), uni:'m³', pu:fmtRD(puHorm), total:fmtRD(precioHorm)});
+    rows.push({label:descHorm, cant:n(vol*1.10,3), uni:'m³', pu:fmtRD(puHorm), total:fmtRD(precioHorm), editablePU:true, volHorm:vol*1.10, rawPU:puHorm});
     if(esManual){
       rows.push({label:'  └ Cemento gris', cant:n(cemFds,2), uni:'fds', pu:fmtRD(P.cemento||0), total:fmtRD(cemFds*(P.cemento||0)), sub:true});
       rows.push({label:'  └ Arena triturada', cant:n(arenM3,3), uni:'m³', pu:fmtRD(P.arenaHorm||0), total:fmtRD(arenM3*(P.arenaHorm||0)), sub:true});
@@ -1127,13 +1123,22 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
   );
 
   // ── PANTALLA DE RESULTADO ────────────────────────────────────────────────────
+  const [hormVolEdit, setHormVolEdit] = React.useState(null);
   if (resultado) {
     const fRDr = v => v > 0 ? 'RD$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '-';
+    // Hormigón editable: si el usuario cambió el PU, recalcular total de hormigón y grandTotal
+    const hormRow = resultado.items.find(it=>it.editablePU);
+    const hormVolOrig = hormRow ? hormRow.volHorm : 0;
+    const hormVolVal  = hormVolEdit !== null ? hormVolEdit : hormVolOrig;
+    const hormPUFixed = hormRow ? hormRow.rawPU : 0;
+    const hormTotalCalc = hormVolVal * hormPUFixed;
+    const hormDelta = hormRow ? (hormTotalCalc - hormVolOrig * hormPUFixed) : 0;
+    const grandTotalAdj = resultado.grandTotal + hormDelta;
     return (
       <div style={{display:'flex', flexDirection:'column', height:'100%', background:'#f8fafc'}}>
         {/* Header */}
         <div style={{background:mc.bg, padding:'16px 20px', flexShrink:0}}>
-          <button onClick={()=>setResultado(null)} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'white',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',marginBottom:'10px'}}>
+          <button onClick={()=>{setResultado(null);setHormVolEdit(null);}} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'white',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',marginBottom:'10px'}}>
             ← Volver
           </button>
           <div style={{color:'white', fontWeight:'800', fontSize:'18px'}}>{resultado.tipo}</div>
@@ -1153,20 +1158,35 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
                 </tr>
               </thead>
               <tbody>
-                {resultado.items.map((it,i)=>(
+                {resultado.items.map((it,i)=>{
+                  const isHorm = it.editablePU;
+                  const rowTotal = isHorm ? ('RD$ '+Number(hormTotalCalc).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})) : (it.total||'-');
+                  const rowPU   = isHorm ? null : (it.pu||'-');
+                  return (
                   <tr key={i} style={{background:it.sub?(resultado.modulo==='zapata'?'#eff6ff':'#f0fdfa'):i%2===0?'white':'#f8fafc',borderBottom:'1px solid #f1f5f9'}}>
                     <td style={{padding:it.sub?'5px 10px 5px 22px':'8px 10px',color:it.sub?mc.accent:'#1e293b',fontWeight:it.sub?'500':'600',fontSize:it.sub?'10px':'11px',fontStyle:it.sub?'italic':'normal'}}>{it.label}</td>
-                    <td style={{padding:'8px 6px',textAlign:'center',fontFamily:'monospace',fontWeight:'700',color:it.sub?mc.accent:'#374151',fontSize:'11px'}}>{it.cant||it.val}</td>
+                    <td style={{padding:'4px 6px',textAlign:'center',fontFamily:'monospace',fontWeight:'700',color:it.sub?mc.accent:'#374151',fontSize:'11px'}}>
+                      {isHorm ? (
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={hormVolVal}
+                          onChange={e=>setHormVolEdit(parseFloat(e.target.value)||0)}
+                          style={{width:'72px',padding:'4px 6px',border:'1px solid #a78bfa',borderRadius:'6px',fontSize:'10px',fontFamily:'monospace',fontWeight:'700',color:'#4c1d95',background:'#f5f3ff',textAlign:'center',outline:'none'}}
+                        />
+                      ) : (it.cant||it.val)}
+                    </td>
                     <td style={{padding:'8px 6px',textAlign:'center',color:'#64748b',fontSize:'10px',fontWeight:'600'}}>{it.uni||it.unit}</td>
                     <td style={{padding:'8px 6px',textAlign:'right',fontFamily:'monospace',color:'#374151',fontSize:'10px'}}>{it.pu||'-'}</td>
-                    <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:it.sub?'#94a3b8':mc.accent,fontSize:'11px'}}>{it.total||'-'}</td>
+                    <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'monospace',fontWeight:'800',color:it.sub?'#94a3b8':mc.accent,fontSize:'11px'}}>{rowTotal}</td>
                   </tr>
-                ))}
-                {resultado.grandTotal > 0 && (
+                  );
+                })}
+                {grandTotalAdj > 0 && (
                   <tr style={{background:mc.bg, borderTop:'2px solid '+mc.accent}}>
                     <td colSpan={4} style={{padding:'10px',color:'white',fontWeight:'800',fontSize:'12px',textTransform:'uppercase',letterSpacing:'0.05em'}}>TOTAL GENERAL</td>
                     <td style={{padding:'10px',textAlign:'right',fontFamily:'monospace',fontWeight:'900',color:'white',fontSize:'13px'}}>
-                      {'RD$ '+Number(resultado.grandTotal).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                      {'RD$ '+Number(grandTotalAdj).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                     </td>
                   </tr>
                 )}
@@ -1187,7 +1207,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
               + Agregar al Presupuesto Activo
             </button>
           )}
-          <button onClick={()=>{setResultado(null);setScreen('menu');}}
+          <button onClick={()=>{setResultado(null);setHormVolEdit(null);setScreen('menu');}}
             style={{width:'100%',padding:'11px',background:'white',color:'#64748b',border:'1px solid #e2e8f0',borderRadius:'12px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
             Nueva Calculadora
           </button>
@@ -2569,7 +2589,13 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
           {lmHdr('Precios Mano de Obra')}
           {lmGrid2(<>
             {lmLbl('Varillero (RD$/QQ)',<input type="number" value={lm.moVarillero} onChange={e=>setLM({moVarillero:e.target.value})} style={lmInp}/>)}
-            {lmLbl('Subida Acero (RD$/QQ)',<input type="number" value={lm.subaAcero} onChange={e=>setLM({subaAcero:e.target.value})} style={lmInp}/>)}
+            <div>
+              <label style={{display:'block',fontSize:'10px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'4px'}}>Subida Acero (10% M.O.)</label>
+              <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                <input type="checkbox" checked={!!lm.actSubida} onChange={e=>setLM({actSubida:e.target.checked})} style={{width:'18px',height:'18px',accentColor:'#7c3aed',cursor:'pointer',flexShrink:0}}/>
+                <span style={{fontSize:'12px',fontWeight:'700',color:lm.actSubida?'#7c3aed':'#94a3b8'}}>{lm.actSubida?'Activa':'Inactiva'}</span>
+              </div>
+            </div>
           </>)}
           {lmGrid2(<>
             {lmLbl('Confección (RD$/m²)',<input type="number" value={lm.moConfeccion} onChange={e=>setLM({moConfeccion:e.target.value})} style={lmInp}/>)}
