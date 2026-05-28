@@ -455,7 +455,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     act_yy12:false, sep_yy12:'0.25', // fila 7: Y-Y 1/2"
     act_yy38:false, sep_yy38:'0.25', // fila 8: Y-Y 3/8"
     tipoHorm:'industrial', resManual:'210', hormInd:'210 Kg/cm²',
-    moVarillero:723.92, moConfeccion:246.50, moDesencofrado:52.57, subaAcero:723.92, actSubida:true,
+    moVarillero:723.92, moConfeccion:246.50, moDesencofrado:52.57, subaAcero:723.92, actSubida:true, pctSubida:10,
   });
 
   // ── Estado Cisterna ────────────────────────────────────────────────────────
@@ -775,12 +775,14 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     // M.O. Varillero
     const costoMoVar  = totalMO * moVar;
     // Subida acero = 10% de M.O. (MOVA 50900014) — opcional
-    const costoSubida = fLosaMaciza.actSubida ? costoMoVar * 0.10 : 0;
+    const pctSub = parseFloat(fLosaMaciza.pctSubida)||10;
+    const costoSubida = fLosaMaciza.actSubida ? costoMoVar * (pctSub/100) : 0;
 
-    // ── Encofrado losa (AnaEncofr 70080001) — precio total por m² ──
-    const confM2     = area;
-    const puEncofLosa = esp <= 0.11 ? 885.57 : 873.10; // h=0.10→885.57 h=0.12→873.10
-    const costoEncof  = confM2 * puEncofLosa;
+    // ── Encofrado losa (AnaEncofr 70080001) ──
+    const confM2      = area;
+    const puEncofLosa = esp <= 0.11 ? 885.57 : 873.10;
+    const encofCantC  = vol > 0 ? area / vol : 0;  // C3*B3/F1 del Excel
+    const costoEncof  = encofCantC * puEncofLosa;  // cant × PU
 
     const costoTotal = precioHorm + costoAcero12 + costoAcero38 + costoAlambre
                       + costoMoVar + costoSubida + costoEncof;
@@ -796,9 +798,9 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     // 2. M.O. Varillero alta resistencia: cant=B11 del Excel (cuant12+cuant38)
     rows.push({label:'M.O. Acero Alta Resist.',       cant:n(totalMO,4), uni:'qq/m³', pu:fmtRD(moVar), total:fmtRD(costoMoVar)});
     // 3. Subida acero 10% — solo si está activa
-    if(fLosaMaciza.actSubida) rows.push({label:'Subida Acero (10% M.O.)',       cant:'10%', uni:'%', pu:'', total:fmtRD(costoSubida)});
-    // 4. Encofrado losa monolítica (AnaEnco 70080001)
-    rows.push({label:`Encof. Losa Monolítica h=${esp}m`, cant:n(confM2,2), uni:'m²', pu:fmtRD(puEncofLosa), total:fmtRD(costoEncof)});
+    if(fLosaMaciza.actSubida) rows.push({label:'Subida Acero M.O.', cant:`${pctSub}%`, uni:'%', pu:fmtRD(moVar), total:fmtRD(costoSubida), editablePct:true, rawPct:pctSub, rawMoVar:costoMoVar});
+    // 4. Encofrado: cant=area/vol, PU=873.10, total=cant×PU
+    rows.push({label:`Encof. Losa Monolítica h=${esp}m`, cant:n(encofCantC,2), uni:'m²/m³', pu:fmtRD(puEncofLosa), total:fmtRD(costoEncof)});
     // 5. Hormigón +10%
     rows.push({label:descHorm, cant:n(vol*1.10,3), uni:'m³', pu:fmtRD(puHorm), total:fmtRD(precioHorm), editablePU:true, volHorm:vol*1.10, rawPU:puHorm});
     if(esManual){
@@ -1124,6 +1126,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
 
   // ── PANTALLA DE RESULTADO ────────────────────────────────────────────────────
   const [hormVolEdit, setHormVolEdit] = React.useState(null);
+  const [pctSubidaEdit, setPctSubidaEdit] = React.useState(null);
   if (resultado) {
     const fRDr = v => v > 0 ? 'RD$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '-';
     // Hormigón editable: si el usuario cambió el PU, recalcular total de hormigón y grandTotal
@@ -1133,12 +1136,19 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     const hormPUFixed = hormRow ? hormRow.rawPU : 0;
     const hormTotalCalc = hormVolVal * hormPUFixed;
     const hormDelta = hormRow ? (hormTotalCalc - hormVolOrig * hormPUFixed) : 0;
-    const grandTotalAdj = resultado.grandTotal + hormDelta;
+    // Subida editable
+    const subRow = resultado.items.find(it=>it.editablePct);
+    const subPctOrig = subRow ? subRow.rawPct : 10;
+    const subPctVal  = pctSubidaEdit !== null ? pctSubidaEdit : subPctOrig;
+    const subMoVar   = subRow ? subRow.rawMoVar : 0;
+    const subTotalCalc = subMoVar * (subPctVal/100);
+    const subDelta = subRow ? (subTotalCalc - subMoVar*(subPctOrig/100)) : 0;
+    const grandTotalAdj = resultado.grandTotal + hormDelta + subDelta;
     return (
       <div style={{display:'flex', flexDirection:'column', height:'100%', background:'#f8fafc'}}>
         {/* Header */}
         <div style={{background:mc.bg, padding:'16px 20px', flexShrink:0}}>
-          <button onClick={()=>{setResultado(null);setHormVolEdit(null);}} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'white',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',marginBottom:'10px'}}>
+          <button onClick={()=>{setResultado(null);setHormVolEdit(null);setPctSubidaEdit(null);}} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'white',padding:'6px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',marginBottom:'10px'}}>
             ← Volver
           </button>
           <div style={{color:'white', fontWeight:'800', fontSize:'18px'}}>{resultado.tipo}</div>
@@ -1160,8 +1170,11 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
               <tbody>
                 {resultado.items.map((it,i)=>{
                   const isHorm = it.editablePU;
-                  const rowTotal = isHorm ? ('RD$ '+Number(hormTotalCalc).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})) : (it.total||'-');
-                  const rowPU   = isHorm ? null : (it.pu||'-');
+                  const isSub  = it.editablePct;
+                  const rowTotal = isHorm ? ('RD$ '+Number(hormTotalCalc).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))
+                                 : isSub  ? ('RD$ '+Number(subTotalCalc).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))
+                                 : (it.total||'-');
+                  const rowPU   = isSub ? null : (it.pu||'-');
                   return (
                   <tr key={i} style={{background:it.sub?(resultado.modulo==='zapata'?'#eff6ff':'#f0fdfa'):i%2===0?'white':'#f8fafc',borderBottom:'1px solid #f1f5f9'}}>
                     <td style={{padding:it.sub?'5px 10px 5px 22px':'8px 10px',color:it.sub?mc.accent:'#1e293b',fontWeight:it.sub?'500':'600',fontSize:it.sub?'10px':'11px',fontStyle:it.sub?'italic':'normal'}}>{it.label}</td>
@@ -1174,6 +1187,19 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
                           onChange={e=>setHormVolEdit(parseFloat(e.target.value)||0)}
                           style={{width:'72px',padding:'4px 6px',border:'1px solid #a78bfa',borderRadius:'6px',fontSize:'10px',fontFamily:'monospace',fontWeight:'700',color:'#4c1d95',background:'#f5f3ff',textAlign:'center',outline:'none'}}
                         />
+                      ) : isSub ? (
+                        <div style={{display:'flex',alignItems:'center',gap:'2px',justifyContent:'center'}}>
+                          <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            max="100"
+                            value={subPctVal}
+                            onChange={e=>setPctSubidaEdit(parseFloat(e.target.value)||0)}
+                            style={{width:'48px',padding:'4px 6px',border:'1px solid #a78bfa',borderRadius:'6px',fontSize:'10px',fontFamily:'monospace',fontWeight:'700',color:'#4c1d95',background:'#f5f3ff',textAlign:'center',outline:'none'}}
+                          />
+                          <span style={{fontSize:'10px',fontWeight:'700',color:'#4c1d95'}}>%</span>
+                        </div>
                       ) : (it.cant||it.val)}
                     </td>
                     <td style={{padding:'8px 6px',textAlign:'center',color:'#64748b',fontSize:'10px',fontWeight:'600'}}>{it.uni||it.unit}</td>
@@ -1207,7 +1233,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
               + Agregar al Presupuesto Activo
             </button>
           )}
-          <button onClick={()=>{setResultado(null);setHormVolEdit(null);setScreen('menu');}}
+          <button onClick={()=>{setResultado(null);setHormVolEdit(null);setPctSubidaEdit(null);setScreen('menu');}}
             style={{width:'100%',padding:'11px',background:'white',color:'#64748b',border:'1px solid #e2e8f0',borderRadius:'12px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
             Nueva Calculadora
           </button>
@@ -2590,10 +2616,11 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
           {lmGrid2(<>
             {lmLbl('Varillero (RD$/QQ)',<input type="number" value={lm.moVarillero} onChange={e=>setLM({moVarillero:e.target.value})} style={lmInp}/>)}
             <div>
-              <label style={{display:'block',fontSize:'10px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'4px'}}>Subida Acero (10% M.O.)</label>
+              <label style={{display:'block',fontSize:'10px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'4px'}}>Subida Acero M.O.</label>
               <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                 <input type="checkbox" checked={!!lm.actSubida} onChange={e=>setLM({actSubida:e.target.checked})} style={{width:'18px',height:'18px',accentColor:'#7c3aed',cursor:'pointer',flexShrink:0}}/>
-                <span style={{fontSize:'12px',fontWeight:'700',color:lm.actSubida?'#7c3aed':'#94a3b8'}}>{lm.actSubida?'Activa':'Inactiva'}</span>
+                <input type="number" value={lm.pctSubida||10} onChange={e=>setLM({pctSubida:e.target.value})} style={{...lmInp,width:'60px',textAlign:'center',opacity:lm.actSubida?1:0.4}} min="0" max="100"/>
+                <span style={{fontSize:'11px',fontWeight:'700',color:lm.actSubida?'#7c3aed':'#94a3b8'}}>%</span>
               </div>
             </div>
           </>)}
@@ -8386,10 +8413,13 @@ export default function ProCalcApp() {
     console.log('profiles data:', data, 'error:', error);
     if (error) {
       console.error('loadProfile error:', error);
-      // Si hay error leyendo profiles, verificar si es el admin por email
       const { data: userData } = await supabase.auth.getUser();
-      if (userData?.user?.email === 'ingyosej@gmail.com') {
-        setProfile({ id: userId, email: 'ingyosej@gmail.com', plan: 'admin', suscripcion_activa: true });
+      const userEmail = userData?.user?.email || '';
+      if (userEmail === 'ingyosej@gmail.com') {
+        setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
+      } else {
+        // Sin perfil en DB — usar perfil local para no bloquear acceso
+        setProfile({ id: userId, email: userEmail, plan: 'pro', suscripcion_activa: true });
       }
       setLoadingAuth(false);
       return;
