@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://hbolprmitnjqxvmfddhl.supabase.co';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || 'sb_publishable_ATBpGkcNJ_DWWKKkt-ZKPg_5p7ZPQjQ';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 import {
@@ -911,7 +911,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     mallaD23_10x10: 16936.08, // INACE 10000051 Malla D2.3x10x10 Rollo 2.4x40m
     mallaD23_15x15: 13114.72, // INACE 10000052 Malla D2.3x15x15 Rollo 2.4x40m
     mallaD25_10x10: 18949.35, // INACE 10000054 Malla D2.5x10x10 Rollo 2.4x40m
-    moAcero:   481.56,   // MOVA 50900009 M.O. Coloc. acero normal qq
+    moAcero:   723.92,   // MOVA 50900002 M.O. Coloc. acero alta resistencia qq
     moAceroAR: 723.92,   // MOVA 50900002 M.O. Coloc. acero alta resistencia qq
     moAceroLosa:1085.86, // MOVA 50900007 M.O. Coloc. acero losa Lima Hoya/Lima Tesa qq
     moAceroZapata: 160.51, // MOVA 50900013 M.O. Coloc. acero zapata de muros m
@@ -919,8 +919,8 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     moAceroViga: 160.51,   // MOVA 50900005 M.O. Coloc. acero viga m
     carp:      246.50,   // MOCA 50110007 M.O. Falso piso/Confección madera hasta 2.75m m²
     moEncofLosa: 435.00, // MOCA 50113017 M.O. Encof.+desencof. Losa plana hasta 2.75m m²
-    moEncofCol:  625.93, // MOCA 50113008 M.O. Encof.+desencof. Columna hasta 30×30cm m
-    moEncofViga: 578.20, // MOCA 50113021 M.O. Encof.+desencof. Viga 20×40cm m
+    moEncofCol:  1775.91, // AnaEnco 70060001 Encofrado Col. Rect. 0.2×0.2 m²
+    moEncofViga: 1090.92, // AnaEnco 70110001 Encofrado Viga 0.2×0.4 m²
     moSubidaAr2: 334.35, // MOAL 50029002 M.O. Subir arena polea 2do nivel m³
     moSubidaAr3: 477.63, // MOAL 50029003 M.O. Subir arena polea 3er nivel m³
     moSubidaMat: 334.35, // Subida general materiales 2do nivel m³
@@ -962,7 +962,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     // ── Hormigones adicionales ──
     impermeabilizante: 490.00, // INHOR 10230029
     moBadenCic:  2259.38, // MOAL 50013001 M.O. Badén ciclópeo frotado/pulido m³
-    moColocPied:  316.00, // Referencia colocar piedras m³
+    moColocPied:  813.72, // MOAL 50011001 M.O. Base Telford colocar piedras m³
     moPulidoPiso: 133.65, // MOAL 50025002 M.O. Piso cemento pulido fino m²
     moDesencofr:   52.57, // MOCA 50108004 M.O. Desencof. Falso Piso hasta 2.75m m²
     mortPulido: 14326.80, // AnaBasic 60030005 Mortero 1:2 para pulido m³
@@ -1064,7 +1064,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     const total12   = cant12   * PRECIOS.acero12;
     const total38v  = cant38   * PRECIOS.acero38;
     const totalAlm  = cantAlm  * PRECIOS.alambre;
-    const totalCarp = cantCarp * PRECIOS.carp;
+    const totalCarp = cantCarp * PRECIOS.moEncofCol;
     const totalMO   = cantMO   * PRECIOS.moAcero;
 
     const grandTotal = totalHorm + total1 + total34 + total12 + total38v + totalAlm + totalCarp + totalMO;
@@ -1083,7 +1083,7 @@ const CalculatorsView = ({ onAddToPresupuesto }) => {
     if (cant12 >0) items.push({ label:'Acero 1/2"',     cant:fmt(cant12), uni:'QQ/m³', pu:fmtRD(PRECIOS.acero12), total:fmtRD(total12)  });
     if (cant38 >0) items.push({ label:'Acero 3/8"',     cant:fmt(cant38), uni:'QQ/m³', pu:fmtRD(PRECIOS.acero38), total:fmtRD(total38v) });
     if (cantAlm>0) items.push({ label:'Alambre #18',    cant:fmt(cantAlm),uni:'lb/m³',  pu:fmtRD(PRECIOS.alambre), total:fmtRD(totalAlm) });
-    items.push({ label:'Carpintería',      cant:fmt(cantCarp), uni:'m²/m³', pu:fmtRD(PRECIOS.carp),    total:fmtRD(totalCarp) });
+    items.push({ label:'Carpintería',      cant:fmt(cantCarp), uni:'m²/m³', pu:fmtRD(PRECIOS.moEncofCol), total:fmtRD(totalCarp) });
     items.push({ label:'M.O. Varillero',   cant:fmt(cantMO),   uni:'QQ/m³', pu:fmtRD(PRECIOS.moAcero), total:fmtRD(totalMO)  });
     items.push({ label:'Calzos',           cant:'-',            uni:'',      pu:'-',                    total:'-'              });
 
@@ -6773,54 +6773,65 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
 
   useEffect(() => {
     if (isPro) {
-      // Admin y Pro — limpiar cualquier restricción de localStorage
       localStorage.removeItem(STORAGE_KEY);
       setSesionExpirada(false);
       setTiempoRestante(null);
       return;
     }
 
-    const ahora = Date.now();
-    let stored = {};
-    try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+    // Función async interna para poder usar await
+    const initTimer = async () => {
+      const ahora = new Date();
+      const hoyStr = ahora.toISOString().slice(0, 10);
 
-    const ultimaFecha = stored.fecha || 0;
-    const tiempoUsado = stored.usado || 0;
-    const mismoDia    = (ahora - ultimaFecha) < 24 * 60 * 60 * 1000;
+      const { data: tiempoData } = await supabase
+        .from('profiles')
+        .select('tiempo_usado_hoy, ultima_fecha_uso')
+        .eq('id', userId)
+        .single();
 
-    if (mismoDia && tiempoUsado >= SESSION_LIMIT) {
-      // Ya agotó los 8 minutos hoy
-      setSesionExpirada(true);
-      return;
-    }
+      const ultimaFecha = tiempoData?.ultima_fecha_uso || '';
+      const mismoDia = ultimaFecha === hoyStr;
+      const tiempoUsado = mismoDia ? (tiempoData?.tiempo_usado_hoy || 0) : 0;
 
-    // Si es un día nuevo, reiniciar
-    const usadoHoy = mismoDia ? tiempoUsado : 0;
-    const restante = SESSION_LIMIT - usadoHoy;
-    setTiempoRestante(restante);
+      if (mismoDia && tiempoUsado >= SESSION_LIMIT) {
+        setSesionExpirada(true);
+        return;
+      }
 
-    // Guardar inicio de sesión de hoy
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ fecha: ahora, usado: usadoHoy }));
+      const restante = SESSION_LIMIT - tiempoUsado;
+      setTiempoRestante(restante);
 
-    // Contador regresivo
-    timerRef.current = setInterval(() => {
-      setTiempoRestante(prev => {
-        if (prev === null) return null;
-        const nuevo = prev - 1;
-        // Guardar progreso
-        try {
-          const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({ fecha: s.fecha || Date.now(), usado: SESSION_LIMIT - nuevo }));
-        } catch(e) {}
-        if (nuevo <= 0) {
-          clearInterval(timerRef.current);
-          setSesionExpirada(true);
-          return 0;
+      if (!mismoDia) {
+        await supabase.from('profiles').update({
+          tiempo_usado_hoy: 0,
+          ultima_fecha_uso: hoyStr
+        }).eq('id', userId);
+      }
+
+      let segundosAcum = 0;
+      timerRef.current = setInterval(async () => {
+        segundosAcum++;
+        setTiempoRestante(prev => {
+          if (prev === null) return null;
+          const nuevo = prev - 1;
+          if (nuevo <= 0) {
+            clearInterval(timerRef.current);
+            setSesionExpirada(true);
+            return 0;
+          }
+          return nuevo;
+        });
+        if (segundosAcum % 30 === 0) {
+          await supabase.from('profiles').update({
+            tiempo_usado_hoy: tiempoUsado + segundosAcum,
+            ultima_fecha_uso: hoyStr
+          }).eq('id', userId);
         }
-        return nuevo;
-      });
-    }, 1000);
+      }, 1000);
+    };
 
+    initTimer();
     return () => clearInterval(timerRef.current);
   }, [isPro]);
   const [currentView, setCurrentView] = useState('dashboard');
@@ -8369,39 +8380,56 @@ export default function ProCalcApp() {
   }, []);
 
   useEffect(() => {
-    // Detectar token de recuperación en la URL (cuando viene del enlace de Supabase)
-    const hash = window.location.hash;
-    if (hash && hash.includes('type=recovery')) {
-      // Supabase ya procesó el token automáticamente via onAuthStateChange
-      // Solo asegurarse de que se muestre el formulario de nueva contraseña
-    }
+    // Manejar tokens en la URL (confirmación de email, recuperación de contraseña)
+    const handleUrlToken = async () => {
+      const hash = window.location.hash;
+      const params = new URLSearchParams(window.location.search);
+      const type = params.get('type') || (hash.includes('type=recovery') ? 'recovery' : '');
 
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if(error && error.message?.includes('Refresh Token')) {
-        // Token inválido — limpiar y mostrar login
+      // Si hay token en la URL, dejar que Supabase lo procese
+      if (hash && (hash.includes('access_token') || hash.includes('type='))) {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (session) {
+          setSession(session);
+          if (type === 'recovery') {
+            setIsRecovery(true);
+            setLoadingAuth(false);
+          } else {
+            // Confirmación de email u otro tipo — cargar perfil
+            await loadProfile(session.user.id);
+          }
+          // Limpiar la URL sin recargar la página
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        }
+      }
+
+      // Sesión normal sin token en URL
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error && error.message?.includes('Refresh Token')) {
         supabase.auth.signOut();
         setSession(null); setProfile(null); setLoadingAuth(false);
         return;
       }
       setSession(session);
-      if (session) loadProfile(session.user.id);
+      if (session) await loadProfile(session.user.id);
       else setLoadingAuth(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
-        setSession(session);
-        if (session) loadProfile(session.user.id);
-      } else if (event === 'PASSWORD_RECOVERY') {
+    };
+
+    handleUrlToken();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
         setSession(session);
         setIsRecovery(true);
         setLoadingAuth(false);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        setSession(session);
+        if (session) await loadProfile(session.user.id);
       } else if (event === 'SIGNED_OUT' || !session) {
         setSession(null);
         setProfile(null);
         setLoadingAuth(false);
-      } else if (session) {
-        setSession(session);
-        loadProfile(session.user.id);
       }
     });
     return () => subscription.unsubscribe();
