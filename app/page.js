@@ -8445,40 +8445,46 @@ export default function ProCalcApp() {
   const loadProfile = async (userId) => {
     console.log('loadProfile llamado para:', userId);
     try {
-      // Timeout de 4 segundos para la consulta
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), 4000)
+      // Timeout de 5 segundos — race correcto: ambas ramas resuelven (no rechazan)
+      const timeoutPromise = new Promise((resolve) =>
+        setTimeout(() => resolve({ data: null, error: { message: 'timeout' } }), 5000)
       );
       const queryPromise = supabase.from('profiles').select('*').eq('id', userId).single();
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise.then(() => ({ data: null, error: { message: 'timeout' } }))]);
-      console.log('profiles data:', data, 'error:', error);
-      if (error) {
-        throw new Error(error.message);
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+
+      if (error) throw new Error(error.message);
+
+      // Solo bloquear si está explícitamente bloqueado
+      if (data?.bloqueado === true) {
+        await supabase.auth.signOut();
+        setLoadingAuth(false);
+        return;
       }
-    // Solo bloquear si está explícitamente bloqueado
-    if (data?.bloqueado === true) {
-      await supabase.auth.signOut();
-      setLoadingAuth(false);
-      return;
-    }
-    // Si no tiene suscripcion_activa pero es free — dejar entrar normalmente
-    if (!data?.suscripcion_activa && data?.plan === 'pro') {
       // Pro vencido — bajar a free
-      await supabase.from('profiles').update({ plan: 'free' }).eq('id', userId);
-      data.plan = 'free';
-    }
-    console.log('plan detectado:', data?.plan);
+      if (!data?.suscripcion_activa && data?.plan === 'pro') {
+        await supabase.from('profiles').update({ plan: 'free' }).eq('id', userId);
+        data.plan = 'free';
+      }
+      console.log('plan detectado:', data?.plan);
       setProfile(data);
       setLoadingAuth(false);
     } catch(e) {
       console.error('loadProfile error:', e.message);
-      // Fallback — usar email de la sesión
-      const { data: userData } = await supabase.auth.getUser();
-      const userEmail = userData?.user?.email || '';
-      if (userEmail === 'ingyosej@gmail.com') {
-        setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
-      } else {
-        setProfile({ id: userId, email: userEmail, plan: 'free', suscripcion_activa: true });
+      // Fallback sin llamar Supabase (puede estar caído) — usar sesión en caché
+      try {
+        const { data: userData } = await Promise.race([
+          supabase.auth.getUser(),
+          new Promise((resolve) => setTimeout(() => resolve({ data: { user: null } }), 3000))
+        ]);
+        const userEmail = userData?.user?.email || '';
+        if (userEmail === 'ingyosej@gmail.com') {
+          setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
+        } else {
+          setProfile({ id: userId, email: userEmail, plan: 'free', suscripcion_activa: true });
+        }
+      } catch {
+        // Si todo falla, entrar como free
+        setProfile({ id: userId, email: '', plan: 'free', suscripcion_activa: true });
       }
       setLoadingAuth(false);
     }
