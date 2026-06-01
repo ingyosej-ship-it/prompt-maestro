@@ -8478,6 +8478,9 @@ export default function ProCalcApp() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
+    setLoadingAuth(false);
   };
 
   if (loadingAuth) return (
