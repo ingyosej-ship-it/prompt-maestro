@@ -8444,21 +8444,17 @@ export default function ProCalcApp() {
 
   const loadProfile = async (userId) => {
     console.log('loadProfile llamado para:', userId);
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    console.log('profiles data:', data, 'error:', error);
-    if (error) {
-      console.error('loadProfile error:', error);
-      const { data: userData } = await supabase.auth.getUser();
-      const userEmail = userData?.user?.email || '';
-      if (userEmail === 'ingyosej@gmail.com') {
-        setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
-      } else {
-        // Sin perfil en DB — usar perfil local para no bloquear acceso
-        setProfile({ id: userId, email: userEmail, plan: 'pro', suscripcion_activa: true });
+    try {
+      // Timeout de 4 segundos para la consulta
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 4000)
+      );
+      const queryPromise = supabase.from('profiles').select('*').eq('id', userId).single();
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise.then(() => ({ data: null, error: { message: 'timeout' } }))]);
+      console.log('profiles data:', data, 'error:', error);
+      if (error) {
+        throw new Error(error.message);
       }
-      setLoadingAuth(false);
-      return;
-    }
     // Solo bloquear si está explícitamente bloqueado
     if (data?.bloqueado === true) {
       await supabase.auth.signOut();
@@ -8472,8 +8468,20 @@ export default function ProCalcApp() {
       data.plan = 'free';
     }
     console.log('plan detectado:', data?.plan);
-    setProfile(data);
-    setLoadingAuth(false);
+      setProfile(data);
+      setLoadingAuth(false);
+    } catch(e) {
+      console.error('loadProfile error:', e.message);
+      // Fallback — usar email de la sesión
+      const { data: userData } = await supabase.auth.getUser();
+      const userEmail = userData?.user?.email || '';
+      if (userEmail === 'ingyosej@gmail.com') {
+        setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
+      } else {
+        setProfile({ id: userId, email: userEmail, plan: 'free', suscripcion_activa: true });
+      }
+      setLoadingAuth(false);
+    }
   };
 
   const handleLogout = async () => {
