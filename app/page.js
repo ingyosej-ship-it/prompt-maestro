@@ -7418,7 +7418,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
           {currentView === 'dashboard' && <DashboardHome goToBudget={() => handleViewChange('budget')} goToCostAnalysis={() => handleViewChange('costAnalysis')} goToTemplates={() => handleViewChange('templates')} goToCalculators={() => handleViewChange('calculators')} goToPresupuesto={() => handleViewChange('presupuestoObra')} goToBiblioteca={() => handleViewChange('biblioteca')} />}
 
           {/* Módulos bloqueados — plan gratuito O licencia vencida */}
-          {['costAnalysis','templates','presupuestoObra','calculators','budget'].includes(currentView) && (!isPro || licenciaVencida) && (
+          {['costAnalysis','templates','presupuestoObra','budget'].includes(currentView) && (!isPro || licenciaVencida) && (
             <div style={{position:'absolute',inset:0,zIndex:50,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(15,23,42,0.92)',backdropFilter:'blur(4px)',gap:'16px',padding:'32px',textAlign:'center'}}>
               <div style={{fontSize:'48px'}}>🔒</div>
               <div style={{fontSize:'20px',fontWeight:'900',color:'white'}}>Acceso Plan Pro</div>
@@ -8395,11 +8395,13 @@ export default function ProCalcApp() {
             setIsRecovery(true);
             setLoadingAuth(false);
           } else {
-            // Confirmación de email u otro tipo — cargar perfil
             await loadProfile(session.user.id);
           }
-          // Limpiar la URL sin recargar la página
           window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        } else {
+          // No hay sesión aunque hay hash — mostrar login
+          setLoadingAuth(false);
           return;
         }
       }
@@ -8418,6 +8420,11 @@ export default function ProCalcApp() {
 
     handleUrlToken();
 
+    // Timeout de seguridad — nunca quedarse cargando más de 5 segundos
+    const timeout = setTimeout(() => {
+      setLoadingAuth(prev => { if (prev) return false; return prev; });
+    }, 5000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setSession(session);
@@ -8432,7 +8439,7 @@ export default function ProCalcApp() {
         setLoadingAuth(false);
       }
     });
-    return () => subscription.unsubscribe();
+    return () => { subscription.unsubscribe(); clearTimeout(timeout); };
   }, []);
 
   const loadProfile = async (userId) => {
@@ -8452,10 +8459,17 @@ export default function ProCalcApp() {
       setLoadingAuth(false);
       return;
     }
-    if (data?.suscripcion_activa === false && data?.plan !== 'admin') {
+    // Solo bloquear si está explícitamente bloqueado
+    if (data?.bloqueado === true) {
       await supabase.auth.signOut();
       setLoadingAuth(false);
       return;
+    }
+    // Si no tiene suscripcion_activa pero es free — dejar entrar normalmente
+    if (!data?.suscripcion_activa && data?.plan === 'pro') {
+      // Pro vencido — bajar a free
+      await supabase.from('profiles').update({ plan: 'free' }).eq('id', userId);
+      data.plan = 'free';
     }
     console.log('plan detectado:', data?.plan);
     setProfile(data);
