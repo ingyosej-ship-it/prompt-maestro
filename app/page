@@ -8442,6 +8442,35 @@ export default function ProCalcApp() {
     return () => { subscription.unsubscribe(); clearTimeout(timeout); };
   }, []);
 
+  // ── Control de sesión única ───────────────────────────────────────────────
+  const SESSION_TOKEN_KEY = 'procalc_session_token';
+  const sessionCheckRef = useRef(null);
+
+  const generarSessionToken = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  const iniciarVerificacionSesion = (userId, miToken) => {
+    if (sessionCheckRef.current) clearInterval(sessionCheckRef.current);
+    sessionCheckRef.current = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles').select('session_token, suscripcion_activa, plan').eq('id', userId).single();
+        // Si el token cambió, otro dispositivo inició sesión → cerrar esta
+        if (data?.session_token && data.session_token !== miToken) {
+          clearInterval(sessionCheckRef.current);
+          await supabase.auth.signOut();
+          setSession(null); setProfile(null); setLoadingAuth(false);
+          alert('⚠️ Tu sesión fue iniciada en otro dispositivo. Por seguridad, esta sesión fue cerrada.');
+        }
+        // Si fue bloqueado en tiempo real
+        if (data?.suscripcion_activa === false && data?.plan !== 'admin') {
+          clearInterval(sessionCheckRef.current);
+          await supabase.auth.signOut();
+          setSession(null); setProfile(null); setLoadingAuth(false);
+        }
+      } catch { /* ignorar errores de red en el check */ }
+    }, 30000); // chequear cada 30 segundos
+  };
+
   const loadProfile = async (userId) => {
     console.log('loadProfile llamado para:', userId);
     try {
@@ -8455,7 +8484,7 @@ export default function ProCalcApp() {
       if (error) throw new Error(error.message);
 
       // Solo bloquear si está explícitamente bloqueado
-      if (data?.bloqueado === true) {
+      if (data?.bloqueado === true || (data?.suscripcion_activa === false && data?.plan !== 'admin')) {
         await supabase.auth.signOut();
         setLoadingAuth(false);
         return;
@@ -8465,6 +8494,13 @@ export default function ProCalcApp() {
         await supabase.from('profiles').update({ plan: 'free' }).eq('id', userId);
         data.plan = 'free';
       }
+
+      // ── Sesión única: generar token y guardarlo en Supabase ──
+      const miToken = generarSessionToken();
+      localStorage.setItem(SESSION_TOKEN_KEY, miToken);
+      await supabase.from('profiles').update({ session_token: miToken }).eq('id', userId);
+      iniciarVerificacionSesion(userId, miToken);
+
       console.log('plan detectado:', data?.plan);
       setProfile(data);
       setLoadingAuth(false);
@@ -8492,14 +8528,13 @@ export default function ProCalcApp() {
 
   const handleLogout = async () => {
     try {
-      // Limpiar estado inmediatamente sin esperar Supabase
+      if (sessionCheckRef.current) clearInterval(sessionCheckRef.current);
+      localStorage.removeItem(SESSION_TOKEN_KEY);
       setSession(null);
       setProfile(null);
       setLoadingAuth(false);
-      // Luego hacer signOut en background
       await supabase.auth.signOut();
     } catch(e) {
-      // Aunque falle Supabase, el estado ya está limpio
       console.log('logout error:', e);
     }
   };
