@@ -8477,10 +8477,17 @@ export default function ProCalcApp() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
-    setProfile(null);
-    setLoadingAuth(false);
+    try {
+      // Limpiar estado inmediatamente sin esperar Supabase
+      setSession(null);
+      setProfile(null);
+      setLoadingAuth(false);
+      // Luego hacer signOut en background
+      await supabase.auth.signOut();
+    } catch(e) {
+      // Aunque falle Supabase, el estado ya está limpio
+      console.log('logout error:', e);
+    }
   };
 
   if (loadingAuth) return (
