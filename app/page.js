@@ -8511,26 +8511,20 @@ export default function ProCalcApp() {
       iniciarVerificacionSesion(userId, miToken);
 
       console.log('plan detectado:', data?.plan);
+      // Guardar plan en localStorage como respaldo
+      localStorage.setItem('procalc_plan', data?.plan || 'free');
+      localStorage.setItem('procalc_email', data?.email || '');
       setProfile(data);
       setLoadingAuth(false);
     } catch(e) {
       console.error('loadProfile error:', e.message);
-      // Fallback sin llamar Supabase (puede estar caído) — usar sesión en caché
-      try {
-        const { data: userData } = await Promise.race([
-          supabase.auth.getUser(),
-          new Promise((resolve) => setTimeout(() => resolve({ data: { user: null } }), 3000))
-        ]);
-        const userEmail = userData?.user?.email || '';
-        if (userEmail === 'ingyosej@gmail.com') {
-          setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
-        } else {
-          setProfile({ id: userId, email: userEmail, plan: 'free', suscripcion_activa: true });
-        }
-      } catch {
-        // Si todo falla, entrar como free
-        setProfile({ id: userId, email: '', plan: 'free', suscripcion_activa: true });
-      }
+      // Fallback — usar plan guardado en localStorage, nunca bajar de plan superior
+      const planGuardado = localStorage.getItem('procalc_plan') || 'free';
+      const emailGuardado = localStorage.getItem('procalc_email') || '';
+      setProfile(prev => {
+        if (prev && (prev.plan === 'admin' || prev.plan === 'pro')) return prev;
+        return { id: userId, email: emailGuardado, plan: planGuardado, suscripcion_activa: true };
+      });
       setLoadingAuth(false);
     }
   };
@@ -8539,6 +8533,8 @@ export default function ProCalcApp() {
     try {
       if (sessionCheckRef.current) clearInterval(sessionCheckRef.current);
       localStorage.removeItem(SESSION_TOKEN_KEY);
+      localStorage.removeItem('procalc_plan');
+      localStorage.removeItem('procalc_email');
       setSession(null);
       setProfile(null);
       setLoadingAuth(false);
