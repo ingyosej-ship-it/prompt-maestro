@@ -8435,7 +8435,10 @@ export default function ProCalcApp() {
         setLoadingAuth(false);
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         setSession(session);
-        if (session) await loadProfile(session.user.id);
+        // En TOKEN_REFRESHED no recargar el perfil si ya está cargado — evita loop de timeouts
+        if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || !profile)) {
+          await loadProfile(session.user.id);
+        }
       } else if (event === 'SIGNED_OUT' || !session) {
         setSession(null);
         setProfile(null);
