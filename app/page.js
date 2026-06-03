@@ -6772,10 +6772,8 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   const timerRef = useRef(null);
 
   useEffect(() => {
-    if (!userProfile) return;
-    const esAdmin = userProfile?.plan === 'admin' || userProfile?.email === 'ingyosej@gmail.com';
-    if (isPro || esAdmin) {
-      if (timerRef.current) clearInterval(timerRef.current);
+    if (isPro) {
+      localStorage.removeItem(STORAGE_KEY);
       setSesionExpirada(false);
       setTiempoRestante(null);
       return;
@@ -6835,7 +6833,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
 
     initTimer();
     return () => clearInterval(timerRef.current);
-  }, [isPro, userProfile?.plan, userProfile?.email]);
+  }, [isPro]);
   const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
