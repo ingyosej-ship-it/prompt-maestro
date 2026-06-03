@@ -8464,17 +8464,16 @@ export default function ProCalcApp() {
       try {
         const { data } = await supabase
           .from('profiles').select('session_token, suscripcion_activa, plan').eq('id', userId).single();
-        // Si el token cambió, otro dispositivo inició sesión → cerrar esta
+        // Si el token cambió, otro dispositivo inició sesión → cerrar SOLO esta ventana
         if (data?.session_token && data.session_token !== miToken) {
           clearInterval(sessionCheckRef.current);
-          await supabase.auth.signOut();
+          // No hacer signOut global — solo limpiar estado local
           setSession(null); setProfile(null); setLoadingAuth(false);
-          alert('⚠️ Tu sesión fue iniciada en otro dispositivo. Por seguridad, esta sesión fue cerrada.');
+          alert('⚠️ Tu sesión fue iniciada en otro dispositivo. Esta sesión fue cerrada.');
         }
         // Si fue bloqueado en tiempo real
         if (data?.suscripcion_activa === false && data?.plan !== 'admin') {
           clearInterval(sessionCheckRef.current);
-          await supabase.auth.signOut();
           setSession(null); setProfile(null); setLoadingAuth(false);
         }
       } catch { /* ignorar errores de red en el check */ }
