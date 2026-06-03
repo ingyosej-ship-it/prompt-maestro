@@ -8267,6 +8267,7 @@ export default function ProCalcApp() {
   const [session, setSession]         = useState(null);
   const [profile, setProfile]         = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const loadingProfileRef = useRef(false);
   const [isRecovery, setIsRecovery]   = useState(false);
   const [newPwd, setNewPwd]           = useState('');
   const [newPwdMsg, setNewPwdMsg]     = useState('');
@@ -8423,7 +8424,7 @@ export default function ProCalcApp() {
         setSession(session);
         setIsRecovery(true);
         setLoadingAuth(false);
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+      } else if (event === 'SIGNED_IN') {
         setSession(session);
         if (session) await loadProfile(session.user.id);
       } else if (event === 'SIGNED_OUT' || !session) {
@@ -8436,6 +8437,8 @@ export default function ProCalcApp() {
   }, []);
 
   const loadProfile = async (userId) => {
+    if (loadingProfileRef.current) return;
+    loadingProfileRef.current = true;
     console.log('loadProfile llamado para:', userId);
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
     console.log('profiles data:', data, 'error:', error);
@@ -8449,16 +8452,19 @@ export default function ProCalcApp() {
         // Sin perfil en DB — usar perfil local para no bloquear acceso
         setProfile({ id: userId, email: userEmail, plan: 'pro', suscripcion_activa: true });
       }
+      loadingProfileRef.current = false;
       setLoadingAuth(false);
       return;
     }
     if (data?.suscripcion_activa === false && data?.plan !== 'admin') {
       await supabase.auth.signOut();
+      loadingProfileRef.current = false;
       setLoadingAuth(false);
       return;
     }
     console.log('plan detectado:', data?.plan);
     setProfile(data);
+    loadingProfileRef.current = false;
     setLoadingAuth(false);
   };
 
