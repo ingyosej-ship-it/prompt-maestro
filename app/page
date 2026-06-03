@@ -6836,7 +6836,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
 
     initTimer();
     return () => clearInterval(timerRef.current);
-  }, [isPro, isAdmin, userProfile?.plan]);
+  }, [isPro, isAdmin]);
   const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
