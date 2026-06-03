@@ -6772,10 +6772,8 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   const timerRef = useRef(null);
 
   useEffect(() => {
-    if (!userProfile) return;
-    const esAdmin = userProfile?.plan === 'admin' || userProfile?.email === 'ingyosej@gmail.com';
-    if (isPro || esAdmin) {
-      if (timerRef.current) clearInterval(timerRef.current);
+    if (isPro) {
+      localStorage.removeItem(STORAGE_KEY);
       setSesionExpirada(false);
       setTiempoRestante(null);
       return;
@@ -6835,7 +6833,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
 
     initTimer();
     return () => clearInterval(timerRef.current);
-  }, [isPro, userProfile?.plan]);
+  }, [isPro]);
   const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -7420,7 +7418,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
           {currentView === 'dashboard' && <DashboardHome goToBudget={() => handleViewChange('budget')} goToCostAnalysis={() => handleViewChange('costAnalysis')} goToTemplates={() => handleViewChange('templates')} goToCalculators={() => handleViewChange('calculators')} goToPresupuesto={() => handleViewChange('presupuestoObra')} goToBiblioteca={() => handleViewChange('biblioteca')} />}
 
           {/* Módulos bloqueados — plan gratuito O licencia vencida */}
-          {['costAnalysis','templates','presupuestoObra','budget'].includes(currentView) && (!isPro || licenciaVencida) && (
+          {['costAnalysis','templates','presupuestoObra','calculators','budget'].includes(currentView) && (!isPro || licenciaVencida) && (
             <div style={{position:'absolute',inset:0,zIndex:50,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(15,23,42,0.92)',backdropFilter:'blur(4px)',gap:'16px',padding:'32px',textAlign:'center'}}>
               <div style={{fontSize:'48px'}}>🔒</div>
               <div style={{fontSize:'20px',fontWeight:'900',color:'white'}}>Acceso Plan Pro</div>
@@ -8397,13 +8395,11 @@ export default function ProCalcApp() {
             setIsRecovery(true);
             setLoadingAuth(false);
           } else {
+            // Confirmación de email u otro tipo — cargar perfil
             await loadProfile(session.user.id);
           }
+          // Limpiar la URL sin recargar la página
           window.history.replaceState({}, document.title, window.location.pathname);
-          return;
-        } else {
-          // No hay sesión aunque hay hash — mostrar login
-          setLoadingAuth(false);
           return;
         }
       }
@@ -8422,11 +8418,6 @@ export default function ProCalcApp() {
 
     handleUrlToken();
 
-    // Timeout de seguridad — nunca quedarse cargando más de 5 segundos
-    const timeout = setTimeout(() => {
-      setLoadingAuth(prev => { if (prev) return false; return prev; });
-    }, 5000);
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setSession(session);
@@ -8441,63 +8432,38 @@ export default function ProCalcApp() {
         setLoadingAuth(false);
       }
     });
-    return () => { subscription.unsubscribe(); clearTimeout(timeout); };
+    return () => subscription.unsubscribe();
   }, []);
 
   const loadProfile = async (userId) => {
     console.log('loadProfile llamado para:', userId);
-    try {
-      // Timeout de 4 segundos para la consulta
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), 4000)
-      );
-      const queryPromise = supabase.from('profiles').select('*').eq('id', userId).single();
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise.then(() => ({ data: null, error: { message: 'timeout' } }))]);
-      console.log('profiles data:', data, 'error:', error);
-      if (error) {
-        throw new Error(error.message);
-      }
-    // Solo bloquear si está explícitamente bloqueado
-    if (data?.bloqueado === true) {
-      await supabase.auth.signOut();
-      setLoadingAuth(false);
-      return;
-    }
-    // Si no tiene suscripcion_activa pero es free — dejar entrar normalmente
-    if (!data?.suscripcion_activa && data?.plan === 'pro') {
-      // Pro vencido — bajar a free
-      await supabase.from('profiles').update({ plan: 'free' }).eq('id', userId);
-      data.plan = 'free';
-    }
-    console.log('plan detectado:', data?.plan);
-      setProfile(data);
-      setLoadingAuth(false);
-    } catch(e) {
-      console.error('loadProfile error:', e.message);
-      // Fallback — usar email de la sesión
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    console.log('profiles data:', data, 'error:', error);
+    if (error) {
+      console.error('loadProfile error:', error);
       const { data: userData } = await supabase.auth.getUser();
       const userEmail = userData?.user?.email || '';
       if (userEmail === 'ingyosej@gmail.com') {
         setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
       } else {
-        setProfile({ id: userId, email: userEmail, plan: 'free', suscripcion_activa: true });
+        // Sin perfil en DB — usar perfil local para no bloquear acceso
+        setProfile({ id: userId, email: userEmail, plan: 'pro', suscripcion_activa: true });
       }
       setLoadingAuth(false);
+      return;
     }
+    if (data?.suscripcion_activa === false && data?.plan !== 'admin') {
+      await supabase.auth.signOut();
+      setLoadingAuth(false);
+      return;
+    }
+    console.log('plan detectado:', data?.plan);
+    setProfile(data);
+    setLoadingAuth(false);
   };
 
   const handleLogout = async () => {
-    try {
-      // Limpiar estado inmediatamente sin esperar Supabase
-      setSession(null);
-      setProfile(null);
-      setLoadingAuth(false);
-      // Luego hacer signOut en background
-      await supabase.auth.signOut();
-    } catch(e) {
-      // Aunque falle Supabase, el estado ya está limpio
-      console.log('logout error:', e);
-    }
+    await supabase.auth.signOut();
   };
 
   if (loadingAuth) return (
