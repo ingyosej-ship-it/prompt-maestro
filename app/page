@@ -6772,6 +6772,9 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   const timerRef = useRef(null);
 
   useEffect(() => {
+    // No hacer nada hasta tener el perfil cargado
+    if (!userProfile) return;
+
     if (isPro || isAdmin) {
       localStorage.removeItem(STORAGE_KEY);
       setSesionExpirada(false);
@@ -6833,7 +6836,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
 
     initTimer();
     return () => clearInterval(timerRef.current);
-  }, [isPro]);
+  }, [isPro, isAdmin, userProfile?.plan]);
   const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
