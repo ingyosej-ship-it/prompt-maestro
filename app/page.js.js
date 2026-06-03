@@ -8424,7 +8424,7 @@ export default function ProCalcApp() {
         setSession(session);
         setIsRecovery(true);
         setLoadingAuth(false);
-      } else if (event === 'SIGNED_IN') {
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         setSession(session);
         if (session) await loadProfile(session.user.id);
       } else if (event === 'SIGNED_OUT' || !session) {
@@ -8440,12 +8440,19 @@ export default function ProCalcApp() {
     if (loadingProfileRef.current) return;
     loadingProfileRef.current = true;
     console.log('loadProfile llamado para:', userId);
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    const timeout = ms => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
+    const { data, error } = await Promise.race([
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      timeout(5000)
+    ]).catch(e => ({ data: null, error: e }));
     console.log('profiles data:', data, 'error:', error);
     if (error) {
-      console.error('loadProfile error:', error);
-      const { data: userData } = await supabase.auth.getUser();
-      const userEmail = userData?.user?.email || '';
+      console.error('loadProfile error:', error.message || error);
+      const userResult = await Promise.race([
+        supabase.auth.getUser(),
+        timeout(3000)
+      ]).catch(() => ({ data: { user: null } }));
+      const userEmail = userResult?.data?.user?.email || '';
       if (userEmail === 'ingyosej@gmail.com') {
         setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
       } else {
