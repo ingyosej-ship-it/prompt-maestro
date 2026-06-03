@@ -6775,8 +6775,12 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
     // No hacer nada hasta tener el perfil cargado
     if (!userProfile) return;
 
-    if (isPro || isAdmin) {
-      localStorage.removeItem(STORAGE_KEY);
+    // Verificación extra: si el email es el del admin, nunca correr el timer
+    const esAdmin = isAdmin || userProfile?.email === 'ingyosej@gmail.com';
+    const esPro = isPro || esAdmin;
+
+    if (esPro) {
+      if (timerRef.current) clearInterval(timerRef.current);
       setSesionExpirada(false);
       setTiempoRestante(null);
       return;
