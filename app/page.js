@@ -6772,14 +6772,9 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   const timerRef = useRef(null);
 
   useEffect(() => {
-    // No hacer nada hasta tener el perfil cargado
     if (!userProfile) return;
-
-    // Verificación extra: si el email es el del admin, nunca correr el timer
-    const esAdmin = isAdmin || userProfile?.email === 'ingyosej@gmail.com';
-    const esPro = isPro || esAdmin;
-
-    if (esPro) {
+    const esAdmin = userProfile?.plan === 'admin' || userProfile?.email === 'ingyosej@gmail.com';
+    if (isPro || esAdmin) {
       if (timerRef.current) clearInterval(timerRef.current);
       setSesionExpirada(false);
       setTiempoRestante(null);
@@ -6840,7 +6835,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
 
     initTimer();
     return () => clearInterval(timerRef.current);
-  }, [isPro, isAdmin]);
+  }, [isPro, userProfile?.plan]);
   const [currentView, setCurrentView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -8439,10 +8434,7 @@ export default function ProCalcApp() {
         setLoadingAuth(false);
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         setSession(session);
-        // En TOKEN_REFRESHED no recargar el perfil si ya está cargado — evita loop de timeouts
-        if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || !profile)) {
-          await loadProfile(session.user.id);
-        }
+        if (session) await loadProfile(session.user.id);
       } else if (event === 'SIGNED_OUT' || !session) {
         setSession(null);
         setProfile(null);
@@ -8452,94 +8444,58 @@ export default function ProCalcApp() {
     return () => { subscription.unsubscribe(); clearTimeout(timeout); };
   }, []);
 
-  // ── Control de sesión única ───────────────────────────────────────────────
-  const SESSION_TOKEN_KEY = 'procalc_session_token';
-  const sessionCheckRef = useRef(null);
-
-  const generarSessionToken = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-
-  const iniciarVerificacionSesion = (userId, miToken) => {
-    if (sessionCheckRef.current) clearInterval(sessionCheckRef.current);
-    sessionCheckRef.current = setInterval(async () => {
-      try {
-        const { data } = await supabase
-          .from('profiles').select('session_token, suscripcion_activa, plan').eq('id', userId).single();
-        // Si el token cambió, otro dispositivo inició sesión → cerrar SOLO esta ventana
-        if (data?.session_token && data.session_token !== miToken) {
-          clearInterval(sessionCheckRef.current);
-          // No hacer signOut global — solo limpiar estado local
-          setSession(null); setProfile(null); setLoadingAuth(false);
-          alert('⚠️ Tu sesión fue iniciada en otro dispositivo. Esta sesión fue cerrada.');
-        }
-        // Si fue bloqueado en tiempo real
-        if (data?.suscripcion_activa === false && data?.plan !== 'admin') {
-          clearInterval(sessionCheckRef.current);
-          setSession(null); setProfile(null); setLoadingAuth(false);
-        }
-      } catch { /* ignorar errores de red en el check */ }
-    }, 30000); // chequear cada 30 segundos
-  };
-
   const loadProfile = async (userId) => {
     console.log('loadProfile llamado para:', userId);
     try {
-      // Timeout de 5 segundos — race correcto: ambas ramas resuelven (no rechazan)
-      const timeoutPromise = new Promise((resolve) =>
-        setTimeout(() => resolve({ data: null, error: { message: 'timeout' } }), 5000)
+      // Timeout de 4 segundos para la consulta
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 4000)
       );
       const queryPromise = supabase.from('profiles').select('*').eq('id', userId).single();
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
-
-      if (error) throw new Error(error.message);
-
-      // Solo bloquear si está explícitamente bloqueado
-      if (data?.bloqueado === true || (data?.suscripcion_activa === false && data?.plan !== 'admin')) {
-        await supabase.auth.signOut();
-        setLoadingAuth(false);
-        return;
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise.then(() => ({ data: null, error: { message: 'timeout' } }))]);
+      console.log('profiles data:', data, 'error:', error);
+      if (error) {
+        throw new Error(error.message);
       }
+    // Solo bloquear si está explícitamente bloqueado
+    if (data?.bloqueado === true) {
+      await supabase.auth.signOut();
+      setLoadingAuth(false);
+      return;
+    }
+    // Si no tiene suscripcion_activa pero es free — dejar entrar normalmente
+    if (!data?.suscripcion_activa && data?.plan === 'pro') {
       // Pro vencido — bajar a free
-      if (!data?.suscripcion_activa && data?.plan === 'pro') {
-        await supabase.from('profiles').update({ plan: 'free' }).eq('id', userId);
-        data.plan = 'free';
-      }
-
-      // ── Sesión única: generar token y guardarlo en Supabase ──
-      const miToken = generarSessionToken();
-      localStorage.setItem(SESSION_TOKEN_KEY, miToken);
-      await supabase.from('profiles').update({ session_token: miToken }).eq('id', userId);
-      iniciarVerificacionSesion(userId, miToken);
-
-      console.log('plan detectado:', data?.plan);
-      // Guardar plan en localStorage como respaldo
-      localStorage.setItem('procalc_plan', data?.plan || 'free');
-      localStorage.setItem('procalc_email', data?.email || '');
+      await supabase.from('profiles').update({ plan: 'free' }).eq('id', userId);
+      data.plan = 'free';
+    }
+    console.log('plan detectado:', data?.plan);
       setProfile(data);
       setLoadingAuth(false);
     } catch(e) {
       console.error('loadProfile error:', e.message);
-      // Fallback — usar plan guardado en localStorage, nunca bajar de plan superior
-      const planGuardado = localStorage.getItem('procalc_plan') || 'free';
-      const emailGuardado = localStorage.getItem('procalc_email') || '';
-      setProfile(prev => {
-        if (prev && (prev.plan === 'admin' || prev.plan === 'pro')) return prev;
-        return { id: userId, email: emailGuardado, plan: planGuardado, suscripcion_activa: true };
-      });
+      // Fallback — usar email de la sesión
+      const { data: userData } = await supabase.auth.getUser();
+      const userEmail = userData?.user?.email || '';
+      if (userEmail === 'ingyosej@gmail.com') {
+        setProfile({ id: userId, email: userEmail, plan: 'admin', suscripcion_activa: true });
+      } else {
+        setProfile({ id: userId, email: userEmail, plan: 'free', suscripcion_activa: true });
+      }
       setLoadingAuth(false);
     }
   };
 
   const handleLogout = async () => {
     try {
-      if (sessionCheckRef.current) clearInterval(sessionCheckRef.current);
-      localStorage.removeItem(SESSION_TOKEN_KEY);
-      localStorage.removeItem('procalc_plan');
-      localStorage.removeItem('procalc_email');
+      // Limpiar estado inmediatamente sin esperar Supabase
       setSession(null);
       setProfile(null);
       setLoadingAuth(false);
+      // Luego hacer signOut en background
       await supabase.auth.signOut();
     } catch(e) {
+      // Aunque falle Supabase, el estado ya está limpio
       console.log('logout error:', e);
     }
   };
