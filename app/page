@@ -6772,7 +6772,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
   const timerRef = useRef(null);
 
   useEffect(() => {
-    if (isPro) {
+    if (isPro || isAdmin) {
       localStorage.removeItem(STORAGE_KEY);
       setSesionExpirada(false);
       setTiempoRestante(null);
