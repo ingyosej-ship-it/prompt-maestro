@@ -7393,17 +7393,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
         <div style={{flex:'1 1 0%', minHeight:0, overflow:'hidden', position:'relative', display:'flex', flexDirection:'column'}}>
 
           {/* ── SESIÓN EXPIRADA (plan gratuito 8 min/24h) ── */}
-          {sesionExpirada && !isPro && (
-            <div style={{position:'absolute',inset:0,zIndex:100,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(10,15,30,0.97)',backdropFilter:'blur(8px)',gap:'18px',padding:'32px',textAlign:'center'}}>
-              <div style={{fontSize:'52px'}}>⏰</div>
-              <div style={{fontSize:'22px',fontWeight:'900',color:'white'}}>Tiempo de sesión agotado</div>
-              <div style={{fontSize:'13px',color:'#94a3b8',maxWidth:'360px',lineHeight:1.8}}>
-                El plan gratuito permite <strong style={{color:'#fbbf24'}}>8 minutos cada 24 horas</strong>.<br/>
-                Tu acceso se renueva automáticamente mañana.<br/>
-                Activa el Plan Pro para acceso ilimitado.
-              </div>
-              <button onClick={()=>window.open('mailto:ingyosej@gmail.com?subject=Suscripción Plan Pro ProCalc&body=Hola, quiero suscribirme al Plan Pro. Mi email de registro es: ','_blank')}
-                style={{padding:'13px 32px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
+                          style={{padding:'13px 32px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
                 ✉️ Escribir para suscribirse
               </button>
               <button onClick={onLogout}
@@ -7417,17 +7407,7 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
           )}
           {currentView === 'dashboard' && <DashboardHome goToBudget={() => handleViewChange('budget')} goToCostAnalysis={() => handleViewChange('costAnalysis')} goToTemplates={() => handleViewChange('templates')} goToCalculators={() => handleViewChange('calculators')} goToPresupuesto={() => handleViewChange('presupuestoObra')} goToBiblioteca={() => handleViewChange('biblioteca')} />}
 
-          {/* Módulos bloqueados — plan gratuito O licencia vencida */}
-          {['costAnalysis','templates','presupuestoObra','calculators','budget'].includes(currentView) && (!isPro || licenciaVencida) && (
-            <div style={{position:'absolute',inset:0,zIndex:50,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'rgba(15,23,42,0.92)',backdropFilter:'blur(4px)',gap:'16px',padding:'32px',textAlign:'center'}}>
-              <div style={{fontSize:'48px'}}>🔒</div>
-              <div style={{fontSize:'20px',fontWeight:'900',color:'white'}}>Acceso Plan Pro</div>
-              <div style={{fontSize:'13px',color:'#94a3b8',maxWidth:'340px',lineHeight:1.7}}>
-                Con el plan gratuito solo puedes navegar el panel principal y la biblioteca.<br/>
-                Activa el Plan Pro para acceder a todos los módulos.
-              </div>
-              <button onClick={()=>window.open('mailto:ingyosej@gmail.com?subject=Suscripción Plan Pro ProCalc&body=Hola, quiero suscribirme al Plan Pro. Mi email de registro es: ','_blank')}
-                style={{padding:'12px 28px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
+                          style={{padding:'12px 28px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
                 ✉️ Escribir para suscribirse
               </button>
               <div style={{fontSize:'11px',color:'#475569'}}>
@@ -7885,7 +7865,7 @@ const AuthSystem = () => {
       const { data: prof } = await supabase.from('profiles').select('suscripcion_activa, plan').eq('id', data.user.id).single();
       if (prof?.suscripcion_activa === false && prof?.plan !== 'admin') {
         await supabase.auth.signOut();
-        setError('Tu acceso ha sido desactivado. Contacta a ingyosej@gmail.com');
+        setError('Tu cuenta está pendiente de activación. Te notificaremos a tu email cuando esté lista. Contacta a ingyosej@gmail.com');
       }
     }
     setLoading(false);
@@ -7905,7 +7885,7 @@ const AuthSystem = () => {
           email: email,
           nombre: nombre,
           plan: 'free',
-          suscripcion_activa: true,
+          suscripcion_activa: false,
           created_at: new Date().toISOString(),
         });
         // Notificación al admin via Supabase Edge Function o email directo
@@ -7917,7 +7897,7 @@ const AuthSystem = () => {
           });
         } catch(e) { /* no bloquear registro si falla notificación */ }
       }
-      setMsg('¡Cuenta creada! Revisa tu email para confirmar y luego inicia sesión.');
+      setMsg('¡Cuenta creada! Revisa tu email para confirmarla. Una vez confirmada, activaremos tu acceso en menos de 24 horas.');
       setView('login');
     }
     setLoading(false);
@@ -7989,7 +7969,7 @@ const AuthSystem = () => {
               <span style={{flexShrink:0,color:'#34d399'}}>✓</span>{f}
             </div>
           ))}
-          <button onClick={()=>window.open('mailto:ingyosej@gmail.com?subject=Suscripción Plan Pro ProCalc&body=Hola, quiero suscribirme al Plan Pro. Mi email de registro es: ','_blank')}
+          <button onClick={()=>window.open('https://mail.google.com/mail/?view=cm&to=ingyosej@gmail.com&su=Suscripción Plan Pro ProCalc&body=Hola, quiero suscribirme al Plan Pro. Mi email de registro es: ','_blank')}
             style={{width:'100%',padding:'11px',background:'#fbbf24',color:'#0f172a',border:'none',borderRadius:'8px',fontWeight:'900',fontSize:'13px',cursor:'pointer',marginTop:'14px'}}>
             ✉️ Escribir para suscribirse
           </button>
@@ -8148,7 +8128,7 @@ const AuthSystem = () => {
             {/* Tabs */}
             {view !== 'forgot' && (
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'4px',background:'#f1f5f9',borderRadius:'10px',padding:'4px',marginBottom:'20px'}}>
-                {[['login','Entrar'],['register','Registrarse'],['pricing','Planes']].map(([v,l])=>(
+                {[['login','Entrar'],['register','Registrarse']].map(([v,l])=>(
                   <button key={v} onClick={()=>{setView(v);setError('');setMsg('');}}
                     style={{padding:'9px 4px',border:'none',borderRadius:'7px',fontSize:'11px',fontWeight:'700',cursor:'pointer',background:view===v?'white':'transparent',color:view===v?'#0f172a':'#64748b',boxShadow:view===v?'0 1px 4px rgba(0,0,0,0.1)':'none',transition:'all .15s'}}>
                     {l}
@@ -8196,14 +8176,7 @@ const AuthSystem = () => {
             {/* PLANES */}
             {view === 'pricing' && (
               <div>
-                <div style={{border:'1px solid #e2e8f0',borderRadius:'12px',padding:'16px',marginBottom:'10px'}}>
-                  <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a',marginBottom:'2px'}}>Plan Gratuito</div>
-                  <div style={{fontSize:'22px',fontWeight:'900',color:'#0f172a',marginBottom:'10px'}}>$0 <span style={{fontSize:'12px',fontWeight:'500',color:'#64748b'}}>/siempre</span></div>
-                  {[{ok:false,text:'Visualizar 8 minutos cada 24 horas'},{ok:false,text:'Sin acceso a cálculos'},{ok:false,text:'Sin cotizaciones ni base de datos'},{ok:true,text:'Vista previa de la plataforma'}].map((f,i)=>(
-                    <div key={i} style={{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'5px',fontSize:'12px',color:f.ok?'#64748b':'#94a3b8'}}><span style={{color:f.ok?'#10b981':'#94a3b8',flexShrink:0}}>{f.ok?'✓':'○'}</span>{f.text}</div>
-                  ))}
-                  <button onClick={()=>setView('register')} style={{width:'100%',padding:'10px',background:'#f1f5f9',color:'#475569',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'12px',cursor:'pointer',marginTop:'12px'}}>Empezar Gratis</button>
-                </div>
+                
                 <div style={{border:'2px solid #2563eb',borderRadius:'12px',padding:'16px',position:'relative',background:'#f0f7ff'}}>
                   <div style={{position:'absolute',top:'-10px',left:'50%',transform:'translateX(-50%)',background:'#2563eb',color:'white',fontSize:'10px',fontWeight:'800',padding:'3px 14px',borderRadius:'20px',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>MÁS POPULAR</div>
                   <div style={{fontWeight:'800',fontSize:'15px',color:'#0f172a',marginBottom:'2px'}}>Plan Pro</div>
@@ -8424,10 +8397,13 @@ export default function ProCalcApp() {
         setSession(session);
         setIsRecovery(true);
         setLoadingAuth(false);
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+      } else if (event === 'SIGNED_IN') {
         setSession(session);
         if (session) await loadProfile(session.user.id);
-      } else if (event === 'SIGNED_OUT' || !session) {
+      } else if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        // Solo actualizar la sesión, no recargar el perfil (ya está cargado)
+        if (session) setSession(session);
+      } else if (event === 'SIGNED_OUT') {
         setSession(null);
         setProfile(null);
         setLoadingAuth(false);
@@ -8437,7 +8413,10 @@ export default function ProCalcApp() {
   }, []);
 
   const loadProfile = async (userId) => {
-    if (loadingProfileRef.current) return;
+    if (loadingProfileRef.current) {
+      // Ya hay una carga en progreso, no hacer nada
+      return;
+    }
     loadingProfileRef.current = true;
     console.log('loadProfile llamado para:', userId);
     const timeout = ms => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
@@ -8473,6 +8452,7 @@ export default function ProCalcApp() {
     setProfile(data);
     loadingProfileRef.current = false;
     setLoadingAuth(false);
+    console.log('loadProfile completado, plan:', data?.plan);
   };
 
   const handleLogout = async () => {
