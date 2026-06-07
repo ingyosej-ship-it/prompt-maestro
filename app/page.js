@@ -7888,14 +7888,15 @@ const AuthSystem = () => {
           suscripcion_activa: false,
           created_at: new Date().toISOString(),
         });
-        // Notificación al admin via Supabase Edge Function o email directo
+        // Notificación al admin via Supabase Edge Function
         try {
-          await fetch('https://hbolprmitnjqxvmfddhl.supabase.co/functions/v1/notify-admin', {
+          const notifyRes = await fetch('https://hbolprmitnjqxvmfddhl.supabase.co/functions/v1/notify-admin', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nombre, email, tipo: 'nuevo_registro', fecha: new Date().toLocaleString('es-DO') })
           });
-        } catch(e) { /* no bloquear registro si falla notificación */ }
+          console.log('notify-admin status:', notifyRes.status);
+        } catch(e) { console.error('notify-admin error:', e); }
       }
       setMsg('¡Cuenta creada! Revisa tu email para confirmarla. Una vez confirmada, activaremos tu acceso en menos de 24 horas.');
       setView('login');
