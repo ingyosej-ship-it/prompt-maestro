@@ -7392,29 +7392,10 @@ const Dashboard = ({ onLogout, userProfile, userId, userEmail }) => {
 
         <div style={{flex:'1 1 0%', minHeight:0, overflow:'hidden', position:'relative', display:'flex', flexDirection:'column'}}>
 
-          {/* ── SESIÓN EXPIRADA (plan gratuito 8 min/24h) ── */}
-                          style={{padding:'13px 32px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
-                ✉️ Escribir para suscribirse
-              </button>
-              <button onClick={onLogout}
-                style={{padding:'8px 20px',background:'transparent',color:'#64748b',border:'1px solid #334155',borderRadius:'8px',fontWeight:'600',fontSize:'12px',cursor:'pointer'}}>
-                Cerrar sesión
-              </button>
-              <div style={{fontSize:'11px',color:'#475569'}}>
-                Escribe a <strong style={{color:'#93c5fd'}}>ingyosej@gmail.com</strong> tras pagar para activar tu cuenta.
-              </div>
-            </div>
-          )}
+          
           {currentView === 'dashboard' && <DashboardHome goToBudget={() => handleViewChange('budget')} goToCostAnalysis={() => handleViewChange('costAnalysis')} goToTemplates={() => handleViewChange('templates')} goToCalculators={() => handleViewChange('calculators')} goToPresupuesto={() => handleViewChange('presupuestoObra')} goToBiblioteca={() => handleViewChange('biblioteca')} />}
 
-                          style={{padding:'12px 28px',background:'#2563eb',color:'white',border:'none',borderRadius:'10px',fontWeight:'800',fontSize:'14px',cursor:'pointer',boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
-                ✉️ Escribir para suscribirse
-              </button>
-              <div style={{fontSize:'11px',color:'#475569'}}>
-                Luego de pagar escribe a <strong style={{color:'#93c5fd'}}>ingyosej@gmail.com</strong> con tu email de registro.
-              </div>
-            </div>
-          )}
+
 
           {currentView === 'costAnalysis' && <CostAnalysisView />}
           {currentView === 'templates' && <TemplatesView />}
