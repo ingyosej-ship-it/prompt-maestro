@@ -7898,7 +7898,7 @@ const AuthSystem = () => {
           console.log('notify-admin status:', notifyRes.status);
         } catch(e) { console.error('notify-admin error:', e); }
       }
-      setMsg('¡Cuenta creada! Revisa tu email para confirmarla. Una vez confirmada, activaremos tu acceso en menos de 24 horas.');
+      setMsg('¡Cuenta creada! Para activar tu acceso, envíanos un WhatsApp al +1 (809) 214-0355 o escríbenos a ingyosej@gmail.com indicando tu email de registro. Te activamos en menos de 24 horas. ✅');
       setView('login');
     }
     setLoading(false);
